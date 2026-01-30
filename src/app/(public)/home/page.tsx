@@ -143,7 +143,7 @@ export default function HomePage() {
                         </div>
 
                         <div className="flex items-center gap-4 md:gap-8">
-                            <Link href="/login" className="hidden md:block px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-[10px] font-bold uppercase tracking-widest text-white hover:bg-white/20 transition-all border border-white/20">
+                            <Link href="/login" className="px-3 py-2 md:px-4 md:py-2 bg-white/10 backdrop-blur-sm rounded-full text-[10px] font-bold uppercase tracking-widest text-white hover:bg-white/20 transition-all border border-white/20">
                                 LOGIN
                             </Link>
                             <Link
