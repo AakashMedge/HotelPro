@@ -14,6 +14,7 @@ import type { Order, OrderItem, OrderStatus, OrderItemStatus, Prisma } from "@/g
 
 export interface CreateOrderInput {
     tableId: string;
+    customerName?: string;
     items: CreateOrderItemInput[];
 }
 
@@ -24,6 +25,7 @@ export interface CreateOrderItemInput {
 
 export interface OrderWithItems extends Order {
     items: OrderItem[];
+    customerName: string | null;
     table: {
         id: string;
         tableCode: string;
@@ -57,7 +59,7 @@ export interface OrderItemWithMenuItem extends OrderItem {
  * @returns The created order with items
  */
 export async function createOrder(input: CreateOrderInput): Promise<OrderWithItems> {
-    const { tableId, items } = input;
+    const { tableId, items, customerName } = input;
 
     // Validate input
     if (!tableId) {
@@ -126,6 +128,7 @@ export async function createOrder(input: CreateOrderInput): Promise<OrderWithIte
         const order = await tx.order.create({
             data: {
                 tableId,
+                customerName,
                 status: "NEW",
                 version: 1,
             },
@@ -340,7 +343,7 @@ export async function updateOrderStatus(
         } else if (newStatus === "CLOSED") {
             await tx.table.update({
                 where: { id: order.tableId },
-                data: { status: "VACANT" },
+                data: { status: "DIRTY" },
             });
         }
 
@@ -353,6 +356,7 @@ export async function updateOrderStatus(
                 metadata: {
                     previousStatus: order.status,
                     newStatus,
+                    tableCode: updatedOrder.table.tableCode,
                 },
             },
         });
@@ -368,7 +372,8 @@ const STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
     NEW: ["PREPARING"],
     PREPARING: ["READY"],
     READY: ["SERVED"],
-    SERVED: ["CLOSED"],
+    SERVED: ["BILL_REQUESTED"],
+    BILL_REQUESTED: ["CLOSED"],
     CLOSED: [], // Terminal state
 };
 

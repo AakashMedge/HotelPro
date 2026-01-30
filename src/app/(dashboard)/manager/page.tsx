@@ -1,175 +1,229 @@
+
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
-// Unified types for Manager view
+// Types
 type TableData = {
     id: string;
-    status: 'ACTIVE' | 'READY' | 'WAITING_FOR_PAYMENT' | 'VACANT';
+    status: string;
     waiter: string;
     items: number;
     lastUpdate: string;
 };
 
-const MOCK_FLOOR: TableData[] = [
-    { id: '12', status: 'ACTIVE', waiter: 'Rohit S.', items: 4, lastUpdate: '4m' },
-    { id: '04', status: 'READY', waiter: 'Anjali P.', items: 2, lastUpdate: '12m' },
-    { id: '09', status: 'WAITING_FOR_PAYMENT', waiter: 'Rohit S.', items: 6, lastUpdate: '1m' },
-    { id: '15', status: 'ACTIVE', waiter: 'Vikram K.', items: 3, lastUpdate: '22m' },
-    { id: '02', status: 'ACTIVE', waiter: 'Anjali P.', items: 1, lastUpdate: '5m' },
-    { id: '21', status: 'VACANT', waiter: '---', items: 0, lastUpdate: '--' },
-];
+interface ManagerData {
+    stats: {
+        active: number;
+        ready: number;
+        payment: number;
+        kitchen: number;
+        revenue: number;
+        maxWait: string;
+    };
+    floorMonitor: TableData[];
+    auditFeed: { time: string; msg: string }[];
+    staff: { id: string; name: string; role: string; status: string; shift: string }[];
+    topItems: { name: string; count: number }[];
+}
 
 export default function ManagerDashboard() {
     const [mounted, setMounted] = useState(false);
+    const [data, setData] = useState<ManagerData | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    // State for interactive elements (if any) are kept simple for the main view
+    // The main dashboard is primarily READ-ONLY visualization now.
+
+    const fetchManagerData = useCallback(async () => {
+        try {
+            const res = await fetch('/api/manager');
+            const result = await res.json();
+            if (!result.success) throw new Error(result.error || 'Failed to fetch manager data');
+            setData(result);
+            setError(null);
+        } catch (err) {
+            console.error('[MANAGER] Fetch error:', err);
+            setError(err instanceof Error ? err.message : 'Connection failed');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
 
     useEffect(() => {
         setMounted(true);
-    }, []);
+        fetchManagerData();
+        const interval = setInterval(fetchManagerData, 5000);
+        return () => clearInterval(interval);
+    }, [fetchManagerData]);
 
     if (!mounted) return null;
 
-    const stats = {
-        active: MOCK_FLOOR.filter(t => t.status === 'ACTIVE').length,
-        ready: MOCK_FLOOR.filter(t => t.status === 'READY').length,
-        payment: MOCK_FLOOR.filter(t => t.status === 'WAITING_FOR_PAYMENT').length,
-        kitchen: 4,
-        maxWait: '18m'
-    };
+    if (loading && !data) {
+        return (
+            <div className="flex items-center justify-center h-full w-full bg-[#f8f9fa]">
+                <div className="w-10 h-10 border-4 border-zinc-200 border-t-black rounded-full animate-spin" />
+            </div>
+        );
+    }
+
+    const stats = data?.stats || { active: 0, ready: 0, payment: 0, kitchen: 0, revenue: 0, maxWait: '0m' };
+    const floorMonitor = data?.floorMonitor || [];
+    const topItems = data?.topItems || [];
+    const staff = data?.staff || [];
+    const waitersOnline = staff.filter(s => s.role === 'WAITER').length;
+    const kitchenStaff = staff.filter(s => s.role === 'KITCHEN').length;
 
     return (
-        <div className="h-full overflow-y-auto p-4 md:p-8 lg:p-10 hide-scrollbar bg-[#FDFCF9]">
-            <div className="max-w-7xl mx-auto space-y-8 md:space-y-12 pb-32">
+        <div className="h-full overflow-y-auto bg-[#F5F5F7] p-6 lg:p-10 font-sans text-zinc-900">
+            <div className="max-w-[1600px] mx-auto space-y-8 pb-20">
 
-                {/* 1. OPERATIONS SNAPSHOT GRID (Optimized for all screens) */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
-                    {[
-                        { label: 'Active', value: stats.active, color: 'text-blue-600', sub: 'Tables' },
-                        { label: 'Ready', value: stats.ready, color: 'text-green-600', sub: 'Orders' },
-                        { label: 'Pay_Wait', value: stats.payment, color: 'text-[#D43425]', sub: 'Bills' },
-                        { label: 'Kitchen', value: stats.kitchen, color: 'text-amber-600', sub: 'Preparing' }
-                    ].map(stat => (
-                        <div key={stat.label} className="bg-white border border-zinc-100 p-5 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] shadow-sm flex flex-col items-center text-center group active:scale-95 transition-all">
-                            <span className="text-[7px] md:text-[9px] font-black text-zinc-300 uppercase tracking-[0.4em] mb-2 md:mb-4">{stat.label}</span>
-                            <span className={`text-4xl md:text-5xl lg:text-7xl font-black tabular-nums tracking-tighter ${stat.color}`}>{stat.value}</span>
-                            <span className="text-[7px] md:text-[9px] font-bold text-zinc-400 uppercase tracking-widest mt-1 italic">{stat.sub}</span>
+                {/* 1. HEADER & REVENUE */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+                    <div>
+                        <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Mission Control</h1>
+                        <p className="text-zinc-500 font-medium mt-1">Live restaurant performance overview</p>
+                    </div>
+                    <div className="flex gap-4">
+                        <div className="bg-white px-6 py-4 rounded-2xl shadow-sm border border-zinc-100 flex flex-col items-end min-w-[180px]">
+                            <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Today's Revenue</span>
+                            <span className="text-3xl font-black text-zinc-900 mt-1">₹{(stats.revenue || 0).toLocaleString()}</span>
                         </div>
-                    ))}
+                    </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 md:gap-12">
+                {/* 2. KEY METRICS GRID */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <MetricCard
+                        label="Active Tables"
+                        value={stats.active}
+                        icon="Host"
+                        trend="Live"
+                    />
+                    <MetricCard
+                        label="Wait Time (Max)"
+                        value={stats.maxWait}
+                        icon="Clock"
+                        alert={parseInt(stats.maxWait) > 20}
+                    />
+                    <MetricCard
+                        label="Kitchen Load"
+                        value={stats.kitchen}
+                        sub="In Prep"
+                        icon="Chef"
+                    />
+                    <MetricCard
+                        label="Staff Online"
+                        value={waitersOnline + kitchenStaff}
+                        sub={`${waitersOnline} FOH / ${kitchenStaff} BOH`}
+                        icon="Users"
+                    />
+                </div>
 
-                    {/* 2. FLOOR OPERATIONS MONITOR (Main section) */}
-                    <div className="lg:col-span-8 space-y-6">
-                        <div className="flex justify-between items-end border-b border-zinc-100 pb-4">
-                            <h2 className="text-xl md:text-2xl font-black tracking-tighter uppercase">Floor_Operations_Monitor</h2>
-                            <span className="text-[8px] md:text-[10px] font-black text-zinc-300 uppercase tracking-widest">Real-time Stream</span>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+                    {/* 3. MAIN FLOOR MONITOR (Takes up 2 columns) */}
+                    <div className="lg:col-span-2 space-y-6">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-xl font-bold text-zinc-900">Floor Activity</h3>
+                            <div className="flex gap-3 text-xs font-semibold">
+                                <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-500"></div>Ready</span>
+                                <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500"></div>Active</span>
+                                <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-zinc-200"></div>Vacant</span>
+                            </div>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
-                            {MOCK_FLOOR.map(table => (
-                                <div key={table.id} className="bg-white border border-zinc-100 p-4 md:p-6 rounded-xl md:rounded-2xl flex items-center justify-between group active:scale-98 transition-all">
-                                    <div className="flex items-center gap-4 md:gap-6">
-                                        <div className="text-3xl md:text-4xl font-black tracking-tighter text-zinc-900 leading-none">T_{table.id}</div>
-                                        <div className="flex flex-col">
-                                            <span className={`text-[7px] md:text-[8px] font-black px-1.5 md:px-2 py-0.5 rounded-full uppercase tracking-widest w-fit mb-1 ${table.status === 'READY' ? 'bg-green-50 text-green-600 border border-green-100' :
-                                                    table.status === 'WAITING_FOR_PAYMENT' ? 'bg-red-50 text-red-600 border border-red-100' :
-                                                        table.status === 'VACANT' ? 'bg-zinc-50 text-zinc-400 border border-zinc-100' : 'bg-blue-50 text-blue-600 border border-blue-100'
-                                                }`}>
-                                                {table.status.replace(/_/g, ' ')}
-                                            </span>
-                                            <span className="text-[9px] md:text-[10px] font-bold text-zinc-400 uppercase tracking-widest italic">{table.waiter}</span>
-                                        </div>
-                                    </div>
-                                    <div className="text-right">
-                                        <span className="text-xs md:text-sm font-black text-zinc-900 tabular-nums">{table.items} <span className="text-[8px] md:text-[10px] text-zinc-300">PCS</span></span>
-                                        <div className="text-[7px] md:text-[8px] font-bold text-zinc-300 uppercase tracking-widest mt-1">{table.lastUpdate} ago</div>
-                                    </div>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                            {floorMonitor.map(table => (
+                                <div
+                                    key={table.id}
+                                    className={`
+                                        aspect-square rounded-2xl flex flex-col items-center justify-center relative border transition-all
+                                        ${table.status === 'READY' ? 'bg-green-50 border-green-200 text-green-700 shadow-sm' :
+                                            table.status === 'ACTIVE' ? 'bg-white border-blue-500/30 text-zinc-900 shadow-md ring-2 ring-blue-500/5' :
+                                                table.status === 'SERVED' ? 'bg-orange-50 border-orange-200 text-orange-700' :
+                                                    'bg-zinc-50 border-zinc-100 text-zinc-300'}
+                                    `}
+                                >
+                                    <span className="text-xl font-black">{table.id}</span>
+                                    {table.status !== 'VACANT' && (
+                                        <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter opacity-70">
+                                            {table.status === 'ACTIVE' ? `${table.items} items` : table.status}
+                                        </span>
+                                    )}
+                                    {table.status === 'ACTIVE' && (
+                                        <div className="absolute top-2 right-2 w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+                                    )}
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    {/* 3. KITCHEN LOAD VITAL INDICATORS (Responsive sidebar/bottom) */}
-                    <div className="lg:col-span-4 space-y-6">
-                        <div className="flex justify-between items-end border-b border-zinc-100 pb-4">
-                            <h2 className="text-xl md:text-2xl font-black tracking-tighter uppercase">Kitchen_Vitals</h2>
-                            <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                        </div>
+                    {/* 4. SIDEBAR WIDGETS */}
+                    <div className="space-y-6">
 
-                        <div className="bg-[#111111] text-white p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] space-y-6 md:space-y-10 shadow-xl relative overflow-hidden">
-                            <div className="relative z-10 flex flex-col items-center">
-                                <span className="text-[8px] md:text-[10px] font-black text-zinc-500 uppercase tracking-[0.4em] mb-4 md:mb-6">Max_Wait_Current</span>
-                                <span className="text-6xl md:text-8xl font-black tracking-tighter text-[#D43425] tabular-nums leading-none">{stats.maxWait}</span>
-                                <p className="text-[8px] md:text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-2 md:mt-4">Stressed Ticket Duration</p>
-                            </div>
-
-                            <div className="relative z-10 grid grid-cols-2 gap-4 pt-4 md:pt-6 border-t border-white/5">
-                                <div className="flex flex-col items-center">
-                                    <span className="text-xl md:text-2xl font-black text-white">{stats.kitchen}</span>
-                                    <span className="text-[7px] md:text-[8px] font-bold text-zinc-500 uppercase tracking-widest">In_Prep</span>
-                                </div>
-                                <div className="flex flex-col items-center border-l border-white/5">
-                                    <span className="text-xl md:text-2xl font-black text-white">12.4m</span>
-                                    <span className="text-[7px] md:text-[8px] font-bold text-zinc-500 uppercase tracking-widest">Avg_Time</span>
-                                </div>
-                            </div>
-                            <div className="absolute top-0 right-0 w-24 h-24 bg-[#D43425]/10 rounded-full blur-3xl -mr-12 -mt-12" />
-                        </div>
-
-                        {/* SERVICE LOG (Responsive layout) */}
-                        <div className="bg-white border border-zinc-100 p-6 md:p-8 rounded-[1.5rem] md:rounded-[2rem] space-y-4 md:space-y-6">
-                            <span className="text-[8px] md:text-[9px] font-black text-zinc-300 uppercase tracking-[0.4em]">Audit_Feed</span>
-                            <div className="space-y-3 md:space-y-4">
-                                {[
-                                    { time: '18:12', msg: 'T_12 Committed' },
-                                    { time: '18:05', msg: 'T_04 Settled' },
-                                    { time: '17:58', msg: 'Shift In: ROHIT' }
-                                ].map((log, i) => (
-                                    <div key={i} className="flex gap-3 md:gap-4 items-center">
-                                        <span className="text-[8px] md:text-[10px] font-black tabular-nums text-zinc-300 shrink-0">{log.time}</span>
-                                        <span className="text-[9px] md:text-[11px] font-bold uppercase tracking-wide text-zinc-600 truncate">{log.msg}</span>
+                        {/* TOP ITEMS */}
+                        <div className="bg-white p-6 rounded-3xl border border-zinc-100 shadow-sm">
+                            <h3 className="text-lg font-bold text-zinc-900 mb-4">Trending Dishes</h3>
+                            <div className="space-y-4">
+                                {topItems.length > 0 ? topItems.map((item, i) => (
+                                    <div key={item.name} className="flex justify-between items-center">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black ${i === 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-zinc-100 text-zinc-500'}`}>
+                                                {i + 1}
+                                            </div>
+                                            <span className="text-sm font-semibold text-zinc-700">{item.name}</span>
+                                        </div>
+                                        <span className="text-sm font-bold text-zinc-900">{item.count}</span>
                                     </div>
-                                ))}
+                                )) : (
+                                    <p className="text-sm text-zinc-400 italic">No sales data yet today.</p>
+                                )}
                             </div>
                         </div>
+
+                        {/* URGENT ALERTS (Mocked for now, but design ready) */}
+                        <div className="bg-white p-6 rounded-3xl border border-zinc-100 shadow-sm">
+                            <h3 className="text-lg font-bold text-zinc-900 mb-4">Urgent Actions</h3>
+                            <div className="space-y-3">
+                                {stats.revenue === 0 ? (
+                                    <div className="p-3 bg-blue-50 rounded-xl text-xs font-semibold text-blue-700 flex gap-2">
+                                        <span>ℹ️</span> Restaurant just opened. Active monitoring engaged.
+                                    </div>
+                                ) : parseInt(stats.maxWait) > 20 ? (
+                                    <div className="p-3 bg-red-50 rounded-xl text-xs font-semibold text-red-700 flex gap-2 items-center">
+                                        <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                                        High Wait Time Detected ({stats.maxWait})
+                                    </div>
+                                ) : (
+                                    <div className="p-3 bg-green-50 rounded-xl text-xs font-semibold text-green-700 flex gap-2 items-center">
+                                        <span>✅</span> Operations Normal
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
                     </div>
 
                 </div>
-
-                {/* 4. STAFF ROSTER (Auto-responsive grid) */}
-                <div className="space-y-6 border-t border-zinc-100 pt-10 md:pt-12">
-                    <h2 className="text-2xl md:text-3xl font-black tracking-tighter uppercase">Service_Personal_Roster</h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
-                        {[
-                            { name: 'ROHIT SANKAL', role: 'WAITER', status: 'ONLINE', shift: '04:22:15' },
-                            { name: 'ANJALI PRASAD', role: 'WAITER', status: 'ONLINE', shift: '02:12:00' },
-                            { name: 'CHEF VIKRAM', role: 'KITCHEN', status: 'BUSY', shift: '08:45:30' }
-                        ].map(staff => (
-                            <div key={staff.name} className="bg-white border border-zinc-100 p-4 md:p-6 rounded-xl md:rounded-2xl flex items-center justify-between group active:scale-98 transition-all">
-                                <div className="flex flex-col">
-                                    <span className="font-black text-base md:text-lg text-zinc-900 leading-none mb-1">{staff.name}</span>
-                                    <span className="text-[8px] md:text-[9px] font-black text-zinc-300 uppercase tracking-widest">{staff.role} • {staff.shift}</span>
-                                </div>
-                                <div className="flex items-center gap-2 md:gap-3">
-                                    <div className={`px-2 py-0.5 rounded text-[7px] md:text-[8px] font-black tracking-widest border ${staff.status === 'ONLINE' ? 'bg-green-50 text-green-600 border-green-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
-                                        {staff.status}
-                                    </div>
-                                    <div className="w-8 h-4 bg-zinc-100 rounded-full relative cursor-pointer group-hover:bg-zinc-200 transition-colors">
-                                        <div className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full transition-all ${staff.status === 'ONLINE' ? 'bg-[#D43425] left-4.5' : 'bg-zinc-300'}`} />
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
             </div>
+        </div>
+    );
+}
 
-            <style jsx global>{`
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      `}</style>
+// Sub-component for clean metric cards
+function MetricCard({ label, value, sub, icon, alert, trend }: any) {
+    return (
+        <div className={`bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between h-32 ${alert ? 'border-red-200 bg-red-50/10' : 'border-zinc-100'}`}>
+            <div className="flex justify-between items-start">
+                <span className={`text-xs font-bold uppercase tracking-widest ${alert ? 'text-red-500' : 'text-zinc-400'}`}>{label}</span>
+                {trend && <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{trend}</span>}
+            </div>
+            <div>
+                <span className={`text-3xl font-black ${alert ? 'text-red-600' : 'text-zinc-900'}`}>{value}</span>
+                {sub && <p className="text-xs font-semibold text-zinc-400 mt-1">{sub}</p>}
+            </div>
         </div>
     );
 }

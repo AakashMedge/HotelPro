@@ -40,17 +40,18 @@ export default function KitchenLayout({
                     {navItems.map((item) => {
                         const isActive = pathname === item.path;
                         return (
-                            <div
+                            <Link
+                                href={item.path}
                                 key={item.label}
-                                className={`flex flex-col items-center gap-1.5 lg:gap-2 group transition-all opacity-40 cursor-not-allowed ${isActive ? 'opacity-100 text-[#D43425]' : 'text-zinc-500'}`}
+                                className={`flex flex-col items-center gap-1.5 lg:gap-2 group transition-all ${isActive ? 'text-[#D43425]' : 'text-zinc-500 hover:text-white'}`}
                             >
-                                <div className={`w-10 h-10 lg:w-12 lg:h-12 rounded-2xl flex items-center justify-center transition-all ${isActive ? 'bg-[#D43425]/10 border border-[#D43425]/20 shadow-[0_0_15px_rgba(212,52,37,0.1)]' : 'hover:bg-white/5'}`}>
+                                <div className={`w-10 h-10 lg:w-12 lg:h-12 rounded-2xl flex items-center justify-center transition-all ${isActive ? 'bg-[#D43425]/10 border border-[#D43425]/20 shadow-[0_0_15px_rgba(212,52,37,0.1)]' : 'bg-white/5 border border-white/5'}`}>
                                     <svg width="20" height="20" className="lg:w-[22px] lg:h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d={item.icon} />
                                     </svg>
                                 </div>
                                 <span className="text-[8px] lg:text-[9px] font-black uppercase tracking-[0.15em]">{item.label}</span>
-                            </div>
+                            </Link>
                         )
                     })}
                 </nav>

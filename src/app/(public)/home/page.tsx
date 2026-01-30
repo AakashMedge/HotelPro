@@ -14,6 +14,8 @@ export default function HomePage() {
     const [isTransitioning, setIsTransitioning] = useState(false);
     const [targetUrl, setTargetUrl] = useState('');
     const yearSectionRef = useRef<HTMLDivElement>(null);
+    const heroVideoRef = useRef<HTMLVideoElement>(null);
+    const secondaryVideoRef = useRef<HTMLVideoElement>(null);
     const router = useRouter();
 
     const handleBookClick = (e: React.MouseEvent, url: string) => {
@@ -30,6 +32,20 @@ export default function HomePage() {
     useEffect(() => {
         setMounted(true);
     }, []);
+
+    // Ensure videos play on mount
+    useEffect(() => {
+        if (mounted) {
+            if (heroVideoRef.current) {
+                heroVideoRef.current.muted = true;
+                heroVideoRef.current.play().catch(e => console.log("Hero video autoplay failed:", e));
+            }
+            if (secondaryVideoRef.current) {
+                secondaryVideoRef.current.muted = true;
+                secondaryVideoRef.current.play().catch(e => console.log("Secondary video autoplay failed:", e));
+            }
+        }
+    }, [mounted]);
 
     // Year counter animation with variable speed
     useEffect(() => {
@@ -108,6 +124,7 @@ export default function HomePage() {
                 <div className="relative w-full h-[calc(100vh-1rem)] sm:h-[calc(100vh-2rem)] md:h-[calc(100vh-3rem)] lg:h-[calc(100vh-4rem)] rounded-[1.5rem] sm:rounded-[2rem] md:rounded-[3rem] overflow-hidden">
                     {/* Background Video */}
                     <video
+                        ref={heroVideoRef}
                         autoPlay
                         loop
                         muted
@@ -303,6 +320,8 @@ export default function HomePage() {
                                 <div className="space-y-2">
                                     {[
                                         { label: 'HOME', href: '/home' },
+                                        { label: 'STORIES', href: '/story' },
+                                        { label: 'GIFT CARDS', href: '/gift-card' },
                                         { label: 'EXPERIENCES', href: '/customer' },
                                         { label: 'MENU', href: '/menu' },
                                         { label: 'RESERVATIONS', href: '/welcome-guest' },
@@ -357,7 +376,14 @@ export default function HomePage() {
             <section className="px-4 sm:px-6 md:px-12 lg:px-24 pb-16 sm:pb-24 bg-[#EFE7D9]">
                 <div className="max-w-5xl mx-auto">
                     <div className="rounded-[1.5rem] sm:rounded-[2rem] md:rounded-[3rem] overflow-hidden shadow-2xl">
-                        <video autoPlay loop muted playsInline className="w-full aspect-video object-cover">
+                        <video
+                            ref={secondaryVideoRef}
+                            autoPlay
+                            loop
+                            muted
+                            playsInline
+                            className="w-full aspect-video object-cover"
+                        >
                             <source src="https://cdn.prod.website-files.com/684fc56fc7e02f3dad4a6138%2F6852764f5adbef713a1a18ef_PbE-Hero-Video-B-transcode.mp4" type="video/mp4" />
                         </video>
                     </div>
@@ -383,7 +409,7 @@ export default function HomePage() {
                 <div className={`flex flex-col sm:flex-row items-center justify-center gap-8 sm:gap-12 md:gap-20 mt-12 sm:mt-16 md:mt-24 transition-all duration-1000 delay-500 ${showLegacyContent ? 'opacity-100' : 'opacity-0'}`}>
                     {/* Book 1: Our Story - Slides from left */}
                     <button
-                        onClick={(e) => handleBookClick(e, '/customer')}
+                        onClick={(e) => handleBookClick(e, '/story')}
                         className={`group flex flex-col items-center transition-all duration-700 delay-700 ${showLegacyContent ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-12'}`}
                     >
                         <div className="relative w-36 h-48 sm:w-44 sm:h-60 md:w-52 md:h-72 perspective-1000">

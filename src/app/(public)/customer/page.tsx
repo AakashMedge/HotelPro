@@ -109,7 +109,7 @@ export default function CustomerPage() {
                             { label: 'RESIDENCE', id: 'res', href: '/home' },
                             { label: 'CULINARY', id: 'cul', href: '/welcome-guest' },
                             { label: 'WELLNESS', id: 'wel', href: '#' },
-                            { label: 'CONCIERGE', id: 'con', href: '#' }
+                            { label: 'CONCIERGE', id: 'con', href: '/gift-card' }
                         ].map((link) => (
                             <Link
                                 key={link.id}
@@ -117,7 +117,7 @@ export default function CustomerPage() {
                                 className="block"
                             >
                                 <h1
-                                    className="text-[4rem] md:text-[6.5rem] lg:text-[8rem] font-semibold leading-[0.8] tracking-tighter hover:italic transition-all cursor-pointer hover:tracking-normal active:scale-[0.98]"
+                                    className="text-[3rem] md:text-[4.5rem] lg:text-[5.5rem] font-semibold leading-[0.9] tracking-tighter hover:italic transition-all cursor-pointer hover:tracking-normal active:scale-[0.98]"
                                 >
                                     {link.label}
                                 </h1>
@@ -126,13 +126,18 @@ export default function CustomerPage() {
 
                         <div className="flex flex-wrap gap-8 pt-16">
                             {[
-                                { label: 'STORIES', id: 'sto' },
-                                { label: 'INQUIRY', id: 'inq' },
-                                { label: 'LEGAL', id: 'leg' }
+                                { label: 'STORIES', id: 'sto', href: '/story' },
+                                { label: 'GIFT CARDS', id: 'gift', href: '/gift-card' },
+                                { label: 'INQUIRY', id: 'inq', href: '#' },
+                                { label: 'LEGAL', id: 'leg', href: '#' }
                             ].map((item) => (
-                                <span key={item.id} className="text-xl font-playfair font-black italic border-b-2 border-transparent hover:border-black cursor-pointer transition-all tracking-widest">
+                                <Link
+                                    key={item.id}
+                                    href={item.href}
+                                    className="text-xl font-playfair font-black italic border-b-2 border-transparent hover:border-black cursor-pointer transition-all tracking-widest"
+                                >
                                     {item.label}
-                                </span>
+                                </Link>
                             ))}
                         </div>
                     </div>

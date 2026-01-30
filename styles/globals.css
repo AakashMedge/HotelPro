@@ -382,6 +382,21 @@ nextjs-portal {
   transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 8s linear infinite;
+}
+
+.shadow-book {
+  box-shadow: 
+    0 5px 15px rgba(0,0,0,0.5),
+    0 15px 35px rgba(0,0,0,0.3);
+}
+
 .mix-blend-multiply {
   mix-blend-mode: multiply;
 }

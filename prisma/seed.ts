@@ -32,6 +32,8 @@ const TEST_USERS = [
     { username: "admin", name: "Administrator", role: "ADMIN", password: "password123" },
     { username: "manager", name: "Floor Manager", role: "MANAGER", password: "password123" },
     { username: "waiter1", name: "Rajesh Waiter", role: "WAITER", password: "password123" },
+    { username: "waiter2", name: "Sarah Connor", role: "WAITER", password: "password123" },
+    { username: "waiter3", name: "Thomas Anderson", role: "WAITER", password: "password123" },
     { username: "kitchen1", name: "Chef Khanna", role: "KITCHEN", password: "password123" },
     { username: "cashier1", name: "Amit Cashier", role: "CASHIER", password: "password123" },
 ];

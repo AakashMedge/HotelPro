@@ -77,6 +77,29 @@ export default function MenuPage() {
 
     const initMenu = useCallback(async () => {
         try {
+            // 0. Sticky Session Check: Restore active order if user comes back
+            const activeOrderId = localStorage.getItem('hp_active_order_id');
+            if (activeOrderId) {
+                try {
+                    const orderRes = await fetch(`/api/orders/${activeOrderId}`);
+                    if (orderRes.ok) {
+                        const orderData = await orderRes.json();
+                        // If order exists and is ACTIVE (not CLOSED), redirect to status page
+                        if (orderData.success && orderData.order && orderData.order.status !== 'CLOSED') {
+                            console.log('[MENU] Restoring active session:', activeOrderId);
+                            router.replace(`/order-status?id=${activeOrderId}`);
+                            return; // Stop loading the menu, we are redirecting
+                        } else {
+                            // Order is closed (paid), clear the session for a fresh start
+                            console.log('[MENU] Previous order closed, clearing session.');
+                            localStorage.removeItem('hp_active_order_id');
+                        }
+                    }
+                } catch (e) {
+                    console.error("[MENU] Failed to restore session check", e);
+                }
+            }
+
             // 1. Fetch Menu
             const res = await fetch('/api/menu');
             const data: ApiResponse = await res.json();
@@ -176,7 +199,7 @@ export default function MenuPage() {
     // ============================================
 
     const executeOrder = async () => {
-        if (!tableId || basket.length === 0 || executing) return;
+        if ((!tableId && !tableCode) || basket.length === 0 || executing) return;
 
         setExecuting(true);
         try {
@@ -191,11 +214,15 @@ export default function MenuPage() {
                 quantity
             }));
 
+            const customerName = localStorage.getItem('hp_guest_name');
+
             const res = await fetch('/api/orders', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     tableId,
+                    tableCode,
+                    customerName,
                     items
                 })
             });

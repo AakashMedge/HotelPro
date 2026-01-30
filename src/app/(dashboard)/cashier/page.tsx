@@ -51,7 +51,7 @@ export default function CashierTerminal() {
 
     const fetchPendingOrders = useCallback(async () => {
         try {
-            const res = await fetch('/api/orders?status=SERVED');
+            const res = await fetch('/api/orders?status=BILL_REQUESTED');
             const data: ApiResponse = await res.json();
 
             if (!data.success || !data.orders) throw new Error(data.error || 'Failed to fetch orders');
@@ -60,7 +60,7 @@ export default function CashierTerminal() {
                 id: o.id,
                 shortId: o.id.slice(0, 8).toUpperCase(),
                 tableCode: o.tableCode,
-                guestName: `GUEST @ ${o.tableCode}`,
+                guestName: o.customerName || `GUEST @ ${o.tableCode}`,
                 requestedAt: new Date(o.updatedAt).getTime(),
                 version: o.version,
                 total: o.total,
@@ -129,6 +129,47 @@ export default function CashierTerminal() {
         }
     };
 
+    const handleQuickSettle = async (e: React.MouseEvent, orderId: string, method: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (committing) return;
+
+        const order = orders.find(o => o.id === orderId);
+        if (!order) return;
+
+        setCommitting(true);
+        const previousOrders = [...orders];
+
+        // Optimistic UI: Remove from list immediately
+        setOrders(prev => prev.filter(o => o.id !== orderId));
+        if (selectedOrderId === orderId) setSelectedOrderId(null);
+
+        try {
+            const res = await fetch(`/api/orders/${orderId}/payment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    method,
+                    amount: order.total
+                })
+            });
+
+            const result = await res.json();
+            if (!result.success) throw new Error(result.error || 'Payment failed');
+
+            // Keep the optimistic state, but maybe fetch to sync
+            await fetchPendingOrders();
+        } catch (err) {
+            console.error('[CASHIER] Quick Settle Error:', err);
+            // Rollback
+            setOrders(previousOrders);
+            alert('Fast Settlement failed. Please use detailed panel.');
+        } finally {
+            setCommitting(false);
+        }
+    };
+
     if (!mounted) return null;
 
     const currentOrder = orders.find(o => o.id === selectedOrderId);
@@ -183,6 +224,7 @@ export default function CashierTerminal() {
                                     <span className="text-xl lg:text-2xl font-black tabular-nums tracking-tighter">₹{order.total.toLocaleString()}</span>
                                 </div>
                             </div>
+
                         </button>
                     ))}
                     {orders.length === 0 && (

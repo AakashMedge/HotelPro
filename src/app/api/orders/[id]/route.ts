@@ -158,7 +158,7 @@ export async function PATCH(
         const { status, version } = body as { status: OrderStatus; version: number };
 
         // Validate status
-        const validStatuses: OrderStatus[] = ["NEW", "PREPARING", "READY", "SERVED", "CLOSED"];
+        const validStatuses: OrderStatus[] = ["NEW", "PREPARING", "READY", "SERVED", "BILL_REQUESTED", "CLOSED"];
         if (!status || !validStatuses.includes(status)) {
             return NextResponse.json(
                 {

@@ -53,6 +53,7 @@ export async function GET(
             tableCode: t.tableCode,
             capacity: (t as any).capacity ?? 4,
             status: t.status,
+            assignedWaiterId: t.assignedWaiterId, // Added this
         }));
 
         return NextResponse.json({
@@ -66,5 +67,39 @@ export async function GET(
             { success: false, error: "Failed to fetch tables" },
             { status: 500 }
         );
+    }
+}
+
+/**
+ * POST /api/tables
+ * Create a new table
+ */
+import { requireRole } from "@/lib/auth";
+
+export async function POST(request: NextRequest) {
+    try {
+        await requireRole(["MANAGER", "ADMIN"]);
+        const { tableCode, capacity } = await request.json();
+
+        if (!tableCode || !capacity) {
+            return NextResponse.json({ success: false, error: "Missing fields" }, { status: 400 });
+        }
+
+        const existing = await prisma.table.findUnique({ where: { tableCode } });
+        if (existing) {
+            return NextResponse.json({ success: false, error: "Table Code exists" }, { status: 409 });
+        }
+
+        const table = await prisma.table.create({
+            data: {
+                tableCode,
+                capacity: Number(capacity),
+                status: "VACANT"
+            }
+        });
+
+        return NextResponse.json({ success: true, table });
+    } catch (error) {
+        return NextResponse.json({ success: false, error: "Failed to create table" }, { status: 500 });
     }
 }

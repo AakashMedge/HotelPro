@@ -73,6 +73,7 @@ model Order {
   updatedAt DateTime    @updatedAt
   closedAt  DateTime?
   auditLogs AuditLog[]
+  customerName String?
   table     Table       @relation(fields: [tableId], references: [id])
   items     OrderItem[]
   payment   Payment?
@@ -132,6 +133,7 @@ enum TableStatus {
   ACTIVE
   READY
   WAITING_FOR_PAYMENT
+  DIRTY
 }
 
 enum OrderStatus {
@@ -139,6 +141,7 @@ enum OrderStatus {
   PREPARING
   READY
   SERVED
+  BILL_REQUESTED
   CLOSED
 }
 

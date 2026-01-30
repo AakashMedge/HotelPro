@@ -101,12 +101,12 @@ export async function POST(
             );
         }
 
-        // Check order is in SERVED state
-        if (order.status !== "SERVED") {
+        // Check order is in SERVED or BILL_REQUESTED state
+        if (order.status !== "SERVED" && order.status !== "BILL_REQUESTED") {
             return NextResponse.json(
                 {
                     success: false,
-                    error: `Cannot process payment. Order status is ${order.status}, expected SERVED`,
+                    error: `Cannot process payment. Order status is ${order.status}, expected SERVED or BILL_REQUESTED`,
                     code: "INVALID_STATE",
                 },
                 { status: 400 }
@@ -171,10 +171,10 @@ export async function POST(
                 },
             });
 
-            // Free the table
+            // Mark the table as DIRTY for cleanup
             await tx.table.update({
                 where: { id: order.tableId },
-                data: { status: "VACANT" },
+                data: { status: "DIRTY" },
             });
 
             // Audit log
@@ -186,6 +186,7 @@ export async function POST(
                     metadata: {
                         method,
                         amount: paymentAmount,
+                        tableCode: order.table.tableCode,
                     },
                 },
             });
@@ -198,6 +199,7 @@ export async function POST(
                     metadata: {
                         totalAmount: paymentAmount,
                         paymentMethod: method,
+                        tableCode: order.table.tableCode,
                     },
                 },
             });

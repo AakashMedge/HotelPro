@@ -20,7 +20,9 @@ export default function ManagerLayout({
     const navItems = [
         { label: 'DIRECTOR', path: '/manager', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
         { label: 'STAFF', path: '/manager/staff', icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2m16-10a4 4 0 00-4-4H5a4 4 0 00-4 4v2m16-10a4 4 0 00-4-4H5a4 4 0 00-4 4v2' },
-        { label: 'JOURNAL', path: '/manager/journal', icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253' },
+        { label: 'FLOOR', path: '/manager/floor', icon: 'M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm2 0v12h12V6H6z M8 10h8 M8 14h4' },
+        { label: 'MENU', path: '/manager/menu', icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253' },
+        { label: 'LEDGER', path: '/manager/ledger', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' },
     ];
 
     if (!mounted) return null;
@@ -40,17 +42,18 @@ export default function ManagerLayout({
                     {navItems.map((item) => {
                         const isActive = pathname === item.path;
                         return (
-                            <div
+                            <Link
+                                href={item.path}
                                 key={item.label}
-                                className={`flex flex-col items-center gap-1.5 lg:gap-2 group transition-all ${isActive ? 'opacity-100 text-[#D43425]' : 'opacity-40 text-zinc-500 cursor-not-allowed'}`}
+                                className={`flex flex-col items-center gap-1.5 lg:gap-2 group transition-all ${isActive ? 'text-[#D43425]' : 'text-zinc-500 hover:text-white'}`}
                             >
-                                <div className={`w-10 h-10 lg:w-12 lg:h-12 rounded-2xl flex items-center justify-center transition-all ${isActive ? 'bg-[#D43425]/10 border border-[#D43425]/20 shadow-[0_0_15px_rgba(212,52,37,0.1)]' : 'hover:bg-white/5'}`}>
+                                <div className={`w-10 h-10 lg:w-12 lg:h-12 rounded-2xl flex items-center justify-center transition-all ${isActive ? 'bg-[#D43425]/10 border border-[#D43425]/20 shadow-[0_0_15px_rgba(212,52,37,0.1)]' : 'bg-white/5 border border-white/5'}`}>
                                     <svg width="20" height="20" className="lg:w-[22px] lg:h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                         <path d={item.icon} />
                                     </svg>
                                 </div>
                                 <span className="text-[8px] lg:text-[9px] font-black uppercase tracking-[0.15em]">{item.label}</span>
-                            </div>
+                            </Link>
                         )
                     })}
                 </nav>
@@ -65,7 +68,8 @@ export default function ManagerLayout({
                 {navItems.map((item) => {
                     const isActive = pathname === item.path;
                     return (
-                        <div
+                        <Link
+                            href={item.path}
                             key={item.label}
                             className={`flex flex-col items-center gap-1 opacity-40 transition-all ${isActive ? 'opacity-100 text-[#D43425]' : 'text-zinc-500'}`}
                         >
@@ -75,7 +79,7 @@ export default function ManagerLayout({
                                 </svg>
                             </div>
                             <span className="text-[7px] font-black uppercase tracking-widest leading-none">{item.label}</span>
-                        </div>
+                        </Link>
                     )
                 })}
                 <SidebarLogoutButton variant="mobile" />

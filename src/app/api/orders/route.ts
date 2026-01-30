@@ -14,6 +14,7 @@ import {
     OrderError,
     type CreateOrderInput,
 } from "@/lib/services/order";
+import { prisma } from "@/lib/db";
 import type { OrderStatus } from "@/generated/prisma";
 
 // ============================================
@@ -35,6 +36,7 @@ interface OrderResponse {
     tableCode: string;
     status: string;
     version: number;
+    customerName: string | null;
     items: OrderItemResponse[];
     total: number;
     createdAt: string;
@@ -93,11 +95,40 @@ export async function POST(
         }
 
         // Validate required fields
-        const { tableId, items } = body as CreateOrderInput;
+        const { tableId, tableCode, items, customerName } = body as any;
 
-        if (!tableId || typeof tableId !== "string") {
+        let resolvedTableId = tableId;
+
+        // Auto-resolve tableId from tableCode if missing (Magic Demo Mode)
+        if (!resolvedTableId && tableCode) {
+            console.log(`[ORDERS API] Attempting to resolve tableCode: ${tableCode}`);
+            const table = await prisma.table.findFirst({
+                where: {
+                    OR: [
+                        { tableCode: String(tableCode) },
+                        { tableCode: `T-${String(tableCode).padStart(2, '0')}` }
+                    ]
+                }
+            });
+
+            if (table) {
+                resolvedTableId = table.id;
+            } else {
+                // Create table on the fly for demo if it doesn't exist
+                const newTable = await prisma.table.create({
+                    data: {
+                        tableCode: String(tableCode).startsWith('T-') ? tableCode : `T-${String(tableCode).padStart(2, '0')}`,
+                        capacity: 4,
+                        status: 'ACTIVE'
+                    }
+                });
+                resolvedTableId = newTable.id;
+            }
+        }
+
+        if (!resolvedTableId || typeof resolvedTableId !== "string") {
             return NextResponse.json(
-                { success: false, error: "tableId is required", code: "INVALID_INPUT" },
+                { success: false, error: "tableId or tableCode is required", code: "INVALID_INPUT" },
                 { status: 400 }
             );
         }
@@ -124,7 +155,7 @@ export async function POST(
         }
 
         // Create order via service
-        const order = await createOrder({ tableId, items });
+        const order = await createOrder({ tableId: resolvedTableId, items, customerName });
 
         // Calculate total
         const total = order.items.reduce((sum, item) => {
@@ -138,6 +169,7 @@ export async function POST(
             tableCode: order.table.tableCode,
             status: order.status,
             version: order.version,
+            customerName: order.customerName,
             items: order.items.map((item) => ({
                 id: item.id,
                 menuItemId: item.menuItemId,
@@ -229,6 +261,7 @@ export async function GET(
                 tableCode: order.table.tableCode,
                 status: order.status,
                 version: order.version,
+                customerName: order.customerName,
                 items: order.items.map((item) => ({
                     id: item.id,
                     menuItemId: item.menuItemId,

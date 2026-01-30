@@ -1,11 +1,9 @@
 'use client';
 
-import { useState, FormEvent, Suspense } from 'react';
+import { useState, FormEvent, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 
-/**
- * Role to dashboard path mapping
- */
 const ROLE_DASHBOARDS: Record<string, string> = {
     ADMIN: '/admin',
     MANAGER: '/manager',
@@ -14,21 +12,16 @@ const ROLE_DASHBOARDS: Record<string, string> = {
     CASHIER: '/cashier',
 };
 
-function LoginContent() {
+function LoginContent({ isOpened }: { isOpened: boolean }) {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
     const searchParams = useSearchParams();
-
-    // Get redirect URL from query params (set by middleware)
     const redirectTo = searchParams.get('redirect');
     const accessError = searchParams.get('error');
 
-    /**
-     * Handle login form submission
-     */
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         setError('');
@@ -52,15 +45,12 @@ function LoginContent() {
                 return;
             }
 
-            // Success - redirect based on role
             const dashboard = ROLE_DASHBOARDS[data.user.role] || '/';
-
             if (redirectTo && redirectTo.startsWith(dashboard)) {
                 router.push(redirectTo);
             } else {
                 router.push(dashboard);
             }
-
             router.refresh();
         } catch {
             setError('System connectivity issue. Please retry.');
@@ -68,180 +58,167 @@ function LoginContent() {
         }
     };
 
-    /**
-     * Quick login with demo credentials (updated to match seed)
-     */
-    const quickLogin = async (demoUsername: string, demoPassword: string) => {
-        setUsername(demoUsername);
-        setPassword(demoPassword);
-        setError('');
-        setIsLoading(true);
-
-        try {
-            const response = await fetch('/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    username: demoUsername,
-                    password: demoPassword,
-                }),
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                setError(data.error || 'Demo authentication failed');
-                setIsLoading(false);
-                return;
-            }
-
-            const dashboard = ROLE_DASHBOARDS[data.user.role] || '/';
-            router.push(dashboard);
-            router.refresh();
-        } catch {
-            setError('Network error during demo entry.');
-            setIsLoading(false);
-        }
-    };
-
     return (
-        <div className={`max-w-md w-full relative z-10 transition-all duration-700 ${isLoading ? 'scale-95 opacity-50 blur-sm' : 'scale-100 opacity-100'}`}>
-            {/* Branding */}
-            <div className="text-center mb-10 space-y-4">
-                <div className="flex items-center justify-center gap-4 mb-2">
-                    <span className="w-12 h-px bg-[#D43425]/30" />
-                    <span className="text-[#C9A227] text-[10px] font-black tracking-[0.5em] uppercase">Staff Access</span>
-                    <span className="w-12 h-px bg-[#D43425]/30" />
-                </div>
-                <h1 className="text-[#EFE7D9] font-playfair font-black text-6xl tracking-tighter italic leading-tight">Staff Portal</h1>
-                <p className="text-[#EFE7D9]/40 text-[10px] font-black uppercase tracking-[0.4em]">Integrated Hospitality Logistics</p>
+        <div className={`w-full h-full flex flex-col items-center justify-center p-8 md:p-12 transition-opacity duration-700 ${isOpened ? 'opacity-100 delay-500' : 'opacity-0'}`}>
+            <div className="text-center mb-10 space-y-2">
+                <span className="text-[10px] font-black tracking-[0.4em] uppercase opacity-30 text-[#3D2329]">Staff Entrance</span>
+                <h2 className="text-4xl font-playfair font-black tracking-tighter italic text-[#3D2329]">Sign In</h2>
             </div>
 
-            <form onSubmit={handleSubmit} className="bg-black/20 backdrop-blur-3xl border border-white/5 rounded-[3rem] p-8 md:p-12 shadow-[0_32px_64px_rgba(0,0,0,0.5)] space-y-8">
-                {/* Error Messages */}
+            <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6">
                 {(error || accessError) && (
-                    <div className="bg-red-500/10 border border-red-500/20 rounded-2xl px-6 py-4 text-center animate-in fade-in slide-in-from-top-2">
-                        <p className="text-red-400 text-[11px] font-bold uppercase tracking-widest">
-                            {error || (accessError === 'access_denied' ? 'Access Denied: Restricted Zone' : 'System Error')}
+                    <div className="bg-[#D43425]/5 border border-[#D43425]/20 rounded-xl px-4 py-3 text-center mb-4">
+                        <p className="text-[#D43425] text-[10px] font-black uppercase tracking-widest leading-none">
+                            {error || 'Access Denied'}
                         </p>
                     </div>
                 )}
-
-                <div className="space-y-6">
-                    <div className="group space-y-2">
-                        <label htmlFor="username" className="text-[10px] font-black uppercase tracking-[0.2em] text-[#C9A227] ml-4 transition-all opacity-60 group-focus-within:opacity-100 group-focus-within:translate-x-1">
-                            Employee Identifier
-                        </label>
+                <div className="space-y-4">
+                    <div className="space-y-1">
+                        <label className="text-[9px] font-black uppercase tracking-widest text-[#3D2329]/40 ml-4">Identifier</label>
                         <input
-                            id="username"
                             type="text"
                             value={username}
                             onChange={(e) => setUsername(e.target.value)}
-                            className="w-full h-16 px-8 rounded-full bg-white/5 border border-white/10 text-[#EFE7D9] font-playfair italic text-lg outline-none focus:border-[#D43425] focus:bg-white/10 transition-all placeholder:text-white/10"
-                            placeholder="Enter Username"
+                            className="w-full h-14 px-6 rounded-full bg-black/5 border border-black/10 text-black font-playfair italic text-lg outline-none focus:border-[#D43425] transition-all"
+                            placeholder="username"
                             required
-                            autoComplete="username"
-                            disabled={isLoading}
                         />
                     </div>
-                    <div className="group space-y-2">
-                        <label htmlFor="password" className="text-[10px] font-black uppercase tracking-[0.2em] text-[#C9A227] ml-4 transition-all opacity-60 group-focus-within:opacity-100 group-focus-within:translate-x-1">
-                            Authentication Key
-                        </label>
+                    <div className="space-y-1">
+                        <label className="text-[9px] font-black uppercase tracking-widest text-[#3D2329]/40 ml-4">Access Key</label>
                         <input
-                            id="password"
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="w-full h-16 px-8 rounded-full bg-white/5 border border-white/10 text-[#EFE7D9] font-playfair italic text-lg outline-none focus:border-[#D43425] focus:bg-white/10 transition-all placeholder:text-white/10"
+                            className="w-full h-14 px-6 rounded-full bg-black/5 border border-black/10 text-black font-playfair italic text-lg outline-none focus:border-[#D43425] transition-all"
                             placeholder="••••••••"
                             required
-                            autoComplete="current-password"
-                            disabled={isLoading}
                         />
                     </div>
                 </div>
-
-                <div className="space-y-4 pt-4">
-                    <button
-                        type="submit"
-                        disabled={isLoading}
-                        className="w-full h-16 bg-[#D43425] text-white rounded-full font-black text-xs uppercase tracking-[0.5em] shadow-2xl hover:bg-[#EFE7D9] hover:text-[#3D2329] transition-all active:scale-95 flex items-center justify-center gap-4 disabled:opacity-50 disabled:cursor-not-allowed group"
-                    >
-                        <span className="group-hover:translate-x-1 transition-transform">Authorize Entry</span>
-                        <svg className="w-4 h-4 transition-all group-hover:rotate-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
-                            <polyline points="10 17 15 12 10 7"></polyline>
-                            <line x1="15" y1="12" x2="3" y2="12"></line>
-                        </svg>
-                    </button>
-                </div>
-
-                {/* Quick Role Selectors for Demo (Updated Credentials) */}
-                <div className="pt-8 border-t border-white/5">
-                    <p className="text-center text-[9px] font-black uppercase tracking-[0.3em] text-[#C9A227]/40 mb-6 italic">Secure Quick Access</p>
-                    <div className="grid grid-cols-2 gap-4">
-                        {[
-                            { name: 'Waiter', username: 'waiter1', password: 'password123' },
-                            { name: 'Kitchen', username: 'kitchen1', password: 'password123' },
-                            { name: 'Cashier', username: 'cashier1', password: 'password123' },
-                            { name: 'Manager', username: 'manager', password: 'password123' },
-                        ].map((role) => (
-                            <button
-                                key={role.name}
-                                type="button"
-                                onClick={() => quickLogin(role.username, role.password)}
-                                disabled={isLoading}
-                                className="px-6 py-4 bg-white/5 border border-white/5 rounded-2xl flex items-center justify-center gap-3 hover:bg-[#D43425]/20 hover:border-[#D43425]/40 transition-all text-[#EFE7D9] group disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <span className="text-[10px] font-black uppercase tracking-widest opacity-40 group-hover:opacity-100 transition-opacity whitespace-nowrap">{role.name}</span>
-                            </button>
-                        ))}
-                    </div>
-                    <p className="text-center text-[8px] text-white/10 mt-6 font-bold tracking-widest uppercase">
-                        Admin: admin | password123
-                    </p>
-                </div>
+                <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full h-14 bg-[#3D2329] text-white rounded-full font-black text-[10px] uppercase tracking-[0.4em] shadow-xl hover:bg-black active:scale-95 transition-all disabled:opacity-50"
+                >
+                    {isLoading ? 'Verifying...' : 'Unlock Entry'}
+                </button>
             </form>
-
-            <div className="mt-12 text-center text-[9px] font-black uppercase tracking-[0.5em] text-[#EFE7D9]/20">
-                © 2026 HotelPro Reserve • Elite Staff Ecosystem
+            <div className="mt-10 text-[8px] font-black uppercase tracking-[0.3em] opacity-20 text-center text-[#3D2329]">
+                Private Ledger • HotelPro Reserve
             </div>
-
-            {/* Loading Overlay */}
-            {isLoading && (
-                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#3D2329]/80 backdrop-blur-sm animate-in fade-in duration-500">
-                    <div className="relative w-24 h-24">
-                        <div className="absolute inset-0 border-4 border-[#D43425]/20 rounded-full" />
-                        <div className="absolute inset-0 border-4 border-[#D43425] rounded-full border-t-transparent animate-spin" />
-                        <div className="absolute inset-4 border border-[#C9A227]/20 rounded-full animate-pulse" />
-                    </div>
-                    <p className="mt-8 text-[#C9A227] font-black text-xs uppercase tracking-[0.6em] animate-pulse">Verifying Credentials</p>
-                </div>
-            )}
         </div>
     );
 }
 
 export default function LoginPage() {
-    return (
-        <div className="min-h-screen flex items-center justify-center p-6 bg-[#3D2329] relative overflow-hidden font-sans">
-            {/* Background Ambience - Premium Glows */}
-            <div className="absolute inset-0 z-0">
-                <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-[#D43425] rounded-full blur-[180px] opacity-15 animate-pulse" />
-                <div className="absolute bottom-[-10%] right-[-20%] w-[70%] h-[70%] bg-[#C9A227] rounded-full blur-[200px] opacity-5 animate-pulse delay-1000" />
+    const [isOpened, setIsOpened] = useState(false);
+    const [mounted, setMounted] = useState(false);
 
-                {/* Texture Overlay */}
-                <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/mocha-grunge.png")' }} />
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    if (!mounted) return <div className="min-h-screen bg-[#0E0809]" />;
+
+    return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-[#0E0809] p-6 relative overflow-hidden font-sans">
+            {/* Background Ambience */}
+            <div className="absolute inset-0 z-0">
+                <div className="absolute top-[-20%] left-[-10%] w-[60%] h-full bg-[#D43425]/10 rounded-full blur-[180px] opacity-40" />
+                <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[70%] bg-[#C9A227]/5 rounded-full blur-[200px]" />
             </div>
 
-            <Suspense fallback={
-                <div className="flex flex-col items-center justify-center">
-                    <div className="w-12 h-12 border-4 border-[#D43425]/20 border-t-[#D43425] rounded-full animate-spin" />
-                </div>
-            }>
-                <LoginContent />
-            </Suspense>
+            {/* PRE-OPEN TEXTING */}
+            <AnimatePresence>
+                {!isOpened && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        className="mb-12 text-center relative z-10 pointer-events-none"
+                    >
+                        <h2 className="text-[#EFE7D9]/20 font-black text-xs uppercase tracking-[0.8em] mb-2">Restricted Access</h2>
+                        <div className="w-12 h-px bg-[#D43425]/30 mx-auto" />
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <div className="relative z-10 w-full max-w-5xl h-[700px] flex items-center justify-center" style={{ perspective: '2500px' }}>
+
+                {/* CLOSE ICON */}
+                <AnimatePresence>
+                    {isOpened && (
+                        <motion.button
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.8 }}
+                            onClick={() => setIsOpened(false)}
+                            className="absolute -top-16 right-0 z-[100] p-4 flex items-center gap-3 text-[#EFE7D9]/40 hover:text-[#D43425] transition-all group uppercase font-black text-[10px] tracking-[0.3em]"
+                        >
+                            <span>Close Ledger</span>
+                            <div className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center group-hover:border-[#D43425] group-hover:rotate-90 transition-all">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                            </div>
+                        </motion.button>
+                    )}
+                </AnimatePresence>
+
+                {/* THE BOOK CASE */}
+                <motion.div
+                    initial={false}
+                    animate={{ x: isOpened ? "25%" : "0%" }}
+                    transition={{ duration: 1.2, ease: [0.6, 0.05, -0.01, 0.9] }}
+                    className="relative w-[340px] md:w-[420px] h-[580px] md:h-[680px]"
+                    style={{ transformStyle: 'preserve-3d' }}
+                >
+                    {/* BACK LAYER (RIGHT PAGE) */}
+                    <div className="absolute inset-0 bg-vellum rounded-r-2xl shadow-3xl border-l border-black/10 flex flex-col items-center justify-center translate-z-0">
+                        <Suspense fallback={null}><LoginContent isOpened={isOpened} /></Suspense>
+                    </div>
+
+                    {/* FRONT COVER */}
+                    <motion.div
+                        className="absolute inset-0 z-30 cursor-pointer origin-left"
+                        style={{ transformStyle: 'preserve-3d' }}
+                        initial={false}
+                        animate={{ rotateY: isOpened ? -165 : 0 }}
+                        transition={{ duration: 1.5, ease: [0.6, 0.05, -0.01, 0.9] }}
+                        onClick={() => !isOpened && setIsOpened(true)}
+                    >
+                        {/* COVER FRONT */}
+                        <div className="absolute inset-0 bg-[#3D2329] rounded-r-2xl border-l-12 md:border-l-15 border-black/40 shadow-2xl flex flex-col items-center justify-center p-12 text-center space-y-12" style={{ backfaceVisibility: 'hidden' }}>
+                            <div className="w-28 h-28 border border-[#C9A227]/10 rounded-full flex items-center justify-center relative">
+                                <motion.div className="absolute inset-0 border-t border-[#D43425]/30 rounded-full" animate={{ rotate: 360 }} transition={{ duration: 8, repeat: Infinity, ease: "linear" }} />
+                                <span className="text-[#C9A227] text-3xl font-playfair font-black">HP</span>
+                            </div>
+                            <div className="space-y-4">
+                                <h1 className="text-[#EFE7D9] font-playfair font-black text-5xl md:text-6xl italic tracking-tighter leading-none">Internal<br />Reserve</h1>
+                                <p className="text-[#C9A227] text-[10px] font-black uppercase tracking-[0.5em] opacity-30">Confidential Ledger</p>
+                            </div>
+                            <div className="pt-8 text-[#EFE7D9]/20 text-[9px] font-black uppercase tracking-[0.8em] group-hover:text-[#D43425] transition-all">
+                                Open Entry
+                            </div>
+                        </div>
+
+                        {/* COVER INSIDE (Revealed during flip) */}
+                        <div className="absolute inset-0 bg-vellum rounded-l-2xl border-r border-[#3D2329]/10 shadow-inner flex flex-col justify-center p-16" style={{ transform: 'rotateY(180deg)', backfaceVisibility: 'hidden' }}>
+                            <div className="space-y-8 opacity-40">
+                                <h4 className="font-playfair text-2xl italic font-black text-[#3D2329]">The Rules.</h4>
+                                <div className="space-y-4">
+                                    {['Silent Service', 'Pure Precision', 'Brand Loyalty'].map((rule, i) => (
+                                        <div key={i} className="flex gap-4 items-center">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-[#D43425]" />
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-[#3D2329]">{rule}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
+                </motion.div>
+            </div>
         </div>
     );
 }
