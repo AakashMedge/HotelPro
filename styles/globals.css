@@ -149,3 +149,243 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Hide Next.js dev indicator */
+[data-nextjs-scroll-focus-boundary],
+nextjs-portal {
+  display: none !important;
+}
+
+@keyframes book-open {
+  0% {
+    transform: rotateY(0deg);
+  }
+
+  100% {
+    transform: rotateY(-180deg);
+  }
+}
+
+@keyframes book-glow {
+
+  0%,
+  100% {
+    opacity: 0.3;
+    filter: blur(20px);
+  }
+
+  50% {
+    opacity: 0.8;
+    filter: blur(40px);
+  }
+}
+
+.perspective-2000 {
+  perspective: 2000px;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+.animate-book-open {
+  animation: book-open 2.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.animate-book-glow {
+  animation: book-glow 2s ease-in-out infinite;
+}
+
+@keyframes magic-spark {
+  0% {
+    transform: scale(0) translate(0, 0);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1.5) translate(var(--tw-translate-x, 20px), var(--tw-translate-y, -20px));
+    opacity: 0;
+  }
+}
+
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-magic-spark {
+  animation: magic-spark 1.5s ease-out forwards;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.text-ink {
+  color: #1a1a1a;
+}
+
+.bg-vellum {
+  background-color: #fbf8f3;
+  background-image: url("https://www.transparenttextures.com/patterns/paper-fibers.png");
+}
+
+@keyframes ink-spread {
+  0% {
+    filter: blur(10px);
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  100% {
+    filter: blur(0);
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-ink-spread {
+  animation: ink-spread 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes wand-flick {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+
+  20% {
+    transform: rotate(-15deg) scale(1.1);
+  }
+
+  40% {
+    transform: rotate(10deg) scale(1.1);
+  }
+
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
+}
+
+@keyframes magic-bloom {
+  0% {
+    box-shadow: 0 0 0 0 rgba(201, 162, 39, 0);
+  }
+
+  50% {
+    box-shadow: 0 0 40px 20px rgba(201, 162, 39, 0.4);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(201, 162, 39, 0);
+  }
+}
+
+.animate-wand-flick {
+  animation: wand-flick 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.animate-magic-bloom {
+  animation: magic-bloom 0.8s ease-out forwards;
+}
+
+.mix-blend-multiply {
+  mix-blend-mode: multiply;
+}
+
+@keyframes magic-spark-enhanced {
+  0% {
+    transform: scale(0) translate(0, 0);
+    opacity: 1;
+    filter: blur(0px);
+  }
+
+  50% {
+    opacity: 1;
+    filter: blur(1px);
+  }
+
+  100% {
+    transform: scale(1.5) translate(var(--tw-translate-x, 20px), var(--tw-translate-y, -20px));
+    opacity: 0;
+    filter: blur(3px);
+  }
+}
+
+.animate-magic-spark-enhanced {
+  animation: magic-spark-enhanced 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes owl-hop {
+
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+
+  50% {
+    transform: translateY(-20px) scale(1.1);
+  }
+}
+
+.animate-owl-hop {
+  animation: owl-hop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes waiter-serve {
+  0% {
+    transform: scale(0.8) translateY(20px);
+    opacity: 0;
+  }
+
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-waiter-serve {
+  animation: waiter-serve 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.owl-peek-hidden {
+  transform: translateX(85%);
+  filter: grayscale(0.5) opacity(0.6);
+}
+
+.owl-peek-visible {
+  transform: translateX(0);
+  filter: grayscale(0) opacity(1);
+}
+
+.owl-container-fixed {
+  position: fixed;
+  top: 55%;
+  right: 0;
+  transform: translateY(-50%);
+  z-index: 500;
+  pointer-events: none;
+}
+
+.owl-interactive {
+  pointer-events: auto;
+  transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.mix-blend-multiply {
+  mix-blend-mode: multiply;
+}
+
+.brightness-110 {
+  filter: brightness(1.1);
+}

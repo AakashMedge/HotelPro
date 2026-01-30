@@ -138,7 +138,11 @@ export default function WelcomeGuest() {
                                     onChange={(e) => setFormData({ ...formData, tableNo: e.target.value })}
                                 />
                                 <button
-                                    onClick={() => setStep(3)}
+                                    onClick={() => {
+                                        localStorage.setItem('hp_guest_name', formData.name);
+                                        localStorage.setItem('hp_table_no', formData.tableNo);
+                                        setStep(3);
+                                    }}
                                     disabled={!formData.tableNo}
                                     className="w-full py-4 bg-[#D43425] rounded-full font-black text-[10px] uppercase tracking-[0.3em] disabled:opacity-30 disabled:grayscale transition-all active:scale-95"
                                 >

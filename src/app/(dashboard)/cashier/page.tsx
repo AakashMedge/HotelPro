@@ -1,130 +1,191 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
-// Unified Order Type for Cashier
+// ============================================
+// Types
+// ============================================
+
 type LineItem = {
+    id: string;
     name: string;
     qty: number;
     price: number;
 };
 
 type PendingTable = {
-    id: string;
+    id: string;         // Full Order ID
+    shortId: string;    // Short Display ID
+    tableCode: string;
     guestName: string;
     items: LineItem[];
     requestedAt: number;
+    total: number;
+    version: number;
 };
 
-const MOCK_PENDING: PendingTable[] = [
-    {
-        id: '12',
-        guestName: 'Mr. Singhania',
-        requestedAt: Date.now() - 300000,
-        items: [
-            { name: 'Wagyu Beef Tenderloin', qty: 2, price: 8500 },
-            { name: 'Truffle Mac & Cheese', qty: 1, price: 2100 },
-            { name: 'Vintage Reserve Red', qty: 2, price: 1200 },
-        ]
-    },
-    {
-        id: '04',
-        guestName: 'Suite 401',
-        requestedAt: Date.now() - 600000,
-        items: [
-            { name: 'Persian Saffron Risotto', qty: 1, price: 2100 },
-            { name: 'Imperial Masala Chai', qty: 4, price: 450 },
-        ]
-    },
-    {
-        id: '09',
-        guestName: 'Guest Walk-in',
-        requestedAt: Date.now() - 60000,
-        items: [
-            { name: 'Tandoori Lobster Tail', qty: 1, price: 4200 },
-            { name: 'Mineral Water', qty: 2, price: 450 },
-        ]
-    }
-];
+interface ApiResponse {
+    success: boolean;
+    orders?: any[];
+    order?: any;
+    error?: string;
+}
+
+// ============================================
+// Component
+// ============================================
 
 export default function CashierTerminal() {
     const [mounted, setMounted] = useState(false);
-    const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+    const [orders, setOrders] = useState<PendingTable[]>([]);
+    const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
     const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'CARD' | 'CASH' | null>(null);
     const [showConfirm, setShowConfirm] = useState(false);
-    const [settledIds, setSettledIds] = useState<string[]>([]);
+    const [loading, setLoading] = useState(true);
     const [isMobileDetailView, setIsMobileDetailView] = useState(false);
+    const [committing, setCommitting] = useState(false);
+
+    // ============================================
+    // Fetch Data
+    // ============================================
+
+    const fetchPendingOrders = useCallback(async () => {
+        try {
+            const res = await fetch('/api/orders?status=SERVED');
+            const data: ApiResponse = await res.json();
+
+            if (!data.success || !data.orders) throw new Error(data.error || 'Failed to fetch orders');
+
+            const pending: PendingTable[] = data.orders.map((o: any) => ({
+                id: o.id,
+                shortId: o.id.slice(0, 8).toUpperCase(),
+                tableCode: o.tableCode,
+                guestName: `GUEST @ ${o.tableCode}`,
+                requestedAt: new Date(o.updatedAt).getTime(),
+                version: o.version,
+                total: o.total,
+                items: o.items.map((item: any) => ({
+                    id: item.id,
+                    name: item.itemName,
+                    qty: item.quantity,
+                    price: item.price
+                }))
+            }));
+
+            setOrders(pending);
+
+            // Auto-select first if none selected and on desktop
+            if (pending.length > 0 && !selectedOrderId && window.innerWidth >= 768) {
+                setSelectedOrderId(pending[0].id);
+            }
+        } catch (err) {
+            console.error('[CASHIER] Fetch Error:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, [selectedOrderId]);
 
     useEffect(() => {
         setMounted(true);
-        if (MOCK_PENDING.length > 0 && window.innerWidth >= 768) {
-            setSelectedTableId(MOCK_PENDING[0].id);
-        }
-    }, []);
+        fetchPendingOrders();
 
-    if (!mounted) return null;
+        // Poll every 10 seconds
+        const interval = setInterval(fetchPendingOrders, 10000);
+        return () => clearInterval(interval);
+    }, [fetchPendingOrders]);
 
-    const currentTable = MOCK_PENDING.find(t => t.id === selectedTableId);
-    const isSettled = selectedTableId ? settledIds.includes(selectedTableId) : false;
+    // ============================================
+    // Settlement
+    // ============================================
 
-    const calculateTotal = (items: LineItem[]) => {
-        const subtotal = items.reduce((acc, item) => acc + (item.price * item.qty), 0);
-        const tax = subtotal * 0.18;
-        return { subtotal, tax, total: subtotal + tax };
-    };
+    const handleSettlement = async () => {
+        const order = orders.find(o => o.id === selectedOrderId);
+        if (!order || !paymentMethod || committing) return;
 
-    const handleSettlement = () => {
-        if (selectedTableId) {
-            setSettledIds([...settledIds, selectedTableId]);
+        setCommitting(true);
+        try {
+            const res = await fetch(`/api/orders/${order.id}/payment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    method: paymentMethod,
+                    amount: order.total
+                })
+            });
+
+            const result = await res.json();
+            if (!result.success) throw new Error(result.error || 'Payment failed');
+
+            // Refresh list
+            setSelectedOrderId(null);
             setShowConfirm(false);
             setPaymentMethod(null);
             setIsMobileDetailView(false);
+            await fetchPendingOrders();
+        } catch (err) {
+            alert(err instanceof Error ? err.message : 'Error processing payment');
+        } finally {
+            setCommitting(false);
         }
     };
 
+    if (!mounted) return null;
+
+    const currentOrder = orders.find(o => o.id === selectedOrderId);
+
+    const calculateBill = (items: LineItem[]) => {
+        const subtotal = items.reduce((acc, item) => acc + (item.price * item.qty), 0);
+        const tax = subtotal * 0.18; // Logic matching UI (18%)
+        return { subtotal, tax, total: subtotal + tax };
+    };
+
     const selectMobileTable = (id: string) => {
-        setSelectedTableId(id);
+        setSelectedOrderId(id);
         setIsMobileDetailView(true);
     };
+
+    if (loading && orders.length === 0) {
+        return (
+            <div className="flex items-center justify-center h-full w-full bg-[#F8F9FA]">
+                <div className="w-8 h-8 border-4 border-zinc-200 border-t-zinc-900 rounded-full animate-spin" />
+            </div>
+        );
+    }
 
     return (
         <div className="flex h-full w-full bg-[#F8F9FA] overflow-hidden flex-col md:flex-row relative">
 
-            {/* READY TO PAY QUEUE (Left Sidebar) */}
+            {/* READY TO PAY QUEUE */}
             <aside className={`w-full md:w-80 lg:w-96 bg-white border-r border-zinc-200 flex flex-col shrink-0 transition-transform duration-300 ${isMobileDetailView ? '-translate-x-full md:translate-x-0' : 'translate-x-0'} absolute md:relative inset-0 md:inset-auto z-20`}>
                 <div className="h-14 border-b border-zinc-100 flex items-center px-6 bg-zinc-50/50">
                     <span className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.3em]">Pending_Settlements</span>
                 </div>
                 <div className="grow overflow-y-auto p-4 md:p-6 space-y-3 lg:space-y-4 hide-scrollbar pb-32">
-                    {MOCK_PENDING.filter(t => !settledIds.includes(t.id)).map(table => {
-                        const { total } = calculateTotal(table.items);
-                        const active = selectedTableId === table.id;
-                        return (
-                            <button
-                                key={table.id}
-                                onClick={() => {
-                                    if (window.innerWidth < 768) selectMobileTable(table.id);
-                                    else { setSelectedTableId(table.id); setPaymentMethod(null); }
-                                }}
-                                className={`flex flex-col p-4 lg:p-6 rounded-2xl border-2 transition-all w-full text-left active:scale-[0.98] ${active ? 'bg-zinc-900 border-zinc-900 text-white shadow-xl md:ring-2 md:ring-black/5' : 'bg-white border-zinc-100 text-zinc-900 hover:border-zinc-300'}`}
-                            >
-                                <div className="flex justify-between items-start mb-4">
-                                    <span className="text-3xl lg:text-4xl font-black tracking-tighter">T_{table.id}</span>
-                                    <span className={`text-[8px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${active ? 'bg-red-500 text-white' : 'bg-red-50 text-red-500 border border-red-100'}`}>PAID_PENDING</span>
+                    {orders.map(order => (
+                        <button
+                            key={order.id}
+                            onClick={() => {
+                                if (window.innerWidth < 768) selectMobileTable(order.id);
+                                else { setSelectedOrderId(order.id); setPaymentMethod(null); }
+                            }}
+                            className={`flex flex-col p-4 lg:p-6 rounded-2xl border-2 transition-all w-full text-left active:scale-[0.98] ${selectedOrderId === order.id ? 'bg-zinc-900 border-zinc-900 text-white shadow-xl' : 'bg-white border-zinc-100 text-zinc-900 hover:border-zinc-300'}`}
+                        >
+                            <div className="flex justify-between items-start mb-4">
+                                <span className="text-3xl lg:text-4xl font-black tracking-tighter uppercase">{order.tableCode}</span>
+                                <span className={`text-[8px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${selectedOrderId === order.id ? 'bg-red-500 text-white' : 'bg-red-50 text-red-500 border border-red-100'}`}>PAID_PENDING</span>
+                            </div>
+                            <div className="flex justify-between items-end">
+                                <div className="flex flex-col">
+                                    <span className="text-[9px] font-bold opacity-40 uppercase tracking-widest leading-none mb-1">Ref</span>
+                                    <span className="text-xs font-bold truncate leading-none uppercase">{order.shortId}</span>
                                 </div>
-                                <div className="flex justify-between items-end">
-                                    <div className="flex flex-col">
-                                        <span className="text-[9px] font-bold opacity-40 uppercase tracking-widest leading-none mb-1">Guest</span>
-                                        <span className="text-sm font-bold truncate leading-none">{table.guestName}</span>
-                                    </div>
-                                    <div className="text-right">
-                                        <span className="text-xl lg:text-2xl font-black tabular-nums tracking-tighter">₹{total.toLocaleString()}</span>
-                                    </div>
+                                <div className="text-right">
+                                    <span className="text-xl lg:text-2xl font-black tabular-nums tracking-tighter">₹{order.total.toLocaleString()}</span>
                                 </div>
-                            </button>
-                        );
-                    })}
-                    {MOCK_PENDING.filter(t => !settledIds.includes(t.id)).length === 0 && (
+                            </div>
+                        </button>
+                    ))}
+                    {orders.length === 0 && (
                         <div className="p-12 text-center text-zinc-300 italic text-sm border-2 border-dashed border-zinc-100 rounded-2xl w-full">
                             All accounts cleared.
                         </div>
@@ -132,24 +193,25 @@ export default function CashierTerminal() {
                 </div>
             </aside>
 
-            {/* SETTLEMENT PANEL (Main View) */}
+            {/* SETTLEMENT PANEL */}
             <main className={`grow overflow-y-auto flex flex-col bg-white transition-transform duration-300 ${isMobileDetailView ? 'translate-x-0' : 'translate-x-full md:translate-x-0'} absolute md:relative inset-0 md:inset-auto z-30`}>
-                {currentTable && !isSettled ? (
+                {currentOrder ? (
                     <div className="flex flex-col h-full bg-white">
-                        {/* TICKET HEADER */}
                         <div className="p-4 md:p-8 lg:p-10 border-b border-zinc-100 flex justify-between items-center md:items-end bg-white sticky top-0 md:relative z-10 shadow-sm md:shadow-none">
                             <div className="flex items-center gap-4">
                                 <button onClick={() => setIsMobileDetailView(false)} className="md:hidden w-10 h-10 rounded-xl border border-zinc-200 flex items-center justify-center text-zinc-900">
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="15 18 9 12 15 6"></polyline></svg>
                                 </button>
                                 <div className="space-y-0.5 md:space-y-1">
-                                    <h2 className="text-2xl md:text-5xl lg:text-7xl font-black tracking-tighter leading-none">SETTLE_T_{selectedTableId}</h2>
-                                    <p className="hidden md:block text-[10px] md:text-xs font-bold text-zinc-400 uppercase tracking-widest italic">Tx_{selectedTableId}_Auth</p>
+                                    <h2 className="text-2xl md:text-5xl lg:text-7xl font-black tracking-tighter leading-none uppercase">SETTLE_{currentOrder.tableCode}</h2>
+                                    <p className="hidden md:block text-[10px] md:text-xs font-bold text-zinc-400 uppercase tracking-widest italic leading-none">ID_{currentOrder.id.slice(0, 12).toUpperCase()}</p>
                                 </div>
                             </div>
                             <div className="text-right">
-                                <span className="text-[8px] md:text-[10px] font-black text-zinc-300 uppercase tracking-widest leading-none block md:mb-1">Guest</span>
-                                <p className="text-sm md:text-xl font-bold uppercase truncate max-w-[120px] md:max-w-none">{currentTable.guestName}</p>
+                                <span className="text-[8px] md:text-[10px] font-black text-zinc-300 uppercase tracking-widest leading-none block md:mb-1">Payment Requested</span>
+                                <p className="text-sm md:text-xl font-bold uppercase tabular-nums">
+                                    {new Date(currentOrder.requestedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </p>
                             </div>
                         </div>
 
@@ -158,7 +220,7 @@ export default function CashierTerminal() {
                             <div className="p-6 md:p-8 lg:p-10 border-b lg:border-b-0 lg:border-r border-zinc-100 bg-white">
                                 <span className="text-[10px] font-black text-zinc-300 uppercase tracking-[0.4em] mb-6 md:mb-8 block">Itemized_ledger</span>
                                 <div className="space-y-5 md:space-y-6">
-                                    {currentTable.items.map((item, idx) => (
+                                    {currentOrder.items.map((item, idx) => (
                                         <div key={idx} className="flex justify-between items-start">
                                             <div className="flex items-start gap-4">
                                                 <div className="w-8 h-8 rounded-lg border border-zinc-100 flex items-center justify-center font-black text-xs text-zinc-400 shrink-0">{item.qty}</div>
@@ -173,17 +235,9 @@ export default function CashierTerminal() {
                                 </div>
 
                                 <div className="mt-10 md:mt-12 pt-8 border-t border-dashed border-zinc-200 space-y-2 md:space-y-3">
-                                    <div className="flex justify-between text-zinc-400 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">
-                                        <span>Subtotal</span>
-                                        <span className="text-zinc-600 tabular-nums">₹{calculateTotal(currentTable.items).subtotal.toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between text-zinc-400 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">
-                                        <span>GST (18%)</span>
-                                        <span className="text-zinc-600 tabular-nums">₹{calculateTotal(currentTable.items).tax.toLocaleString()}</span>
-                                    </div>
                                     <div className="flex justify-between items-baseline pt-4">
                                         <span className="text-[10px] md:text-xs font-black uppercase tracking-[0.3em] text-zinc-400">Net_Settle</span>
-                                        <span className="text-4xl md:text-5xl lg:text-6xl font-black tabular-nums tracking-tighter text-[#D43425]">₹{calculateTotal(currentTable.items).total.toLocaleString()}</span>
+                                        <span className="text-4xl md:text-5xl lg:text-6xl font-black tabular-nums tracking-tighter text-[#D43425]">₹{currentOrder.total.toLocaleString()}</span>
                                     </div>
                                 </div>
                             </div>
@@ -218,11 +272,11 @@ export default function CashierTerminal() {
 
                                 <div className="mt-8 md:mt-12 fixed md:relative bottom-4 left-4 right-4 md:bottom-auto md:left-auto md:right-auto z-40">
                                     <button
-                                        disabled={!paymentMethod}
+                                        disabled={!paymentMethod || committing}
                                         onClick={() => setShowConfirm(true)}
-                                        className={`w-full h-16 md:h-20 rounded-2xl md:rounded-3xl flex items-center justify-center gap-4 text-xs font-black uppercase tracking-[0.4em] transition-all shadow-xl ${paymentMethod ? 'bg-[#D43425] text-white hover:bg-black active:scale-95' : 'bg-zinc-200 text-zinc-400 cursor-not-allowed shadow-none'}`}
+                                        className={`w-full h-16 md:h-20 rounded-2xl md:rounded-3xl flex items-center justify-center gap-4 text-xs font-black uppercase tracking-[0.4em] transition-all shadow-xl ${paymentMethod ? 'bg-[#D43425] text-white hover:bg-black active:scale-95 shadow-[#D43425]/20' : 'bg-zinc-200 text-zinc-400 cursor-not-allowed shadow-none'}`}
                                     >
-                                        {paymentMethod === 'CASH' ? 'FINALIZE_CASH' : 'COMMIT_PAYMENT'}
+                                        {committing ? 'PROCESSING...' : paymentMethod === 'CASH' ? 'FINALIZE_CASH' : 'COMMIT_PAYMENT'}
                                     </button>
                                 </div>
                             </div>
@@ -242,7 +296,7 @@ export default function CashierTerminal() {
             </main>
 
             {/* CONFIRMATION OVERLAY */}
-            {showConfirm && currentTable && (
+            {showConfirm && currentOrder && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[200] flex items-center justify-center p-4">
                     <div className="w-full max-w-lg bg-white rounded-[2rem] md:rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
                         <div className="p-8 md:p-10 space-y-6 md:space-y-8 text-center">
@@ -251,11 +305,11 @@ export default function CashierTerminal() {
                             </div>
                             <div className="space-y-2">
                                 <h4 className="text-[9px] md:text-[10px] font-black text-zinc-400 uppercase tracking-[0.4em]">Authorization_Needed</h4>
-                                <p className="text-2xl md:text-3xl font-black tracking-tighter uppercase">Authorize T_{selectedTableId}?</p>
+                                <p className="text-2xl md:text-3xl font-black tracking-tighter uppercase">Authorize {currentOrder.tableCode}?</p>
                                 <div className="inline-flex items-center gap-2 bg-zinc-50 px-3 py-1.5 rounded-full border border-zinc-100">
                                     <span className="text-[8px] md:text-[10px] font-black text-zinc-900 uppercase tracking-widest">{paymentMethod}</span>
                                     <div className="w-1 h-1 bg-zinc-300 rounded-full" />
-                                    <span className="text-[10px] md:text-xs font-black text-[#D43425] tabular-nums">₹{calculateTotal(currentTable.items).total.toLocaleString()}</span>
+                                    <span className="text-[10px] md:text-xs font-black text-[#D43425] tabular-nums">₹{currentOrder.total.toLocaleString()}</span>
                                 </div>
                             </div>
 
@@ -268,9 +322,10 @@ export default function CashierTerminal() {
                                 </button>
                                 <button
                                     onClick={handleSettlement}
-                                    className="h-14 md:h-16 rounded-xl bg-black text-white text-[10px] md:text-xs font-black uppercase tracking-widest active:scale-95 transition-all shadow-lg shadow-black/10"
+                                    disabled={committing}
+                                    className="h-14 md:h-16 rounded-xl bg-black text-white text-[10px] md:text-xs font-black uppercase tracking-widest active:scale-95 transition-all shadow-lg shadow-black/10 disabled:opacity-50"
                                 >
-                                    CONFIRM
+                                    {committing ? '...' : 'CONFIRM'}
                                 </button>
                             </div>
                         </div>
@@ -279,9 +334,9 @@ export default function CashierTerminal() {
             )}
 
             <style jsx global>{`
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      `}</style>
+                .hide-scrollbar::-webkit-scrollbar { display: none; }
+                .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+            `}</style>
         </div>
     );
 }

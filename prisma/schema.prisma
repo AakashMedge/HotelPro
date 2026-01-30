@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String     @id @default(uuid())
+  username       String     @unique
+  name           String
+  passwordHash   String
+  role           UserRole
+  isActive       Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  auditLogs      AuditLog[]
+  sessions       Session[]
+  assignedTables Table[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Table {
+  id               String      @id @default(uuid())
+  tableCode        String      @unique
+  status           TableStatus @default(VACANT)
+  assignedWaiterId String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  deletedAt        DateTime?
+  capacity         Int         @default(4)
+  orders           Order[]
+  assignedWaiter   User?       @relation(fields: [assignedWaiterId], references: [id])
+}
+
+model MenuItem {
+  id          String      @id @default(uuid())
+  name        String
+  category    String      @default("General")
+  description String?
+  price       Decimal     @db.Decimal(10, 2)
+  isAvailable Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+  inventory   Inventory?
+  orderItems  OrderItem[]
+}
+
+model Inventory {
+  id         String   @id @default(uuid())
+  menuItemId String   @unique
+  quantity   Int
+  updatedAt  DateTime @updatedAt
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+}
+
+model Order {
+  id        String      @id @default(uuid())
+  tableId   String
+  status    OrderStatus @default(NEW)
+  version   Int         @default(1)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  closedAt  DateTime?
+  auditLogs AuditLog[]
+  table     Table       @relation(fields: [tableId], references: [id])
+  items     OrderItem[]
+  payment   Payment?
+
+  @@index([tableId])
+}
+
+model OrderItem {
+  id            String          @id @default(uuid())
+  orderId       String
+  menuItemId    String
+  itemName      String
+  priceSnapshot Decimal         @db.Decimal(10, 2)
+  quantity      Int
+  status        OrderItemStatus @default(PENDING)
+  createdAt     DateTime        @default(now())
+  menuItem      MenuItem        @relation(fields: [menuItemId], references: [id])
+  order         Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+model Payment {
+  id        String        @id @default(uuid())
+  orderId   String        @unique
+  method    PaymentMethod
+  amount    Decimal       @db.Decimal(10, 2)
+  status    PaymentStatus @default(PENDING)
+  createdAt DateTime      @default(now())
+  order     Order         @relation(fields: [orderId], references: [id])
+}
+
+model AuditLog {
+  id        String      @id @default(uuid())
+  action    AuditAction
+  actorId   String?
+  orderId   String?
+  metadata  Json?
+  createdAt DateTime    @default(now())
+  actor     User?       @relation(fields: [actorId], references: [id])
+  order     Order?      @relation(fields: [orderId], references: [id])
+
+  @@index([actorId])
+  @@index([orderId])
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  WAITER
+  KITCHEN
+  CASHIER
+}
+
+enum TableStatus {
+  VACANT
+  ACTIVE
+  READY
+  WAITING_FOR_PAYMENT
+}
+
+enum OrderStatus {
+  NEW
+  PREPARING
+  READY
+  SERVED
+  CLOSED
+}
+
+enum OrderItemStatus {
+  PENDING
+  PREPARING
+  READY
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  UPI
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+}
+
+enum AuditAction {
+  ORDER_CREATED
+  ITEM_ADDED
+  STATUS_CHANGED
+  PAYMENT_AUTHORIZED
+  ORDER_CLOSED
+}

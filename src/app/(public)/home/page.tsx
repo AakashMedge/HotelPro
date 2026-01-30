@@ -1,18 +1,104 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 
 export default function HomePage() {
     const [mounted, setMounted] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
+    const [yearCount, setYearCount] = useState(2000);
+    const [hasAnimatedYear, setHasAnimatedYear] = useState(false);
+    const [showLegacyContent, setShowLegacyContent] = useState(false);
+    const [isTransitioning, setIsTransitioning] = useState(false);
+    const [targetUrl, setTargetUrl] = useState('');
+    const yearSectionRef = useRef<HTMLDivElement>(null);
+    const router = useRouter();
+
+    const handleBookClick = (e: React.MouseEvent, url: string) => {
+        e.preventDefault();
+        setTargetUrl(url);
+        setIsTransitioning(true);
+
+        // Wait for animation (2.5s) + a little buffer
+        setTimeout(() => {
+            router.push(url);
+        }, 2800);
+    };
 
     useEffect(() => {
         setMounted(true);
     }, []);
 
+    // Year counter animation with variable speed
+    useEffect(() => {
+        if (!mounted || hasAnimatedYear) return;
+
+        const animateYearCounter = () => {
+            const years = [
+                // Slow start (300ms each)
+                { year: 2000, delay: 300 },
+                { year: 2001, delay: 300 },
+                { year: 2002, delay: 250 },
+                // Speed up (progressively faster)
+                { year: 2005, delay: 100 },
+                { year: 2008, delay: 80 },
+                { year: 2010, delay: 60 },
+                { year: 2012, delay: 50 },
+                { year: 2014, delay: 40 },
+                { year: 2016, delay: 35 },
+                { year: 2018, delay: 30 },
+                { year: 2020, delay: 40 },
+                { year: 2022, delay: 60 },
+                // Slow down at end (300ms each)
+                { year: 2024, delay: 150 },
+                { year: 2025, delay: 300 },
+                { year: 2026, delay: 0 },
+            ];
+
+            let index = 0;
+
+            const runNext = () => {
+                if (index < years.length) {
+                    setYearCount(years[index].year);
+                    const delay = years[index].delay;
+                    index++;
+                    if (delay > 0) {
+                        setTimeout(runNext, delay);
+                    } else {
+                        // Animation complete - trigger legacy content reveal
+                        setTimeout(() => {
+                            setShowLegacyContent(true);
+                        }, 500);
+                    }
+                }
+            };
+
+            runNext();
+        };
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting && !hasAnimatedYear) {
+                        setHasAnimatedYear(true);
+                        animateYearCounter();
+                    }
+                });
+            },
+            { threshold: 0.5 }
+        );
+
+        if (yearSectionRef.current) {
+            observer.observe(yearSectionRef.current);
+        }
+
+        return () => observer.disconnect();
+    }, [mounted, hasAnimatedYear]);
+
     if (!mounted) return null;
+
 
     return (
         <main className="min-h-screen bg-white text-white font-sans overflow-x-hidden">
@@ -55,13 +141,14 @@ export default function HomePage() {
 
                     {/* Central Quatrefoil Crest */}
                     <div className="absolute inset-0 flex items-center justify-center z-10">
-                        <div className="relative">
+                        <div className="relative group cursor-pointer">
+                            {/* SVG Quatrefoil Shape - Transparent by default, solid on hover */}
                             <svg
                                 viewBox="0 0 400 440"
-                                className="w-[240px] h-[265px] sm:w-[280px] sm:h-[310px] md:w-[360px] md:h-[400px] lg:w-[420px] lg:h-[460px]"
+                                className="w-[260px] h-[290px] sm:w-[300px] sm:h-[330px] md:w-[380px] md:h-[420px] lg:w-[440px] lg:h-[485px] transition-all duration-500"
                                 fill="none"
                             >
-                                {/* Outer Border */}
+                                {/* Outer Border - Glassmorphism effect */}
                                 <path
                                     d="M200 10 
                                        C240 10 280 30 300 60 
@@ -76,9 +163,10 @@ export default function HomePage() {
                                        C30 190 10 160 10 120 
                                        C10 70 60 40 100 60 
                                        C120 30 160 10 200 10 Z"
-                                    fill="#F5F0EC"
+                                    className="fill-white/20 group-hover:fill-[#F5F0EC] transition-all duration-500"
                                     stroke="#D43425"
                                     strokeWidth="3"
+                                    strokeOpacity="0.6"
                                 />
                                 {/* Inner Border */}
                                 <path
@@ -98,44 +186,60 @@ export default function HomePage() {
                                     fill="none"
                                     stroke="#D43425"
                                     strokeWidth="2"
-                                    strokeDasharray="0"
+                                    strokeOpacity="0.4"
+                                    className="group-hover:stroke-[#D43425] transition-all duration-500"
                                 />
                             </svg>
 
                             {/* Content Overlay */}
-                            <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 sm:px-8 md:px-12">
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-8 sm:px-10 md:px-14">
                                 {/* H&P Monogram with flanking text */}
-                                <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-8 mb-1 sm:mb-2">
-                                    <span className="text-[#D43425] text-[7px] sm:text-[8px] md:text-[10px] font-bold uppercase tracking-[0.2em] sm:tracking-[0.3em]">Private</span>
-                                    <span className="text-[#D43425] font-playfair text-2xl sm:text-3xl md:text-4xl italic">H&P</span>
-                                    <span className="text-[#D43425] text-[7px] sm:text-[8px] md:text-[10px] font-bold uppercase tracking-[0.2em] sm:tracking-[0.3em]">Residence</span>
-                                </div>
-                                {/* Main Title */}
-                                <h1 className="text-[#D43425] font-playfair text-3xl sm:text-4xl md:text-5xl lg:text-6xl leading-[0.95] tracking-tight mb-0 sm:mb-1">
-                                    HOTEL
-                                </h1>
-                                <h1 className="text-[#D43425] font-black text-3xl sm:text-4xl md:text-5xl lg:text-6xl leading-[0.95] tracking-tight mb-2 sm:mb-4">
-                                    PRO
-                                </h1>
-                                {/* Location Text */}
-                                <div className="space-y-0.5 sm:space-y-1 mb-4 sm:mb-6">
-                                    <p className="text-[#D43425]/70 text-[10px] sm:text-xs md:text-sm font-playfair italic">Premium Suite</p>
-                                    <p className="text-[#D43425] text-[8px] sm:text-[9px] md:text-[10px] font-bold uppercase tracking-[0.3em] sm:tracking-[0.4em]">Elite Hospitality</p>
+                                <div className="flex items-center justify-center gap-3 sm:gap-5 md:gap-8 mb-1 sm:mb-2">
+                                    <span className="text-[#D43425]/70 group-hover:text-[#D43425] text-[7px] sm:text-[8px] md:text-[10px] font-semibold uppercase tracking-[0.15em] sm:tracking-[0.2em] transition-all duration-500">Private</span>
+                                    <span className="text-[#D43425]/80 group-hover:text-[#D43425] font-playfair text-2xl sm:text-3xl md:text-4xl italic transition-all duration-500">H&P</span>
+                                    <span className="text-[#D43425]/70 group-hover:text-[#D43425] text-[7px] sm:text-[8px] md:text-[10px] font-semibold uppercase tracking-[0.15em] sm:tracking-[0.2em] transition-all duration-500">Residence</span>
                                 </div>
 
-                                {/* CTA Buttons */}
-                                <div className="space-y-1.5 sm:space-y-2 w-full max-w-[180px] sm:max-w-[200px] md:max-w-[240px]">
-                                    <Link href="/welcome-guest" className="flex items-center justify-center gap-1.5 sm:gap-2 w-full py-2.5 sm:py-3 bg-[#D43425] text-white font-bold text-[9px] sm:text-[10px] uppercase tracking-[0.1em] sm:tracking-[0.15em] rounded-full hover:bg-[#8B0000] transition-all">
-                                        <svg className="w-3 h-3 sm:w-[14px] sm:h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                {/* Main Title */}
+                                <h1 className="text-[#D43425]/80 group-hover:text-[#D43425] font-playfair text-3xl sm:text-4xl md:text-5xl lg:text-6xl leading-[0.95] tracking-tight mb-0 transition-all duration-500">
+                                    HOTEL
+                                </h1>
+                                <h1 className="text-[#D43425]/90 group-hover:text-[#D43425] font-black text-3xl sm:text-4xl md:text-5xl lg:text-6xl leading-[0.95] tracking-tight mb-2 sm:mb-3 transition-all duration-500">
+                                    PRO
+                                </h1>
+
+                                {/* Location Text */}
+                                <div className="space-y-0.5 mb-4 sm:mb-5">
+                                    <p className="text-[#D43425]/50 group-hover:text-[#D43425]/70 text-[10px] sm:text-xs md:text-sm font-playfair italic transition-all duration-500">Premium Suite</p>
+                                    <p className="text-[#D43425]/60 group-hover:text-[#D43425] text-[7px] sm:text-[8px] md:text-[9px] font-bold uppercase tracking-[0.25em] sm:tracking-[0.3em] transition-all duration-500">Elite Hospitality</p>
+                                </div>
+
+                                {/* CTA Buttons - Side by Side Square Cards */}
+                                <div className="flex items-center justify-center gap-2 sm:gap-3 md:gap-4">
+                                    {/* Scan the QR - Transparent → White on hover */}
+                                    <Link
+                                        href="/welcome-guest"
+                                        className="flex flex-col items-center justify-center w-[65px] h-[65px] sm:w-[75px] sm:h-[75px] md:w-[90px] md:h-[90px] bg-white/20 group-hover:bg-white rounded-xl sm:rounded-2xl backdrop-blur-sm group-hover:shadow-lg border border-white/30 group-hover:border-[#D43425]/30 transition-all duration-500"
+                                    >
+                                        <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white group-hover:text-[#D43425] mb-1 transition-all duration-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                                             <rect x="3" y="3" width="7" height="7" />
                                             <rect x="14" y="3" width="7" height="7" />
                                             <rect x="14" y="14" width="7" height="7" />
                                             <rect x="3" y="14" width="7" height="7" />
                                         </svg>
-                                        Scan the QR
+                                        <span className="text-white/80 group-hover:text-[#D43425] font-bold text-[5px] sm:text-[6px] md:text-[7px] uppercase tracking-wide text-center leading-tight transition-all duration-500">Scan<br />the QR</span>
                                     </Link>
-                                    <Link href="/customer" className="flex items-center justify-center gap-1.5 sm:gap-2 w-full py-2.5 sm:py-3 border-2 border-[#D43425] text-[#D43425] font-bold text-[9px] sm:text-[10px] uppercase tracking-[0.1em] sm:tracking-[0.15em] rounded-full hover:bg-[#D43425] hover:text-white transition-all">
-                                        Book a Table
+
+                                    {/* Book a Table - Transparent → Red on hover */}
+                                    <Link
+                                        href="/customer"
+                                        className="flex flex-col items-center justify-center w-[65px] h-[65px] sm:w-[75px] sm:h-[75px] md:w-[90px] md:h-[90px] bg-[#D43425]/30 group-hover:bg-[#D43425] rounded-xl sm:rounded-2xl backdrop-blur-sm group-hover:shadow-lg border border-[#D43425]/40 group-hover:border-[#D43425] transition-all duration-500"
+                                    >
+                                        <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white/80 group-hover:text-white mb-1 transition-all duration-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                            <circle cx="12" cy="12" r="9" />
+                                            <path d="M8 12h8M12 8v8" />
+                                        </svg>
+                                        <span className="text-white/80 group-hover:text-white font-bold text-[5px] sm:text-[6px] md:text-[7px] uppercase tracking-wide text-center leading-tight transition-all duration-500">Book<br />a Table</span>
                                     </Link>
                                 </div>
                             </div>
@@ -147,13 +251,6 @@ export default function HomePage() {
                         <p className="text-[6px] sm:text-[7px] md:text-[9px] font-bold uppercase tracking-[0.15em] sm:tracking-[0.2em] text-white/50 leading-relaxed drop-shadow-lg">
                             Revolutionizing the<br />Architecture of<br />Luxury Hospitality<br />Management.
                         </p>
-                    </div>
-
-                    {/* Bottom Left Logo */}
-                    <div className="absolute bottom-8 left-6 md:bottom-10 md:left-10 z-20 hidden md:block" style={{ bottom: '6rem' }}>
-                        <div className="w-10 h-10 bg-black/80 rounded-xl flex items-center justify-center text-white font-playfair italic text-lg">
-                            N
-                        </div>
                     </div>
 
                     {/* Bottom Right Year - Roman Numerals */}
@@ -238,8 +335,8 @@ export default function HomePage() {
                         <span className="text-[9px] sm:text-[11px] font-black uppercase tracking-[0.2em] sm:tracking-[0.3em]">Explore at Your Own Pace</span>
                     </div>
 
-                    <h2 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-playfair font-black italic leading-[0.95] mb-8 sm:mb-12">
-                        Unlock The<br />HotelPro<br />Experiences
+                    <h2 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-playfair font-semibold italic leading-[0.95] mb-8 sm:mb-12">
+                        Unlock The HotelPro Experiences
                     </h2>
 
                     <Link href="/customer" className="inline-flex items-center gap-3">
@@ -268,46 +365,138 @@ export default function HomePage() {
             </section>
 
             {/* 2026 SECTION */}
-            <section className="min-h-[80vh] sm:min-h-screen bg-[#3D2329] flex flex-col items-center justify-center px-4 sm:px-6 py-20 sm:py-32">
-                <div className="text-[#D43425] font-playfair font-black text-[25vw] sm:text-[20vw] md:text-[25vw] leading-[0.85] tracking-tight">
-                    2026
+            <section ref={yearSectionRef} className="min-h-[80vh] sm:min-h-screen bg-[#3D2329] flex flex-col items-center justify-center px-4 sm:px-6 py-20 sm:py-32">
+                <div className={`text-[#D43425] font-playfair font-black text-[25vw] sm:text-[20vw] md:text-[25vw] leading-[0.85] tracking-tight transition-all duration-100 ${yearCount > 2002 && yearCount < 2024 ? 'blur-[2px]' : 'blur-0'}`}>
+                    {yearCount}
                 </div>
-                <div className="text-center mt-6 sm:mt-8 max-w-xs sm:max-w-lg md:max-w-2xl px-4">
+
+                {/* Legacy Content - Cascading Reveal */}
+                <div className={`text-center mt-6 sm:mt-8 max-w-xs sm:max-w-lg md:max-w-2xl px-4 transition-all duration-700 ${showLegacyContent ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
                     <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.3em] sm:tracking-[0.5em] text-[#D43425]/60 mb-3 sm:mb-4">The HotelPro Legacy</p>
-                    <p className="text-[#EFE7D9]/60 text-xs sm:text-sm md:text-base leading-relaxed">
+                    <p className={`text-[#EFE7D9]/60 text-xs sm:text-sm md:text-base leading-relaxed transition-all duration-700 delay-300 ${showLegacyContent ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
                         The 2026 represents a culinary journey rooted in classic gastronomy tradition. Sourced from rare ingredients,
                         combined with Asian influences, we are dedicated to innovation and exceptional service.
                     </p>
                 </div>
 
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-8 md:gap-24 mt-12 sm:mt-16 md:mt-24">
-                    <div className="flex flex-col items-center">
-                        <div className="w-28 h-28 sm:w-32 sm:h-32 md:w-40 md:h-40 border border-[#D43425]/40 rounded-[1.5rem] sm:rounded-[2rem] flex items-center justify-center">
-                            <svg className="w-12 h-12 sm:w-[60px] sm:h-[60px]" viewBox="0 0 80 80" fill="none" stroke="#D43425" strokeWidth="1">
-                                <path d="M40 10 C20 10 10 30 10 50 L10 70 L70 70 L70 50 C70 30 60 10 40 10" />
-                                <circle cx="40" cy="35" r="10" />
-                                <line x1="20" y1="55" x2="35" y2="40" />
-                            </svg>
+                {/* Books - Slide in from sides */}
+                <div className={`flex flex-col sm:flex-row items-center justify-center gap-8 sm:gap-12 md:gap-20 mt-12 sm:mt-16 md:mt-24 transition-all duration-1000 delay-500 ${showLegacyContent ? 'opacity-100' : 'opacity-0'}`}>
+                    {/* Book 1: Our Story - Slides from left */}
+                    <button
+                        onClick={(e) => handleBookClick(e, '/customer')}
+                        className={`group flex flex-col items-center transition-all duration-700 delay-700 ${showLegacyContent ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-12'}`}
+                    >
+                        <div className="relative w-36 h-48 sm:w-44 sm:h-60 md:w-52 md:h-72 perspective-1000">
+                            {/* Book Cover */}
+                            <div className="absolute inset-0 bg-gradient-to-br from-[#EFE7D9] via-[#D4C8B8] to-[#C4B8A8] rounded-r-lg rounded-l-sm shadow-2xl border border-[#8B7355]/30 transform group-hover:rotate-y-[-10deg] group-hover:scale-105 transition-all duration-500">
+                                {/* Book Spine */}
+                                <div className="absolute left-0 top-0 bottom-0 w-4 sm:w-5 bg-gradient-to-r from-[#8B7355] to-[#A08060] rounded-l-sm" />
+                                {/* Gold Embossed Frame */}
+                                <div className="absolute inset-4 sm:inset-5 border-2 border-[#C9A227]/60 rounded-sm" />
+                                <div className="absolute inset-5 sm:inset-6 border border-[#C9A227]/40 rounded-sm" />
+                                {/* Book Content */}
+                                <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 sm:px-8">
+                                    <div className="w-8 h-px bg-[#C9A227]/60 mb-3" />
+                                    <span className="text-[#5C4A32] text-[8px] sm:text-[9px] uppercase tracking-[0.3em] font-bold mb-2">Est. 2026</span>
+                                    <h3 className="text-[#3D2329] font-playfair font-black text-lg sm:text-xl md:text-2xl leading-tight mb-1">Our</h3>
+                                    <h3 className="text-[#3D2329] font-playfair font-black text-lg sm:text-xl md:text-2xl italic leading-tight mb-3">Story</h3>
+                                    <div className="w-8 h-px bg-[#C9A227]/60 mb-3" />
+                                    <span className="text-[#C9A227] font-playfair italic text-sm sm:text-base">H&P</span>
+                                </div>
+                                {/* Decorative Corner Details */}
+                                <div className="absolute top-3 right-3 w-3 h-3 border-t border-r border-[#C9A227]/40" />
+                                <div className="absolute bottom-3 right-3 w-3 h-3 border-b border-r border-[#C9A227]/40" />
+                            </div>
+                            {/* Book Shadow */}
+                            <div className="absolute -bottom-2 left-2 right-2 h-4 bg-black/20 rounded-full blur-md group-hover:blur-lg transition-all" />
                         </div>
-                        <p className="text-[#D43425]/60 text-[9px] sm:text-[10px] uppercase tracking-[0.2em] sm:tracking-[0.3em] mt-3 sm:mt-4">French Asian Cuisine</p>
-                    </div>
-                    <div className="w-16 sm:w-px h-px sm:h-24 bg-[#D43425]/20" />
-                    <div className="flex flex-col items-center">
-                        <div className="w-28 h-28 sm:w-32 sm:h-32 md:w-40 md:h-40 border border-[#D43425]/40 rounded-[1.5rem] sm:rounded-[2rem] flex items-center justify-center">
-                            <svg className="w-12 h-12 sm:w-[60px] sm:h-[60px]" viewBox="0 0 80 80" fill="none" stroke="#D43425" strokeWidth="1">
-                                <path d="M40 10 C20 10 10 30 10 50 L10 70 L70 70 L70 50 C70 30 60 10 40 10" />
-                                <path d="M40 20 L40 50" />
-                                <circle cx="40" cy="55" r="8" />
-                            </svg>
+                        <p className="text-[#EFE7D9]/80 text-[9px] sm:text-[10px] uppercase tracking-[0.25em] mt-5 group-hover:text-[#EFE7D9] transition-colors">The Hotel Chronicle</p>
+                    </button>
+
+                    {/* Divider */}
+                    <div className={`w-16 sm:w-px h-px sm:h-32 bg-[#D43425]/30 transition-all duration-500 delay-1000 ${showLegacyContent ? 'opacity-100 scale-100' : 'opacity-0 scale-0'}`} />
+
+                    {/* Book 2: The Menu - Slides from right */}
+                    <button
+                        onClick={(e) => handleBookClick(e, '/menu')}
+                        className={`group flex flex-col items-center transition-all duration-700 delay-700 ${showLegacyContent ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-12'}`}
+                    >
+                        <div className="relative w-36 h-48 sm:w-44 sm:h-60 md:w-52 md:h-72 perspective-1000">
+                            {/* Book Cover */}
+                            <div className="absolute inset-0 bg-gradient-to-br from-[#4A2C32] via-[#3D2329] to-[#2A181B] rounded-r-lg rounded-l-sm shadow-2xl border border-[#D43425]/30 transform group-hover:rotate-y-[-10deg] group-hover:scale-105 transition-all duration-500">
+                                {/* Book Spine */}
+                                <div className="absolute left-0 top-0 bottom-0 w-4 sm:w-5 bg-gradient-to-r from-[#2A181B] to-[#3D2329] rounded-l-sm" />
+                                {/* Gold Embossed Frame */}
+                                <div className="absolute inset-4 sm:inset-5 border-2 border-[#C9A227]/50 rounded-sm" />
+                                <div className="absolute inset-5 sm:inset-6 border border-[#C9A227]/30 rounded-sm" />
+                                {/* Book Content */}
+                                <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 sm:px-8">
+                                    <div className="w-8 h-px bg-[#C9A227]/50 mb-3" />
+                                    <span className="text-[#C9A227]/70 text-[8px] sm:text-[9px] uppercase tracking-[0.3em] font-bold mb-2">Culinary Arts</span>
+                                    <h3 className="text-[#EFE7D9] font-playfair font-black text-lg sm:text-xl md:text-2xl leading-tight mb-1">The</h3>
+                                    <h3 className="text-[#EFE7D9] font-playfair font-black text-lg sm:text-xl md:text-2xl italic leading-tight mb-3">Menu</h3>
+                                    <div className="w-8 h-px bg-[#C9A227]/50 mb-3" />
+                                    <span className="text-[#D43425] font-playfair italic text-sm sm:text-base">H&P</span>
+                                </div>
+                                {/* Decorative Corner Details */}
+                                <div className="absolute top-3 right-3 w-3 h-3 border-t border-r border-[#C9A227]/30" />
+                                <div className="absolute bottom-3 right-3 w-3 h-3 border-b border-r border-[#C9A227]/30" />
+                            </div>
+                            {/* Book Shadow */}
+                            <div className="absolute -bottom-2 left-2 right-2 h-4 bg-black/30 rounded-full blur-md group-hover:blur-lg transition-all" />
                         </div>
-                        <p className="text-[#D43425]/60 text-[9px] sm:text-[10px] uppercase tracking-[0.2em] sm:tracking-[0.3em] mt-3 sm:mt-4">Kitchen Garden</p>
-                    </div>
+                        <p className="text-[#EFE7D9]/80 text-[9px] sm:text-[10px] uppercase tracking-[0.25em] mt-5 group-hover:text-[#EFE7D9] transition-colors">The Menu Ledger</p>
+                    </button>
                 </div>
             </section>
 
+            {/* PREMIUM BOOK SPLASH SCREEN TRANSITION */}
+            {isTransitioning && (
+                <div className="fixed inset-0 z-[500] bg-[#3D2329] flex items-center justify-center overflow-hidden animate-in fade-in duration-500">
+                    <div className="relative perspective-2000 w-64 h-80 sm:w-80 sm:h-96">
+                        {/* 3D Book Animation Container */}
+                        <div className="w-full h-full relative preserve-3d">
+                            {/* Inner Pages (Stay flat) */}
+                            <div className="absolute inset-0 bg-[#F5F0EC] rounded-r-lg shadow-inner flex flex-col items-center justify-center p-8 text-center">
+                                <span className="text-[#C9A227] font-playfair italic text-2xl mb-4">H&P</span>
+                                <div className="w-12 h-px bg-[#C9A227]/30 mb-6" />
+                                <p className="text-[#3D2329]/60 font-playfair italic text-sm sm:text-base leading-relaxed">
+                                    "Turning the page to a<br />new chapter of luxury..."
+                                </p>
+                            </div>
+
+                            {/* Golden Glow emanating from inside */}
+                            <div className="absolute inset-0 bg-[#C9A227]/20 filter blur-3xl animate-book-glow" />
+
+                            {/* Back Cover */}
+                            <div className="absolute inset-0 bg-[#3D2329] rounded-r-lg" style={{ transform: 'translateZ(-1px)' }} />
+
+                            {/* Front Cover (Animates) */}
+                            <div className="absolute inset-0 preserve-3d origin-left animate-book-open">
+                                {/* Outside Content */}
+                                <div className="absolute inset-0 bg-gradient-to-br from-[#4A2C32] via-[#3D2329] to-[#2A181B] rounded-r-lg rounded-l-sm shadow-2xl backface-hidden flex flex-col items-center justify-center border border-[#D43425]/30">
+                                    <div className="absolute inset-4 border border-[#C9A227]/30 rounded-sm" />
+                                    <span className="text-[#C9A227] font-playfair italic text-3xl">H&P</span>
+                                    <div className="mt-4 w-8 h-px bg-[#C9A227]/50" />
+                                </div>
+                                {/* Inside Cover Content */}
+                                <div className="absolute inset-0 bg-[#4A2C32] rounded-l-lg backface-hidden" style={{ transform: 'rotateY(180deg)' }}>
+                                    <div className="absolute inset-4 border border-[#C9A227]/10 rounded-sm" />
+                                </div>
+                                {/* Spine */}
+                                <div className="absolute left-0 top-0 bottom-0 w-6 bg-[#2A181B] origin-left" style={{ transform: 'rotateY(-90deg)' }} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Overall Page Exit Glow */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-transparent via-[#C9A227]/5 to-[#C9A227]/10 pointer-events-none" />
+                </div>
+            )}
+
             {/* DISCOVER EXPERIENCES */}
             <section className="py-12 sm:py-16 md:py-24 px-4 sm:px-6 md:px-12 bg-[#EFE7D9] text-black">
-                <h2 className="text-3xl sm:text-5xl md:text-7xl lg:text-9xl font-playfair font-black italic mb-8 sm:mb-12">Discover experiences</h2>
+                <h2 className="text-3xl sm:text-5xl md:text-7xl lg:text-9xl font-playfair font-semibold italic mb-8 sm:mb-12">Discover experiences</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
                     {[
                         { title: 'Experience the atmosphere.', img: '/images/homepage/chateau.png' },

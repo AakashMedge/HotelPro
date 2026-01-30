@@ -117,7 +117,7 @@ export default function CustomerPage() {
                                 className="block"
                             >
                                 <h1
-                                    className="text-[4rem] md:text-[6.5rem] lg:text-[8rem] font-bold leading-[0.8] tracking-tighter hover:italic transition-all cursor-pointer hover:tracking-normal active:scale-[0.98]"
+                                    className="text-[4rem] md:text-[6.5rem] lg:text-[8rem] font-semibold leading-[0.8] tracking-tighter hover:italic transition-all cursor-pointer hover:tracking-normal active:scale-[0.98]"
                                 >
                                     {link.label}
                                 </h1>
