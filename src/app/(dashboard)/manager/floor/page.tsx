@@ -1,241 +1,327 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 type TableData = {
     id: string;
-    tableCode: string; // T-01
-    status: string;
-    assignedWaiterId: string | null;
-    capacity: number;
+    code: string;
+    status: 'VACANT' | 'ACTIVE' | 'READY' | 'WAITING_FOR_PAYMENT' | 'DIRTY' | string;
+    items: number;
+    waiter: string;
+    updatedAt?: string | null;
 };
 
-type StaffMember = {
-    id: string;
-    name: string;
-    role: string;
-};
-
-export default function FloorManagerPage() {
+export default function FloorIntelligence() {
     const [tables, setTables] = useState<TableData[]>([]);
-    const [waiters, setWaiters] = useState<StaffMember[]>([]);
     const [loading, setLoading] = useState(true);
-
-    // UI State
     const [selectedTable, setSelectedTable] = useState<TableData | null>(null);
-    const [showAddModal, setShowAddModal] = useState(false);
 
-    // Action State
-    const [assigning, setAssigning] = useState(false);
-
-    // New Table Form
-    const [newTable, setNewTable] = useState({ code: '', capacity: '4' });
-
-    const fetchData = async () => {
+    const fetchFloor = useCallback(async () => {
         try {
-            const [tablesRes, staffRes] = await Promise.all([
-                fetch('/api/tables'),
-                fetch('/api/staff')
-            ]);
-
-            const tablesData = await tablesRes.json();
-            const staffData = await staffRes.json();
-
-            if (tablesData.success) setTables(tablesData.tables);
-            if (staffData.success) {
-                setWaiters(staffData.staff.filter((s: any) => s.role === 'WAITER' || s.role === 'ADMIN'));
+            const res = await fetch('/api/manager');
+            const data = await res.json();
+            if (data.success) {
+                // Map floorMonitor from API to local state
+                // Note: API returns id as the number part, but we might want the real id.
+                // Re-fetching tables specifically or adjusting API is better.
+                // For now, let's assume floorMonitor has enough info or adjust API.
+                setTables(data.floorMonitor.map((t: any) => ({
+                    id: t.realId || t.id,
+                    code: t.id,
+                    status: t.status,
+                    items: t.items,
+                    waiter: t.waiter,
+                    updatedAt: t.updatedAt
+                })));
             }
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchData();
+        } catch (e) { console.error(e); }
+        finally { setLoading(false); }
     }, []);
 
-    const handleAssign = async (waiterId: string | null) => {
-        if (!selectedTable) return;
-        setAssigning(true);
+    useEffect(() => {
+        fetchFloor();
+        const interval = setInterval(fetchFloor, 5000);
+        return () => clearInterval(interval);
+    }, [fetchFloor]);
+
+    const handleUpdateStatus = async (tableId: string, newStatus: string) => {
         try {
-            await fetch(`/api/tables/${selectedTable.id}`, {
+            const res = await fetch('/api/manager/tables', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ assignedWaiterId: waiterId })
+                body: JSON.stringify({ id: tableId, status: newStatus })
             });
-            fetchData();
-            setSelectedTable(null);
-        } catch (err) {
-            console.error("Assignment failed", err);
-        } finally {
-            setAssigning(false);
-        }
+            if (res.ok) {
+                fetchFloor();
+                setSelectedTable(null);
+            }
+        } catch (e) { console.error(e); }
     };
 
-    const handleCreateTable = async (e: React.FormEvent) => {
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [newTableCode, setNewTableCode] = useState('');
+    const [newTableCapacity, setNewTableCapacity] = useState(4);
+    const [adding, setAdding] = useState(false);
+
+    const handleAddTable = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!newTableCode) return;
+        setAdding(true);
         try {
             const res = await fetch('/api/tables', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    tableCode: newTable.code.startsWith('T-') ? newTable.code : `T-${newTable.code}`,
-                    capacity: newTable.capacity
-                })
+                body: JSON.stringify({ tableCode: newTableCode, capacity: newTableCapacity })
             });
-            if (res.ok) {
+            const result = await res.json();
+            if (result.success) {
                 setShowAddModal(false);
-                setNewTable({ code: '', capacity: '4' });
-                fetchData();
+                setNewTableCode('');
+                setNewTableCapacity(4);
+                fetchFloor();
+            } else {
+                alert(result.message || result.error || "Failed to add table");
             }
-        } catch (err) {
-            console.error(err);
+        } catch (e) {
+            console.error(e);
+            alert("System link failure.");
+        } finally {
+            setAdding(false);
         }
     };
 
-    if (loading) return <div className="p-10 text-center animate-pulse">Loading Floor Plan...</div>;
+    const handleEmergencyReset = async (tableId: string) => {
+        if (!confirm("CRITICAL ACTION: This will cancel all active orders for this table and force it to VACANT. Proceed?")) return;
+
+        try {
+            const res = await fetch('/api/manager/tables', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: tableId })
+            });
+            if (res.ok) {
+                fetchFloor();
+                setSelectedTable(null);
+            } else {
+                const json = await res.json();
+                alert(`Reset Failed: ${json.error}`);
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Emergency uplink failed.");
+        }
+    };
+
+    if (loading && tables.length === 0) return <div className="p-20 text-center font-black uppercase text-zinc-300 animate-pulse">Scanning Floor Grids...</div>;
+
+    const statusConfig: any = {
+        VACANT: { color: 'bg-green-500', bg: 'bg-green-50', border: 'border-green-100', text: 'text-green-700', label: 'Vacant' },
+        ACTIVE: { color: 'bg-red-500', bg: 'bg-red-50', border: 'border-red-100', text: 'text-red-700', label: 'Occupied' },
+        READY: { color: 'bg-blue-500', bg: 'bg-blue-50', border: 'border-blue-100', text: 'text-blue-700', label: 'Service Ready' },
+        BILL_REQUESTED: { color: 'bg-indigo-500', bg: 'bg-indigo-50', border: 'border-indigo-100', text: 'text-indigo-700', label: 'Payment Pending' },
+        DIRTY: { color: 'bg-amber-500', bg: 'bg-amber-50', border: 'border-amber-100', text: 'text-amber-700', label: 'Needs Cleaning' }
+    };
 
     return (
-        <div className="h-full overflow-y-auto p-4 md:p-8 lg:p-10 hide-scrollbar bg-[#FDFCF9]">
-            <div className="max-w-7xl mx-auto space-y-8 pb-32">
+        <div className="h-full bg-[#FDFCF9] p-6 lg:p-10 overflow-y-auto">
+            <div className="max-w-6xl mx-auto space-y-10 pb-32">
 
-                <div className="flex justify-between items-end border-b border-zinc-100 pb-6">
+                {/* Header & Legends */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-end border-b border-zinc-200/50 pb-8 gap-6">
                     <div>
-                        <h2 className="text-3xl font-black tracking-tighter uppercase text-zinc-900">Floor Layout</h2>
-                        <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mt-1">Configure & Assign</p>
+                        <h1 className="text-4xl font-black text-zinc-900 tracking-tighter uppercase mb-2">Floor Blueprint</h1>
+                        <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest italic">Live Occupancy & Service Flow Indicator</p>
                     </div>
-                    <button
-                        onClick={() => setShowAddModal(true)}
-                        className="bg-[#D43425] text-white px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-zinc-900 transition-colors shadow-lg shadow-red-500/20"
-                    >
-                        + New Table
-                    </button>
+
+                    <div className="flex flex-wrap items-center gap-6">
+                        <button
+                            onClick={() => setShowAddModal(true)}
+                            className="bg-zinc-900 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#D43425] transition-all shadow-lg shadow-zinc-200"
+                        >
+                            + Expand Floor
+                        </button>
+                        <div className="flex flex-wrap gap-4 border-l border-zinc-100 pl-6 ml-2">
+                            {Object.entries(statusConfig).map(([key, cfg]: any) => (
+                                <div key={key} className="flex items-center gap-2">
+                                    <div className={`w-3 h-3 rounded-full ${cfg.color}`} />
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">{cfg.label}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+                {/* Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
                     {tables.map(table => {
-                        const assignedWaiter = waiters.find(w => w.id === table.assignedWaiterId);
-
+                        const cfg = statusConfig[table.status] || statusConfig.VACANT;
                         return (
-                            <button
-                                key={table.id}
-                                onClick={() => setSelectedTable(table)}
-                                className={`
-                                    relative p-6 rounded-2xl border-2 flex flex-col items-center text-center gap-2 transition-all active:scale-95 group
-                                    ${table.assignedWaiterId
-                                        ? 'bg-zinc-900 border-zinc-900 text-white shadow-xl'
-                                        : 'bg-white border-dashed border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-600'}
+                            <motion.button
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                                key={table.code}
+                                onClick={() => {
+                                    setSelectedTable(table);
+                                }}
+                                className={`aspect-square rounded-4xl border-2 ${cfg.bg} ${cfg.border} flex flex-col items-center justify-center relative transition-all hover:shadow-xl group
+                                    ${table.status === 'READY' && table.updatedAt && (Date.now() - new Date(table.updatedAt).getTime() > 600000) ? 'ring-4 ring-red-500 animate-pulse' : ''}
+                                    ${table.status === 'READY' && table.updatedAt && (Date.now() - new Date(table.updatedAt).getTime() > 300000 && Date.now() - new Date(table.updatedAt).getTime() <= 600000) ? 'ring-4 ring-amber-500 animate-pulse' : ''}
                                 `}
                             >
-                                <span className="text-3xl font-black tracking-tighter">{table.tableCode}</span>
-
-                                <div className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${table.assignedWaiterId ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-400'
-                                    }`}>
-                                    {assignedWaiter ? assignedWaiter.name : 'UNASSIGNED'}
+                                <div className={`absolute top-6 right-6 w-3 h-3 rounded-full ${cfg.color} ${table.status === 'READY' ? 'animate-ping' : ''}`} />
+                                <span className={`text-4xl font-black ${cfg.text} tracking-tighter`}>{table.code}</span>
+                                <div className="mt-2 text-center">
+                                    <p className={`text-[10px] font-black uppercase tracking-[0.2em] ${cfg.text} opacity-50`}>{cfg.label}</p>
+                                    {table.waiter && table.status !== 'VACANT' && (
+                                        <p className="text-[8px] font-bold text-zinc-400 uppercase mt-1">Staff: {table.waiter}</p>
+                                    )}
+                                    {table.status === 'READY' && table.updatedAt && (
+                                        <p className="text-[10px] font-black text-red-600 mt-1">
+                                            {Math.floor((Date.now() - new Date(table.updatedAt).getTime()) / 60000)}m WAITING
+                                        </p>
+                                    )}
                                 </div>
-
-                                <span className="absolute top-4 right-4 text-[8px] font-bold opacity-50">{table.capacity} SEATS</span>
-                            </button>
+                            </motion.button>
                         );
                     })}
                 </div>
-
             </div>
 
-            {/* ASSIGNMENT / EDIT MODAL */}
-            {selectedTable && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200 space-y-8">
-                        <div className="text-center">
-                            <h3 className="text-4xl font-black text-zinc-900 uppercase tracking-tighter">Table {selectedTable.tableCode}</h3>
-                            <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mt-2">{selectedTable.capacity} Seat Capacity</p>
-                        </div>
+            {/* SIDE DRAWER / MODAL FOR SELECTED TABLE */}
+            <AnimatePresence>
+                {selectedTable && (
+                    <div className="fixed inset-0 z-100 flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ y: 50, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            className="bg-white w-full max-w-sm rounded-[2.5rem] p-10 shadow-2xl border border-zinc-100"
+                        >
+                            <div className="text-center mb-8">
+                                <div className="text-[10px] font-black text-zinc-300 uppercase tracking-widest mb-1">Authorization Terminal</div>
+                                <h3 className="text-4xl font-black text-zinc-900 uppercase tracking-tighter">Table {selectedTable.code}</h3>
+                                <div className="mt-2 flex justify-center">
+                                    <span className={`px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${statusConfig[selectedTable.status]?.bg} ${statusConfig[selectedTable.status]?.text}`}>
+                                        Currently {selectedTable.status}
+                                    </span>
+                                </div>
+                            </div>
 
-                        <div className="space-y-4">
-                            <h4 className="text-xs font-black text-zinc-900 uppercase tracking-widest border-b border-zinc-100 pb-2">Assign Waiter</h4>
-                            <div className="grid grid-cols-2 gap-3 max-h-[200px] overflow-y-auto hide-scrollbar">
-                                <button
-                                    onClick={() => handleAssign(null)}
-                                    disabled={assigning}
-                                    className={`p-3 rounded-xl border-2 border-dashed border-zinc-200 text-[10px] font-black uppercase tracking-widest hover:bg-zinc-50 ${!selectedTable.assignedWaiterId ? 'bg-zinc-100 border-zinc-300' : ''}`}
-                                >
-                                    No Assignment
-                                </button>
-                                {waiters.map(w => (
+                            <div className="space-y-3">
+                                <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest text-center mb-4">Manual Override Status</p>
+
+                                {selectedTable.status === 'DIRTY' && (
                                     <button
-                                        key={w.id}
-                                        onClick={() => handleAssign(w.id)}
-                                        disabled={assigning}
-                                        className={`p-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedTable.assignedWaiterId === w.id
-                                            ? 'bg-zinc-900 text-white ring-2 ring-zinc-900 ring-offset-2'
-                                            : 'bg-zinc-50 text-zinc-600 hover:bg-zinc-200'
-                                            }`}
+                                        onClick={() => handleUpdateStatus(selectedTable.id, 'VACANT')}
+                                        className="w-full py-5 bg-green-500 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-green-600 transition-all shadow-lg shadow-green-100"
                                     >
-                                        {w.name}
+                                        Mark as Cleaned
                                     </button>
-                                ))}
-                            </div>
-                        </div>
+                                )}
 
-                        <div className="pt-6 border-t border-zinc-100 flex justify-between items-center">
-                            <button
-                                onClick={() => setSelectedTable(null)}
-                                className="text-[10px] font-black text-zinc-400 hover:text-black uppercase tracking-widest"
-                            >
-                                Close
-                            </button>
-                            {/* Future: Add Delete Table Button Here */}
-                        </div>
-                    </div>
-                </div>
-            )}
+                                {selectedTable.status === 'VACANT' && (
+                                    <button
+                                        onClick={() => handleUpdateStatus(selectedTable.id, 'ACTIVE')}
+                                        className="w-full py-5 bg-red-500 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-red-600 transition-all shadow-lg shadow-red-100"
+                                    >
+                                        Manually Occupy
+                                    </button>
+                                )}
 
-            {/* ADD TABLE MODAL */}
-            {showAddModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
-                        <h3 className="text-2xl font-black text-zinc-900 uppercase tracking-tighter mb-6">Add Table</h3>
-                        <form onSubmit={handleCreateTable} className="space-y-4">
-                            <div>
-                                <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Table Code</label>
-                                <input
-                                    className="w-full bg-zinc-50 border border-zinc-200 p-3 rounded-xl font-bold text-zinc-900"
-                                    placeholder="e.g. 15"
-                                    value={newTable.code}
-                                    onChange={e => setNewTable({ ...newTable, code: e.target.value })}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Capacity</label>
-                                <input
-                                    type="number"
-                                    className="w-full bg-zinc-50 border border-zinc-200 p-3 rounded-xl font-bold text-zinc-900"
-                                    value={newTable.capacity}
-                                    onChange={e => setNewTable({ ...newTable, capacity: e.target.value })}
-                                />
-                            </div>
-                            <div className="pt-4 flex gap-3">
+                                {['ACTIVE', 'READY', 'BILL_REQUESTED'].includes(selectedTable.status) && (
+                                    <div className="space-y-4">
+                                        <div className="p-4 bg-zinc-50 rounded-2xl text-center space-y-2">
+                                            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Active Session Locked</p>
+                                            <p className="text-xs font-medium text-zinc-500 italic">This table has an open order. Manual status change is restricted.</p>
+                                        </div>
+
+                                        <div className="pt-4 border-t border-zinc-100">
+                                            <p className="text-[9px] font-black text-red-400 uppercase tracking-widest text-center mb-3">Manager Danger Zone</p>
+                                            <button
+                                                onClick={() => handleEmergencyReset(selectedTable.id)}
+                                                className="w-full py-4 bg-white border-2 border-red-50 text-red-500 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-red-50 transition-all"
+                                            >
+                                                Emergency Force Reset
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <button
-                                    type="button"
-                                    onClick={() => setShowAddModal(false)}
-                                    className="flex-1 py-3 text-[10px] font-black text-zinc-400 hover:text-zinc-900 uppercase tracking-widest"
+                                    onClick={() => setSelectedTable(null)}
+                                    className="w-full py-4 text-[10px] font-black text-zinc-300 uppercase tracking-widest hover:text-zinc-600"
                                 >
                                     Cancel
                                 </button>
-                                <button
-                                    type="submit"
-                                    className="flex-2 bg-[#D43425] text-white py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-700 transition-colors"
-                                >
-                                    Create Table
-                                </button>
                             </div>
-                        </form>
+                        </motion.div>
                     </div>
-                </div>
-            )}
+                )}
+            </AnimatePresence>
+
+            {/* ADD TABLE MODAL */}
+            <AnimatePresence>
+                {showAddModal && (
+                    <div className="fixed inset-0 z-100 flex items-center justify-center p-6 bg-black/60 backdrop-blur-md">
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-white w-full max-w-md rounded-[3rem] p-12 shadow-2xl border border-zinc-100"
+                        >
+                            <div className="text-center mb-10">
+                                <h3 className="text-3xl font-black text-zinc-900 uppercase tracking-tighter">Expand Operations</h3>
+                                <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mt-2">Provisioning New Service Terminal</p>
+                            </div>
+
+                            <form onSubmit={handleAddTable} className="space-y-6">
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest ml-4">Table Designation (e.g. 10, T-05)</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={newTableCode}
+                                        onChange={(e) => setNewTableCode(e.target.value)}
+                                        placeholder="Identification Code"
+                                        className="w-full px-6 py-5 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold uppercase tracking-widest focus:ring-2 ring-[#D43425]/10 outline-none transition-all"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest ml-4">Capacity (Guests)</label>
+                                    <input
+                                        type="number"
+                                        required
+                                        min="1"
+                                        max="20"
+                                        value={newTableCapacity}
+                                        onChange={(e) => setNewTableCapacity(parseInt(e.target.value))}
+                                        className="w-full px-6 py-5 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold tracking-widest outline-none"
+                                    />
+                                </div>
+
+                                <div className="flex gap-4 pt-6">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAddModal(false)}
+                                        className="flex-1 py-5 text-[10px] font-black text-zinc-400 uppercase tracking-widest hover:text-zinc-600 transition-all"
+                                    >
+                                        Abort
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={adding}
+                                        className="flex-2 py-5 bg-zinc-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-[#D43425] transition-all shadow-xl shadow-zinc-200 disabled:opacity-50"
+                                    >
+                                        {adding ? 'Provisioning...' : 'Confirm Grid Entry'}
+                                    </button>
+                                </div>
+                            </form>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

@@ -9,7 +9,7 @@
  */
 
 import { prisma } from "@/lib/db";
-import type { Session } from "@/generated/prisma";
+import type { Session } from "@prisma/client";
 
 /**
  * Get session duration from environment (defaults to 8 hours).

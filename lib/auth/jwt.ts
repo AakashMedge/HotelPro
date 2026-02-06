@@ -12,7 +12,7 @@
  */
 
 import { SignJWT, jwtVerify, JWTPayload } from "jose";
-import type { UserRole } from "@/generated/prisma";
+import type { UserRole } from "@prisma/client";
 
 /**
  * JWT payload structure for HotelPro authentication.
@@ -22,6 +22,8 @@ export interface AuthTokenPayload extends JWTPayload {
     sub: string;
     /** User's role (ADMIN, MANAGER, WAITER, KITCHEN, CASHIER) */
     role: UserRole;
+    /** Client's database ID (Tenant) */
+    clientId: string;
     /** Session ID for revocation support */
     sessionId: string;
     /** Issued at timestamp */
@@ -61,16 +63,14 @@ function getSessionDurationMs(): number {
  * 
  * @param userId - The user's database ID (User.id)
  * @param role - The user's role (UserRole enum)
+ * @param clientId - The client's database ID
  * @param sessionId - The session ID from the Session table
  * @returns Signed JWT string
- * 
- * @example
- * const session = await createSession(user.id);
- * const token = await signToken(user.id, user.role, session.id);
  */
 export async function signToken(
     userId: string,
     role: UserRole,
+    clientId: string,
     sessionId: string
 ): Promise<string> {
     const secret = getJwtSecret();
@@ -79,6 +79,7 @@ export async function signToken(
 
     const token = await new SignJWT({
         role,
+        clientId,
         sessionId,
     })
         .setProtectedHeader({ alg: "HS256" })

@@ -8,16 +8,18 @@
 import { cookies } from "next/headers";
 import { verifyToken, validateSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import type { UserRole } from "@/generated/prisma";
+import type { UserRole, ClientPlan } from "@prisma/client";
 
 /**
  * Current user information available after authentication
  */
 export interface CurrentUser {
     id: string;
+    clientId: string;
     username: string;
     name: string;
     role: UserRole;
+    plan: ClientPlan; // Added for Feature Gating
 }
 
 /**
@@ -50,15 +52,21 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
             return null;
         }
 
-        // Get user from database
+        // Get user from database with client plan
         const user = await prisma.user.findUnique({
             where: { id: payload.sub },
             select: {
                 id: true,
+                clientId: true,
                 username: true,
                 name: true,
                 role: true,
                 isActive: true,
+                client: {
+                    select: {
+                        plan: true
+                    }
+                }
             },
         });
 
@@ -67,11 +75,18 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
             return null;
         }
 
+        // Cross-verify that the user's clientId matches the JWT clientId
+        if (user.clientId !== payload.clientId) {
+            return null;
+        }
+
         return {
             id: user.id,
+            clientId: user.clientId,
             username: user.username,
             name: user.name,
             role: user.role,
+            plan: user.client.plan,
         };
     } catch {
         return null;

@@ -9,7 +9,7 @@
  * during development hot reloads.
  */
 
-import { PrismaClient } from "@/generated/prisma";
+import { PrismaClient } from "@prisma/client";
 // Force refresh after schema change
 import { PrismaNeon } from "@prisma/adapter-neon";
 

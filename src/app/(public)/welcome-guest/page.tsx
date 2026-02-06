@@ -11,8 +11,12 @@ function WelcomeGuestContent() {
     const router = useRouter();
     const queryTable = searchParams.get('table');
 
-    // Step 0: Namaste, 1: Entrance, 3: Table Check, 4: Choice (Step 2 Identity Removed)
+    // Step 0: Namaste, 1: Hotel Check, 2: Entrance, 3: Table Check, 4: Choice
     const [step, setStep] = useState(0);
+    const [hotelName, setHotelName] = useState('');
+    const [hotelData, setHotelData] = useState<any>(null);
+    const [verifyingHotel, setVerifyingHotel] = useState(false);
+
     const [entryType, setEntryType] = useState<'SCAN' | 'BOOK' | null>(queryTable ? 'SCAN' : null);
     const [loadingTable, setLoadingTable] = useState(false);
     const [tableStatus, setTableStatus] = useState<{
@@ -30,16 +34,35 @@ function WelcomeGuestContent() {
     useEffect(() => {
         if (step === 0) {
             const timer = setTimeout(() => {
-                if (queryTable) {
-                    setEntryType('SCAN');
-                    setStep(3); // Direct to Table Check
-                } else {
-                    setStep(1);
-                }
+                setStep(1); // Go to Hotel Search first
             }, 2500);
             return () => clearTimeout(timer);
         }
-    }, [step, queryTable]);
+    }, [step]);
+
+    const verifyHotel = async () => {
+        if (!hotelName) return;
+        setVerifyingHotel(true);
+        try {
+            // We'll call a simple fetch to see if client exists
+            // Or just set the cookie and try to fetch tables
+            document.cookie = `hp-tenant=${hotelName.toLowerCase()}; path=/; max-age=3600`;
+
+            const res = await fetch('/api/tables'); // This will now use the cookie
+            const data = await res.json();
+
+            if (data.success) {
+                setHotelData({ name: hotelName }); // Mocking successful detection
+                setStep(2); // Proceed to choice
+            } else {
+                alert("Hotel not found. Please enter a valid name (e.g. taj)");
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setVerifyingHotel(false);
+        }
+    };
 
     useEffect(() => {
         if (entryType === 'BOOK' && step === 3) {
@@ -67,8 +90,15 @@ function WelcomeGuestContent() {
             const res = await fetch(`/api/tables?code=${code}`);
             const data = await res.json();
             if (data.success && data.tables && data.tables.length > 0) {
-                setTableStatus(data.tables[0]);
-                setFormData(prev => ({ ...prev, tableNo: data.tables[0].tableCode }));
+                const table = data.tables[0];
+                setTableStatus(table);
+                setFormData(prev => ({ ...prev, tableNo: table.tableCode }));
+
+                // CRUCIAL: If the API discovered a hotel for this table, set the cookie 
+                // so subsequent calls to /api/menu and /api/orders work.
+                if (table.clientSlug) {
+                    document.cookie = `hp-tenant=${table.clientSlug}; path=/; max-age=3600`;
+                }
             } else {
                 setTableStatus(null);
             }
@@ -86,7 +116,8 @@ function WelcomeGuestContent() {
             : Math.random().toString(36).substring(2, 15);
 
         // IMPLICIT GUEST ENTRY - Identity collected at Bill Request
-        localStorage.setItem('hp_table_no', tableCode);
+        localStorage.setItem('hp_table_id', tableStatus?.id || '');
+        localStorage.setItem('hp_table_code', tableCode);
         localStorage.setItem('hp_session_id', sessionId);
 
         // Clear any old guest name to ensure we are in anonymous mode
@@ -97,7 +128,6 @@ function WelcomeGuestContent() {
             router.push(`/order-status?id=${tableStatus.activeOrder.id}`);
         } else {
             localStorage.removeItem('hp_active_order_id');
-            // SKIP STEP 4 (Choice) - GO DIRECTLY TO MENU
             router.push('/menu');
         }
     };
@@ -113,6 +143,7 @@ function WelcomeGuestContent() {
                             src="/images/namaste_hands.png"
                             alt="Namaste"
                             fill
+                            sizes="(max-width: 768px) 192px, 288px"
                             className="object-contain"
                             priority
                         />
@@ -122,13 +153,45 @@ function WelcomeGuestContent() {
                 </div>
             )}
 
-            {/* Step 1: Entrance (From Image) */}
+            {/* Step 1: Hotel Identification */}
             {step === 1 && (
+                <div className="w-full max-w-xl animate-in fade-in slide-in-from-bottom-8 duration-1000 flex flex-col items-center">
+                    <div className="relative mb-12 flex flex-col items-center text-center">
+                        <div className="absolute inset-0 bg-[#D43425]/5 rounded-full blur-3xl -z-10" />
+                        <p className="text-[#D43425] text-[10px] md:text-[12px] font-black tracking-[0.5em] uppercase mb-4">Network Activation</p>
+                        <h1 className="text-5xl md:text-7xl font-playfair font-black text-ink leading-none">Find Your<br /><span className="text-[#D43425]">Sanctuary</span></h1>
+                    </div>
+
+                    <div className="w-full max-w-sm space-y-6">
+                        <div className="space-y-2">
+                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest ml-4">Enter Hotel Designation (e.g. taj)</label>
+                            <input
+                                type="text"
+                                placeholder="Identification Code"
+                                className="w-full px-8 py-6 bg-white border-2 border-zinc-100 rounded-4xl text-lg font-black uppercase tracking-widest focus:border-[#D43425] outline-none transition-all shadow-sm"
+                                value={hotelName}
+                                onChange={(e) => setHotelName(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && verifyHotel()}
+                            />
+                        </div>
+                        <button
+                            onClick={verifyHotel}
+                            disabled={verifyingHotel || !hotelName}
+                            className="w-full py-6 bg-zinc-900 text-white rounded-4xl font-black uppercase text-xs tracking-[0.3em] hover:bg-[#D43425] transition-all shadow-xl disabled:opacity-50"
+                        >
+                            {verifyingHotel ? 'Locating...' : 'Authenticate & Enter'}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Step 2: Entrance (Choice) */}
+            {step === 2 && (
                 <div className="w-full max-w-xl animate-in fade-in slide-in-from-bottom-8 duration-1000 flex flex-col items-center">
                     <div className="relative mb-16 flex flex-col items-center text-center">
                         <div className="absolute inset-0 bg-[#D43425]/5 rounded-full blur-3xl -z-10" />
-                        <p className="text-[#D43425] text-[10px] md:text-[12px] font-black tracking-[0.5em] uppercase mb-4">Private Residence</p>
-                        <h1 className="text-6xl md:text-8xl font-playfair font-black text-ink leading-none">HOTEL<br /><span className="text-[#D43425]">PRO</span></h1>
+                        <p className="text-[#D43425] text-[10px] md:text-[12px] font-black tracking-[0.5em] uppercase mb-4">Location Established</p>
+                        <h1 className="text-6xl md:text-8xl font-playfair font-black text-ink leading-none uppercase">{hotelName}<br /><span className="text-[#D43425]">Pro</span></h1>
                         <p className="text-[10px] font-bold uppercase tracking-[0.3em] opacity-40 mt-6 italic">Premium Suite & Elite Hospitality</p>
                     </div>
 

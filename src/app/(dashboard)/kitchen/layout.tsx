@@ -13,9 +13,16 @@ export default function KitchenLayout({
 }) {
     const pathname = usePathname();
     const [mounted, setMounted] = useState(false);
+    const [user, setUser] = useState<{ name: string } | null>(null);
 
     useEffect(() => {
         setMounted(true);
+        fetch('/api/auth/me')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) setUser(data.user);
+            })
+            .catch(console.error);
     }, []);
 
     const navItems = [
@@ -81,7 +88,7 @@ export default function KitchenLayout({
                         </div>
                         <div className="flex items-center gap-3">
                             <div className="flex flex-col items-end">
-                                <span className="text-[10px] font-bold text-[#111111]">Chef Vikram</span>
+                                <span className="text-[10px] font-bold text-[#111111] whitespace-nowrap">{user?.name || 'Chef_Staff'}</span>
                                 <span className="text-[8px] font-medium text-zinc-400 uppercase tracking-widest leading-none">Load: Heavy</span>
                             </div>
                         </div>

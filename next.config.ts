@@ -8,6 +8,42 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'images.unsplash.com',
+        pathname: '**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'masalaandchai.com',
+        pathname: '**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'www.transparenttextures.com',
+        pathname: '**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'cdn.loveandlemons.com',
+        pathname: '**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'loveandlemons.com',
+        pathname: '**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'www.indianhealthyrecipes.com',
+        pathname: '**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'encrypted-tbn0.gstatic.com',
+        pathname: '**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'm.media-amazon.com',
+        pathname: '**',
       },
     ],
   },

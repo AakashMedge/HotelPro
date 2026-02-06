@@ -84,7 +84,7 @@ export default function AIAssistantPage() {
     useEffect(() => {
         if (typeof window !== 'undefined') {
             setGuestName(localStorage.getItem('hp_guest_name') || '');
-            setTableCode(localStorage.getItem('hp_table_no') || '');
+            setTableCode(localStorage.getItem('hp_table_code') || '');
         }
     }, []);
 

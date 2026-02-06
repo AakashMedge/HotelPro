@@ -1,20 +1,15 @@
 /**
- * HotelPro POS Seed Script
- * 
- * Sets up initial data for the system:
- * 1. Roles and Users
- * 2. Tables with capacities
- * 3. Menu Items with categories and descriptions
+ * HotelPro POS Seed Script (Multi-Tenant Edition)
  */
 
-import { PrismaClient } from '../src/generated/prisma';
+import { PrismaClient } from '@prisma/client';
 import { PrismaNeon } from '@prisma/adapter-neon';
 import { neonConfig } from '@neondatabase/serverless';
 import ws from 'ws';
 import bcrypt from 'bcryptjs';
 import 'dotenv/config';
 
-// Configure Neon for Node.js environment
+// 1. Configure Neon for Node.js
 neonConfig.webSocketConstructor = ws;
 
 const connectionString = process.env.DATABASE_URL;
@@ -25,167 +20,176 @@ if (!connectionString) {
 const adapter = new PrismaNeon({ connectionString });
 const prisma = new PrismaClient({ adapter });
 
-/**
- * Test Users
- */
-const TEST_USERS = [
-    { username: "admin", name: "Administrator", role: "ADMIN", password: "password123" },
-    { username: "manager", name: "Floor Manager", role: "MANAGER", password: "password123" },
-    { username: "waiter1", name: "Rajesh Waiter", role: "WAITER", password: "password123" },
-    { username: "waiter2", name: "Sarah Connor", role: "WAITER", password: "password123" },
-    { username: "waiter3", name: "Thomas Anderson", role: "WAITER", password: "password123" },
-    { username: "kitchen1", name: "Chef Khanna", role: "KITCHEN", password: "password123" },
-    { username: "cashier1", name: "Amit Cashier", role: "CASHIER", password: "password123" },
-];
-
-/**
- * Test Tables
- */
-const TEST_TABLES = [
-    { tableCode: "T-01", capacity: 2 },
-    { tableCode: "T-02", capacity: 2 },
-    { tableCode: "T-03", capacity: 4 },
-    { tableCode: "T-04", capacity: 4 },
-    { tableCode: "T-05", capacity: 4 },
-    { tableCode: "T-06", capacity: 6 },
-    { tableCode: "T-07", capacity: 6 },
-    { tableCode: "T-08", capacity: 8 },
-    { tableCode: "T-09", capacity: 2 },
-    { tableCode: "T-10", capacity: 2 },
-    { tableCode: "T-11", capacity: 4 },
-    { tableCode: "T-12", capacity: 4 },
-];
-
-/**
- * Test Menu Items
- */
-const TEST_MENU_ITEMS = [
-    {
-        name: 'Wagyu Beef Tenderloin',
-        category: 'Signature',
-        description: 'Gold-grade Wagyu served with truffle-infused marrow and seasonal baby vegetables.',
-        price: 6800,
-    },
-    {
-        name: 'Perigord Black Truffle Risotto',
-        category: 'Signature',
-        description: 'Acquerello rice slow-cooked with aged parmesan and fresh truffle shavings.',
-        price: 4900,
-    },
-    {
-        name: 'Luxury Tandoori Lobster',
-        category: 'Signature',
-        description: 'Fresh lobster tails marinated in royal spices with an edible gold leaf garnish.',
-        price: 7500,
-    },
-    {
-        name: 'Burrata di Puglia',
-        category: 'Appetizers',
-        description: 'Creamy burrata paired with heirloom tomatoes, aged balsamic, and basil oil.',
-        price: 2200,
-    },
-    {
-        name: 'Saffron Paneer Tikka',
-        category: 'Appetizers',
-        description: 'Charcoal-grilled paneer cubes marinated in premium Kashmiri saffron and yogurt.',
-        price: 1800,
-    },
-    {
-        name: 'Wild-Caught Sea Bass',
-        category: 'Main Course',
-        description: 'Pan-seared Chilean sea bass with lemon-caper reduction and saffron potatoes.',
-        price: 4300,
-    },
-    {
-        name: 'Grand Cru Chocolate Fondant',
-        category: 'Desserts',
-        description: 'Warm dark chocolate souffle center served with Tahitian vanilla bean gelato.',
-        price: 1900,
-    },
-    {
-        name: 'Royal Chai Panna Cotta',
-        category: 'Desserts',
-        description: 'Masala Chai infused cream with cardamom dust and pistachio nut crumble.',
-        price: 1500,
-    },
-    {
-        name: 'Vintage Reserve Red',
-        category: 'Wine & Drinks',
-        description: 'Château de l’Ouest 1995. A full-bodied masterpiece aged in oak barrels.',
-        price: 12000,
-    },
-    {
-        name: 'Imperial Masala Chai',
-        category: 'Wine & Drinks',
-        description: 'Hand-picked tea leaves brewed with royal spices and gold dust.',
-        price: 450,
-    }
-];
-
 async function main() {
-    console.log('--- SEEDING DATABASE ---');
+    console.log('--- SEEDING MULTI-TENANT DATABASE ---');
 
-    // 1. Seed Users
-    console.log('Seeding users...');
-    for (const userData of TEST_USERS) {
-        const hashedPassword = await bcrypt.hash(userData.password, 10);
+    // 1. Create a Platform Admin Client (The HQ)
+    console.log('Creating Platform Management Client...');
+    const hq = await prisma.client.upsert({
+        where: { slug: 'hq' },
+        update: {},
+        create: {
+            name: "HotelPro HQ",
+            slug: "hq",
+            plan: "BUSINESS",
+            status: "ACTIVE"
+        }
+    });
+
+    // 2. Create the Super Admin User
+    console.log('Creating Super Admin User...');
+    const superAdminPassword = await bcrypt.hash('password123', 10);
+    await prisma.user.upsert({
+        where: { username: "superadmin" },
+        update: {},
+        create: {
+            clientId: hq.id,
+            username: "superadmin",
+            name: "Platform Master",
+            passwordHash: superAdminPassword,
+            role: "SUPER_ADMIN" as any,
+        }
+    });
+
+    // 3. Create a Demo Tenant (Hotel Taj)
+    console.log('Creating Demo Tenant: Taj Hotel...');
+    const taj = await prisma.client.upsert({
+        where: { slug: 'taj' },
+        update: {},
+        create: {
+            name: "The Taj Residency",
+            slug: "taj",
+            plan: "PREMIUM",
+            status: "ACTIVE"
+        }
+    });
+
+    // 4. Create Taj Admin & Staff
+    console.log('Creating Taj Staff...');
+    const staffPassword = await bcrypt.hash('password123', 10);
+
+    const tajUsers = [
+        { username: "admin", name: "Taj Administrator", role: "ADMIN" },
+        { username: "manager", name: "Executive Manager", role: "MANAGER" },
+        { username: "waiter1", name: "Senior Waiter", role: "WAITER" },
+        { username: "kitchen1", name: "Head Chef Gordon", role: "KITCHEN" },
+        { username: "cashier1", name: "Main Cashier", role: "CASHIER" },
+        { username: "taj_manager", name: "Taj Manager", role: "MANAGER" },
+        { username: "taj_waiter", name: "Taj Waiter", role: "WAITER" },
+    ];
+
+    for (const u of tajUsers) {
         await prisma.user.upsert({
-            where: { username: userData.username },
-            update: {
-                name: userData.name,
-                role: userData.role as any,
-                passwordHash: hashedPassword,
-            },
+            where: { username: u.username },
+            update: { passwordHash: staffPassword, isActive: true },
             create: {
-                username: userData.username,
-                name: userData.name,
-                role: userData.role as any,
-                passwordHash: hashedPassword,
-            },
+                clientId: taj.id,
+                username: u.username,
+                name: u.name,
+                passwordHash: staffPassword,
+                role: u.role as any,
+            }
         });
     }
 
-    // 2. Seed Tables
-    console.log('Seeding tables...');
-    for (const tableData of TEST_TABLES) {
+    // 5. Taj Settings
+    console.log('Seeding Taj settings...');
+    await prisma.restaurantSettings.upsert({
+        where: { clientId: taj.id },
+        update: {},
+        create: {
+            clientId: taj.id,
+            businessName: "The Taj Residency",
+            gstRate: 5.0,
+            serviceChargeRate: 10.0,
+            currency: "INR",
+            currencySymbol: "₹",
+            primaryColor: "#D43425"
+        }
+    });
+
+    // 6. Taj Tables
+    console.log('Seeding Taj tables...');
+    const tables = ["T-01", "T-02", "T-03", "T-04", "T-05", "T-06"];
+    for (const t of tables) {
         await prisma.table.upsert({
-            where: { tableCode: tableData.tableCode },
-            update: {
-                capacity: tableData.capacity,
-            },
+            where: { clientId_tableCode: { clientId: taj.id, tableCode: t } },
+            update: {},
             create: {
-                tableCode: tableData.tableCode,
-                capacity: tableData.capacity,
-                status: "VACANT",
-            },
+                clientId: taj.id,
+                tableCode: t,
+                capacity: 4,
+                status: "VACANT"
+            }
         });
     }
 
-    // 3. Seed Menu Items
-    console.log('Seeding menu items...');
-    for (const itemData of TEST_MENU_ITEMS) {
-        // Find existing by name to get ID
-        const existing = await prisma.menuItem.findFirst({ where: { name: itemData.name } });
+    // 7. Taj Menu
+    console.log('Seeding Taj Premium Menu...');
 
-        await prisma.menuItem.upsert({
-            where: {
-                id: existing?.id || '00000000-0000-0000-0000-000000000000'
-            },
-            update: {
-                category: itemData.category,
-                description: itemData.description,
-                price: itemData.price,
-                isAvailable: true,
-                deletedAt: null,
-            },
-            create: {
-                name: itemData.name,
-                category: itemData.category,
-                description: itemData.description,
-                price: itemData.price,
-                isAvailable: true,
-            },
+    const categories = [
+        {
+            name: "Signature", items: [
+                { name: "Wagyu Beef Tenderloin", price: 5400, desc: "A5 Grade Wagyu with perigord truffle jus.", isVeg: false, isChefSpecial: true },
+                { name: "Perigord Black Truffle Risotto", price: 3200, desc: "Acquerello rice with 24-month parmesan.", isVeg: true, isChefSpecial: true }
+            ]
+        },
+        {
+            name: "Appetizers", items: [
+                { name: "Burrata di Puglia", price: 1800, desc: "Creamy burrata with heirloom tomatoes.", isVeg: true, isChefSpecial: false },
+                { name: "Luxury Tandoori Lobster", price: 4200, desc: "Atlantic lobster with saffron marinade.", isVeg: false, isChefSpecial: false }
+            ]
+        },
+        {
+            name: "Main Course", items: [
+                { name: "Wild-Caught Sea Bass", price: 3800, desc: "Pan-seared with champagne beurre blanc.", isVeg: false, isChefSpecial: false },
+                { name: "Saffron Paneer Tikka", price: 2100, desc: "Handcrafted paneer with Kashmiri saffron.", isVeg: true, isChefSpecial: false }
+            ]
+        },
+        {
+            name: "Desserts", items: [
+                { name: "Grand Cru Chocolate Fondant", price: 1200, desc: "Valrhona 70% dark chocolate center.", isVeg: true, isChefSpecial: false },
+                { name: "Royal Chai Panna Cotta", price: 950, desc: "Spiced panna cotta with gold leaf.", isVeg: true, isChefSpecial: false }
+            ]
+        },
+        {
+            name: "Wine & Drinks", items: [
+                { name: "Vintage Reserve Red", price: 15000, desc: "Special selection from the cellar.", isVeg: true, isChefSpecial: false },
+                { name: "Imperial Masala Chai", price: 450, desc: "Brewed with fresh ginger and cardamom.", isVeg: true, isChefSpecial: false }
+            ]
+        }
+    ];
+
+    for (const catData of categories) {
+        const cat = await prisma.category.upsert({
+            where: { clientId_name: { clientId: taj.id, name: catData.name } },
+            update: { isActive: true },
+            create: { clientId: taj.id, name: catData.name, isActive: true }
         });
+
+        for (const item of catData.items) {
+            await prisma.menuItem.upsert({
+                where: { id: `demo-${item.name.replace(/\s+/g, '-').toLowerCase()}` }, // Stable ID for demo
+                update: {
+                    price: item.price,
+                    description: item.desc,
+                    isAvailable: true,
+                    isVeg: item.isVeg,
+                    isChefSpecial: !!item.isChefSpecial
+                },
+                create: {
+                    id: `demo-${item.name.replace(/\s+/g, '-').toLowerCase()}`,
+                    clientId: taj.id,
+                    name: item.name,
+                    categoryId: cat.id,
+                    price: item.price,
+                    description: item.desc,
+                    isAvailable: true,
+                    isVeg: item.isVeg,
+                    isChefSpecial: !!item.isChefSpecial
+                }
+            });
+        }
     }
 
     console.log('--- SEEDING COMPLETE ---');

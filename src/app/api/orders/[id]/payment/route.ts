@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getOrderById, OrderError } from "@/lib/services/order";
 import { verifyToken } from "@/lib/auth";
-import type { PaymentMethod } from "@/generated/prisma";
+import type { PaymentMethod } from "@prisma/client";
 
 interface PaymentResponse {
     id: string;
@@ -171,15 +171,27 @@ export async function POST(
                 },
             });
 
+            // Update Staff Performance (Waiter)
+            if (order.table.assignedWaiterId) {
+                await tx.user.update({
+                    where: { id: order.table.assignedWaiterId },
+                    data: {
+                        totalOrders: { increment: 1 },
+                        totalSales: { increment: paymentAmount }
+                    }
+                });
+            }
+
             // Mark the table as DIRTY for cleanup
             await tx.table.update({
-                where: { id: order.tableId },
+                where: { id: order.table.id }, // Using id from order object
                 data: { status: "DIRTY" },
             });
 
             // Audit log
             await tx.auditLog.create({
                 data: {
+                    clientId: order.clientId,
                     action: "PAYMENT_AUTHORIZED",
                     orderId,
                     actorId,
@@ -193,6 +205,7 @@ export async function POST(
 
             await tx.auditLog.create({
                 data: {
+                    clientId: order.clientId,
                     action: "ORDER_CLOSED",
                     orderId,
                     actorId,

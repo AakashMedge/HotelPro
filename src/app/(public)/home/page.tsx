@@ -519,7 +519,7 @@ export default function HomePage() {
 
             {/* DISCOVER EXPERIENCES */}
             <section className="py-12 sm:py-16 md:py-24 px-4 sm:px-6 md:px-12 bg-[#EFE7D9] text-black">
-                <h2 className="text-3xl sm:text-5xl md:text-7xl lg:text-9xl font-playfair font-semibold italic mb-8 sm:mb-12">Discover experiences</h2>
+                <h2 className="text-3xl sm:text-5xl md:text-7xl lg:text-9xl font-playfair font-semibold italic mb-8 sm:mb-12">Discover Experiences</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
                     {[
                         { title: 'Experience the atmosphere.', img: '/images/homepage/chateau.png' },
@@ -527,7 +527,13 @@ export default function HomePage() {
                         { title: 'Indulge in wellness.', img: '/images/homepage/spa.png' },
                     ].map((card) => (
                         <Link key={card.title} href="/customer" className="group relative aspect-[4/3] rounded-[1.5rem] sm:rounded-[2rem] overflow-hidden">
-                            <Image src={card.img} alt={card.title} fill className="object-cover group-hover:scale-105 transition-transform duration-700" />
+                            <Image
+                                src={card.img}
+                                alt={card.title}
+                                fill
+                                sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, 33vw"
+                                className="object-cover group-hover:scale-105 transition-transform duration-700"
+                            />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                             <div className="absolute bottom-6 sm:bottom-8 left-6 sm:left-8 right-6 sm:right-8">
                                 <p className="text-white font-playfair text-xl sm:text-2xl md:text-3xl italic">{card.title}</p>

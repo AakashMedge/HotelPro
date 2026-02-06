@@ -1,14 +1,25 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
 }
 
+model SuperAdmin {
+  id             String     @id @default(uuid())
+  email          String     @unique
+  name           String
+  passwordHash   String
+  lastLogin      DateTime?
+  isActive       Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
 model User {
   id             String     @id @default(uuid())
+  clientId       String     
   username       String     @unique
   name           String
   passwordHash   String
@@ -16,9 +27,17 @@ model User {
   isActive       Boolean    @default(true)
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
+  
+  client         Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
   auditLogs      AuditLog[]
   sessions       Session[]
   assignedTables Table[]
+  
+  // Performance tracking for Command Center
+  totalOrders    Int        @default(0)
+  totalSales     Decimal    @default(0.00) @db.Decimal(12, 2)
+
+  @@index([clientId])
 }
 
 model Session {
@@ -29,31 +48,138 @@ model Session {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model Client {
+  id            String       @id @default(uuid())
+  name          String
+  slug          String       @unique // for subdomain like 'taj'
+  domain        String?      @unique // for custom domain
+  plan          ClientPlan   @default(BASIC)
+  status        ClientStatus @default(TRIAL)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  users         User[]
+  tables        Table[]
+  categories    Category[]
+  menuItems     MenuItem[]
+  orders        Order[]
+  auditLogs     AuditLog[]
+  settings      RestaurantSettings?
+  modifierGroups ModifierGroup[]
+}
+
 model Table {
   id               String      @id @default(uuid())
-  tableCode        String      @unique
+  clientId         String
+  tableCode        String      
   status           TableStatus @default(VACANT)
   assignedWaiterId String?
+  section          String?     // e.g. "Patio", "Main Hall", "VIP"
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
   deletedAt        DateTime?
   capacity         Int         @default(4)
+
+  client           Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
   orders           Order[]
   assignedWaiter   User?       @relation(fields: [assignedWaiterId], references: [id])
+
+  @@unique([clientId, tableCode])
+  @@index([clientId])
+}
+
+model Category {
+  id        String     @id @default(uuid())
+  clientId  String
+  name      String     
+  isActive  Boolean    @default(true)
+  sortOrder Int        @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  client    Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  items     MenuItem[]
+
+  @@unique([clientId, name])
+  @@index([clientId])
 }
 
 model MenuItem {
-  id          String      @id @default(uuid())
+  id          String  @id @default(uuid())
+  clientId    String
   name        String
-  category    String      @default("General")
   description String?
-  price       Decimal     @db.Decimal(10, 2)
-  isAvailable Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  price       Decimal @db.Decimal(10, 2) // Base price
+  
+  // Happy Hour / Surge Pricing
+  specialPrice        Decimal? @db.Decimal(10, 2)
+  isSpecialPriceActive Boolean  @default(false)
+  specialPriceStart   String?  // e.g. "17:00"
+  specialPriceEnd     String?  // e.g. "19:00"
+
+  isAvailable Boolean @default(true)
+  isVeg       Boolean @default(true)
+  isChefSpecial Boolean @default(false)
+  isGlutenFree  Boolean @default(false)
+
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  imageUrl    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
-  inventory   Inventory?
-  orderItems  OrderItem[]
+
+  client         Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  inventory      Inventory?
+  orderItems     OrderItem[]
+  variants       MenuItemVariant[]
+  modifierGroups MenuItemModifierGroup[]
+
+  @@index([clientId])
+}
+
+model MenuItemVariant {
+  id         String   @id @default(uuid())
+  menuItemId String
+  name       String // e.g. "Half", "Full"
+  price      Decimal  @db.Decimal(10, 2)
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+}
+
+model ModifierGroup {
+  id           String                  @id @default(uuid())
+  clientId     String
+  name         String // e.g. "Spiciness", "Add-ons"
+  isRequired   Boolean                 @default(false)
+  minSelection Int                     @default(0)
+  maxSelection Int? // Null means unlimited
+
+  client       Client                  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  options      ModifierOption[]
+  menuItems    MenuItemModifierGroup[]
+
+  @@index([clientId])
+}
+
+model ModifierOption {
+  id              String        @id @default(uuid())
+  modifierGroupId String
+  name            String // e.g. "Mild", "Extra Cheese"
+  price           Decimal       @default(0.00) @db.Decimal(10, 2)
+  isAvailable     Boolean       @default(true)
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+}
+
+model MenuItemModifierGroup {
+  id              String @id @default(uuid())
+  menuItemId      String
+  modifierGroupId String
+  displayOrder    Int    @default(0)
+
+  menuItem      MenuItem      @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  modifierGroup ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([menuItemId, modifierGroupId])
 }
 
 model Inventory {
@@ -64,21 +190,57 @@ model Inventory {
   menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
 }
 
+// Restaurant-wide settings for tax and billing configuration
+model RestaurantSettings {
+  id                  String   @id @default(uuid())
+  clientId            String   @unique
+  businessName        String   @default("HotelPro Royal")
+  gstin               String?  // Tax ID / GSTIN
+  gstRate             Decimal  @default(5.0) @db.Decimal(5, 2) // GST percentage
+  serviceChargeRate   Decimal  @default(5.0) @db.Decimal(5, 2) // Service charge percentage
+  currency            String   @default("INR")
+  currencySymbol      String   @default("₹")
+  
+  // White-Labeling & Branding (Phase 5)
+  primaryColor        String   @default("#0F172A") // Default Slate 900
+  secondaryColor      String   @default("#3B82F6") // Default Blue 500
+  logoUrl             String?
+  bannerUrl           String?
+  brandTagline        String?
+  showBranding        Boolean  @default(true) // Toggle "Powered by HotelPro"
+  
+  updatedAt           DateTime @updatedAt
+
+  client               Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
 model Order {
-  id        String      @id @default(uuid())
-  tableId   String
-  status    OrderStatus @default(NEW)
-  version   Int         @default(1)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  closedAt  DateTime?
-  auditLogs AuditLog[]
+  id           String      @id @default(uuid())
+  clientId     String
+  tableId      String
+  status       OrderStatus @default(NEW)
+  version      Int         @default(1)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  closedAt     DateTime?
   customerName String?
   sessionId    String?
-  table     Table       @relation(fields: [tableId], references: [id])
-  items     OrderItem[]
-  payment   Payment?
+  
+  // Tax & Billing (calculated at order creation, immutable snapshot)
+  subtotal              Decimal?  @db.Decimal(10, 2) // Sum of all item prices
+  gstAmount             Decimal?  @db.Decimal(10, 2) // GST calculated
+  serviceChargeAmount   Decimal?  @db.Decimal(10, 2) // Service charge calculated
+  grandTotal            Decimal?  @db.Decimal(10, 2) // Final payable amount
+  appliedGstRate        Decimal?  @db.Decimal(5, 2)  // Snapshot of GST rate used
+  appliedServiceRate    Decimal?  @db.Decimal(5, 2)  // Snapshot of service rate used
+  
+  client       Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  table        Table       @relation(fields: [tableId], references: [id])
+  items        OrderItem[]
+  payment      Payment?
+  auditLogs    AuditLog[]
 
+  @@index([clientId])
   @@index([tableId])
 }
 
@@ -90,9 +252,15 @@ model OrderItem {
   priceSnapshot Decimal         @db.Decimal(10, 2)
   quantity      Int
   status        OrderItemStatus @default(PENDING)
-  createdAt     DateTime        @default(now())
-  menuItem      MenuItem        @relation(fields: [menuItemId], references: [id])
-  order         Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // New flexible fields for complex orders
+  selectedVariant   Json? // Stores { name: "Full", price: 280 }
+  selectedModifiers Json? // Stores array of { name: "Extra Cheese", price: 50 }
+  notes             String? // Special instructions
+
+  createdAt DateTime @default(now())
+  menuItem  MenuItem @relation(fields: [menuItemId], references: [id])
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
 }
@@ -109,19 +277,37 @@ model Payment {
 
 model AuditLog {
   id        String      @id @default(uuid())
+  clientId  String
   action    AuditAction
   actorId   String?
   orderId   String?
   metadata  Json?
   createdAt DateTime    @default(now())
+
+  client    Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
   actor     User?       @relation(fields: [actorId], references: [id])
   order     Order?      @relation(fields: [orderId], references: [id])
 
+  @@index([clientId])
   @@index([actorId])
   @@index([orderId])
 }
 
+enum ClientPlan {
+  BASIC
+  ADVANCE
+  PREMIUM
+  BUSINESS
+}
+
+enum ClientStatus {
+  ACTIVE
+  SUSPENDED
+  TRIAL
+}
+
 enum UserRole {
+  SUPER_ADMIN
   ADMIN
   MANAGER
   WAITER
@@ -144,12 +330,15 @@ enum OrderStatus {
   SERVED
   BILL_REQUESTED
   CLOSED
+  CANCELLED // Added for better tracking
 }
 
 enum OrderItemStatus {
   PENDING
   PREPARING
   READY
+  SERVED
+  CANCELLED
 }
 
 enum PaymentMethod {
@@ -161,6 +350,7 @@ enum PaymentMethod {
 enum PaymentStatus {
   PENDING
   PAID
+  FAILED
 }
 
 enum AuditAction {
@@ -169,4 +359,14 @@ enum AuditAction {
   STATUS_CHANGED
   PAYMENT_AUTHORIZED
   ORDER_CLOSED
+  ITEM_CANCELLED
+  
+  // Platform & Security
+  LOGIN_SUCCESS
+  LOGIN_FAILURE
+  CLIENT_CREATED
+  PLAN_CHANGED
+  UNAUTHORIZED_ACCESS
+  SETTING_CHANGED
+  SENSITIVE_DELETE
 }

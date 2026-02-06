@@ -1,6 +1,7 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { OrderStatus, TableStatus } from "@/generated/prisma";
+import { requireRole } from "@/lib/auth";
 
 /**
  * GET /api/manager
@@ -9,27 +10,31 @@ import { OrderStatus, TableStatus } from "@/generated/prisma";
  */
 export async function GET(request: NextRequest) {
     try {
-        // 1. Fetch all tables
+        const user = await requireRole(["MANAGER", "ADMIN"]);
+        const clientId = user.clientId;
+
+        // 1. Fetch all tables for this tenant
         const tables = await prisma.table.findMany({
-            where: { deletedAt: null },
+            where: { clientId, deletedAt: null },
             include: {
                 assignedWaiter: {
                     select: { name: true }
                 },
                 orders: {
-                    where: { status: { not: "CLOSED" } },
+                    where: { clientId, status: { not: "CLOSED" } },
                     include: {
                         items: true
                     },
                     orderBy: { updatedAt: 'desc' },
                     take: 1
                 }
-            }
+            },
+            orderBy: { tableCode: 'asc' }
         });
 
-        // 2. Fetch all active orders
+        // 2. Fetch all active orders for this tenant
         const activeOrders = await prisma.order.findMany({
-            where: { status: { not: "CLOSED" } },
+            where: { clientId, status: { not: "CLOSED" } },
             orderBy: { createdAt: 'asc' }
         });
 
@@ -39,6 +44,7 @@ export async function GET(request: NextRequest) {
 
         const closedOrdersToday = await prisma.order.findMany({
             where: {
+                clientId,
                 status: "CLOSED",
                 updatedAt: { gte: today }
             },
@@ -46,30 +52,41 @@ export async function GET(request: NextRequest) {
         });
 
         const todayRevenue = closedOrdersToday.reduce((sum, order) => {
-            return sum + order.items.reduce((ordSum, item) => ordSum + Number(item.priceSnapshot), 0);
+            return sum + order.items.reduce((ordSum, item) => ordSum + (Number(item.priceSnapshot) * item.quantity), 0);
         }, 0);
 
-        // 2c. Calculate Top Items (Simple aggregation)
+        // 2c. Calculate Top Items
         const itemCounts: Record<string, number> = {};
         closedOrdersToday.forEach(order => {
             order.items.forEach(item => {
-                itemCounts[item.itemName] = (itemCounts[item.itemName] || 0) + 1;
+                itemCounts[item.itemName] = (itemCounts[item.itemName] || 0) + item.quantity;
             });
         });
 
         const topItems = Object.entries(itemCounts)
             .sort(([, a], [, b]) => b - a)
-            .slice(0, 3)
+            .slice(0, 5) // Top 5
             .map(([name, count]) => ({ name, count }));
 
         // 3. Calculate Stats
+        const lowStockCount = await prisma.menuItem.count({
+            where: {
+                clientId,
+                deletedAt: null,
+                inventory: {
+                    quantity: { lte: 10 }
+                }
+            }
+        });
+
         const stats = {
             active: tables.filter(t => t.status === "ACTIVE").length,
             ready: activeOrders.filter(o => o.status === "READY").length,
-            payment: activeOrders.filter(o => o.status === "SERVED").length,
+            payment: activeOrders.filter(o => o.status === "BILL_REQUESTED").length,
             kitchen: activeOrders.filter(o => ["NEW", "PREPARING"].includes(o.status)).length,
             revenue: todayRevenue,
-            maxWait: "0m"
+            maxWait: "0m",
+            lowStockCount
         };
 
         if (activeOrders.length > 0) {
@@ -83,15 +100,18 @@ export async function GET(request: NextRequest) {
             const activeOrder = table.orders[0];
             return {
                 id: table.tableCode.replace('T-', ''),
-                status: activeOrder?.status || 'VACANT',
+                realId: table.id, // THE UUID
+                status: activeOrder?.status || table.status, // Priority: Order Status > Table Status
                 waiter: table.assignedWaiter?.name || (activeOrder ? 'Staff' : '---'),
                 items: activeOrder?.items.length || 0,
-                lastUpdate: activeOrder ? getTimeAgo(activeOrder.updatedAt) : '--'
+                lastUpdate: activeOrder ? getTimeAgo(activeOrder.updatedAt) : '--',
+                updatedAt: activeOrder ? activeOrder.updatedAt.toISOString() : null
             };
         });
 
-        // 5. Audit Feed (recent order changes)
+        // 5. Audit Feed
         const auditFeed = await prisma.auditLog.findMany({
+            where: { clientId },
             take: 10,
             orderBy: { createdAt: 'desc' },
             include: {
@@ -104,9 +124,9 @@ export async function GET(request: NextRequest) {
             msg: formatAuditMsg(log)
         }));
 
-        // 6. Staff Roster (summary)
+        // 6. Staff Roster
         const staff = await prisma.user.findMany({
-            where: { isActive: true },
+            where: { clientId, isActive: true },
             select: { id: true, name: true, role: true }
         });
 
@@ -120,8 +140,8 @@ export async function GET(request: NextRequest) {
                 id: s.id,
                 name: s.name,
                 role: s.role,
-                status: 'ONLINE', // Simplification for demo
-                shift: '00:00:00' // Placeholder
+                status: 'ONLINE',
+                shift: '00:00:00'
             }))
         });
 
@@ -146,6 +166,7 @@ function formatAuditMsg(log: any) {
         case 'ORDER_CREATED': return `T_${metadata?.tableCode || '??'} Committed`;
         case 'STATUS_CHANGED': return `T_${metadata?.tableCode || '??'} -> ${metadata?.newStatus}`;
         case 'ORDER_CLOSED': return `T_${metadata?.tableCode || '??'} Settled`;
+        case 'PAYMENT_AUTHORIZED': return `PKT_${metadata?.tableCode || '??'} ₹${metadata?.amount} Authorised`;
         default: return `${log.action} processed`;
     }
 }

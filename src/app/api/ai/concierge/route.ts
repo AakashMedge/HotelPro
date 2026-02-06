@@ -1,7 +1,22 @@
 import { prisma } from '@/lib/db';
+import { getTenantFromRequest } from '@/lib/tenant';
+import { isFeatureEnabled, Feature } from '@/lib/subscription';
 
 export async function POST(req: Request) {
     try {
+        // 1. Detect Tenant & Verify Feature Access
+        const tenant = await getTenantFromRequest();
+        if (!tenant) {
+            return new Response(JSON.stringify({ error: "Hotel identity required" }), { status: 400 });
+        }
+
+        if (!isFeatureEnabled(tenant.plan as any, Feature.AI_CONCIERGE)) {
+            return new Response(JSON.stringify({
+                error: "Tier Upgrade Required",
+                message: "The AI Concierge is available only on Premium plans."
+            }), { status: 403 });
+        }
+
         const { messages, guestName, tableCode } = await req.json();
         const apiKey = process.env.GROQ_API_KEY;
 
@@ -9,13 +24,16 @@ export async function POST(req: Request) {
             return new Response(JSON.stringify({ error: "Configuration Error: Missing GROQ_API_KEY" }), { status: 500 });
         }
 
-        // 1. Context Injection: Fetch Menu
+        // 2. Context Injection: Fetch Menu (Tenant Isolated)
         const menuItems = await prisma.menuItem.findMany({
-            where: { isAvailable: true },
-            select: { id: true, name: true, category: true, description: true, price: true }
+            where: {
+                clientId: tenant.id,
+                isAvailable: true
+            },
+            select: { id: true, name: true, category: { select: { name: true } }, description: true, price: true }
         });
 
-        // 2. Construct Prompt
+        // 3. Construct Prompt
         const lastUserMessage = messages[messages.length - 1].content;
 
         const systemPrompt = `

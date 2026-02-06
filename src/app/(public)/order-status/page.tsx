@@ -15,14 +15,22 @@ interface OrderItem {
     name: string;
     qty: number;
     price: number;
+    // Expanded
+    variant?: { name: string; price: number };
+    modifiers?: { name: string; price: number }[];
+    notes?: string;
 }
 
 interface OrderData {
     id: string;
     status: string;
-    total: number;
     version: number;
     items: OrderItem[];
+    // Financial Breakdown
+    subtotal: number;
+    gstAmount: number;
+    serviceChargeAmount: number;
+    grandTotal: number;
 }
 
 interface ApiResponse {
@@ -57,7 +65,8 @@ function OrderStatusContent() {
         { label: 'Chef Preparing', description: 'Crafting your masterpieces with precision.' },
         { label: 'Quality Check', description: 'Ensuring every detail meets our standards.' },
         { label: 'Ready for Service', description: 'Your culinary journey is arriving shortly.' },
-        { label: 'Served', description: 'The masterpiece has arrived. Enjoy your meal.' }
+        { label: 'Served', description: 'The masterpiece has arrived. Enjoy your meal.' },
+        { label: 'Settled', description: 'Transaction complete. Thank you for visiting us.' }
     ];
 
     // ============================================
@@ -73,10 +82,15 @@ function OrderStatusContent() {
 
             if (!data.success || !data.order) throw new Error(data.error || 'Order not found');
 
-            // Identity Isolation Check: Hide old orders (null sessionId) or mismatched ones
+            // Relaxed Identity Check: Allow viewing if session matches OR if this is the user's active order
             const savedSessionId = localStorage.getItem('hp_session_id');
-            if (data.order.sessionId !== savedSessionId) {
-                console.warn('[ORDER STATUS] Identity mismatch or legacy order. Hiding.');
+            const savedOrderId = localStorage.getItem('hp_active_order_id');
+            const sessionMatches = data.order.sessionId && data.order.sessionId === savedSessionId;
+            const orderIdMatches = orderId === savedOrderId;
+
+            // Allow access if either condition is true (graceful fallback)
+            if (!sessionMatches && !orderIdMatches) {
+                console.warn('[ORDER STATUS] Neither session nor order ID matches. Hiding order.');
                 setOrder(null);
                 setLoading(false);
                 return;
@@ -86,13 +100,19 @@ function OrderStatusContent() {
             setOrder({
                 id: o.id,
                 status: o.status,
-                total: o.total,
                 version: o.version,
+                subtotal: o.subtotal,
+                gstAmount: o.gstAmount,
+                serviceChargeAmount: o.serviceChargeAmount,
+                grandTotal: o.grandTotal,
                 items: o.items.map((item: any) => ({
                     id: item.id,
                     name: item.itemName,
                     qty: item.quantity,
-                    price: item.price
+                    price: item.price,
+                    variant: item.selectedVariant,
+                    modifiers: item.selectedModifiers,
+                    notes: item.notes
                 }))
             });
 
@@ -104,9 +124,18 @@ function OrderStatusContent() {
                 case 'SERVED': setStep(4); break; // Move to the final 'Served' step
                 case 'BILL_REQUESTED': setStep(4); break;
                 case 'CLOSED':
+                    // NUCLEAR SESSION CLEAR: Remove all hotelpro related data
                     localStorage.removeItem('hp_active_order_id');
                     localStorage.removeItem('hp_session_id');
-                    router.replace('/welcome-guest');
+                    localStorage.removeItem('hp_guest_name');
+                    localStorage.removeItem('hp_table_id');
+                    localStorage.removeItem('hp_table_code');
+
+                    // Show a quick success signal then redirect
+                    setStep(5); // New dummy state for success
+                    setTimeout(() => {
+                        router.replace('/welcome-guest');
+                    }, 3000);
                     break;
                 default: setStep(0);
             }
@@ -156,6 +185,20 @@ function OrderStatusContent() {
         return (
             <main className="min-h-screen bg-vellum flex flex-col items-center justify-center">
                 <div className="w-8 h-8 border-4 border-zinc-200 border-t-[#D43425] rounded-full animate-spin" />
+            </main>
+        );
+    }
+
+    if (step === 5) {
+        return (
+            <main className="min-h-screen bg-[#3D2329] flex flex-col items-center justify-center p-6 text-center text-[#EFE7D9] animate-in fade-in duration-1000">
+                <div className="w-32 h-32 mb-8 relative animate-bounce">
+                    <Image src="/images/namaste_hands.png" alt="Thank You" fill sizes="128px" className="object-contain" />
+                </div>
+                <h1 className="text-5xl font-playfair font-black italic mb-4">Dhanyavad.</h1>
+                <p className="text-xs font-black uppercase tracking-[0.4em] opacity-60">Payment Confirmed &bull; Journey Finalized</p>
+                <div className="mt-12 w-12 h-px bg-[#D43425]" />
+                <p className="mt-8 text-[10px] font-bold uppercase tracking-widest opacity-40">Redirecting to Sanctuary...</p>
             </main>
         );
     }
@@ -237,101 +280,111 @@ function OrderStatusContent() {
 
                                     <div className="space-y-4 px-2 font-playfair">
                                         {order.items.map(item => (
-                                            <div key={item.id} className="flex justify-between text-base">
-                                                <span className="font-bold text-ink/70">{item.qty}x {item.name}</span>
-                                                <span className="font-black text-ink tabular-nums">₹{(item.price * item.qty).toLocaleString()}</span>
+                                            <div key={item.id} className="text-base flex flex-col pb-3 border-b border-dashed border-ink/5 last:border-0 last:pb-0">
+                                                <div className="flex justify-between">
+                                                    <span className="font-bold text-ink/70">{item.qty}x {item.name}</span>
+                                                    <span className="font-black text-ink tabular-nums">₹{(item.price * item.qty).toLocaleString()}</span>
+                                                </div>
+                                                {/* Variants/Modifiers */}
+                                                <div className="pl-6 text-[10px] text-ink/40 font-sans font-bold uppercase tracking-wider space-y-0.5 mt-1">
+                                                    {item.variant && <div>{item.variant.name}</div>}
+                                                    {item.modifiers?.map((m, midx) => (
+                                                        <div key={midx}>+ {m.name}</div>
+                                                    ))}
+                                                    {item.notes && <div className="italic text-ink/30 mt-1 lowercase first-letter:uppercase">"{item.notes}"</div>}
+                                                </div>
                                             </div>
                                         ))}
 
                                         <div className="pt-4 border-t border-ink/5 space-y-2 text-[10px] uppercase font-bold tracking-widest opacity-40">
                                             <div className="flex justify-between">
                                                 <span>Sub-Total</span>
-                                                <span>₹{order.total.toLocaleString()}</span>
+                                                <span>₹{order.subtotal.toLocaleString()}</span>
                                             </div>
                                             <div className="flex justify-between">
-                                                <span>GST (5%)</span>
-                                                <span>₹{(order.total * 0.05).toLocaleString()}</span>
+                                                <span>GST</span>
+                                                <span>₹{order.gstAmount.toLocaleString()}</span>
                                             </div>
                                             <div className="flex justify-between">
-                                                <span>Imperial Service (5%)</span>
-                                                <span>₹{(order.total * 0.05).toLocaleString()}</span>
+                                                <span>Imperial Service</span>
+                                                <span>₹{order.serviceChargeAmount.toLocaleString()}</span>
                                             </div>
                                         </div>
-
-                                        <div className="pt-4 border-t-2 border-ink/10 flex justify-between items-baseline">
-                                            <span className="text-sm font-black uppercase tracking-widest opacity-30">Total Value</span>
-                                            <span className="text-3xl font-black text-[#D43425] tabular-nums">₹{(order.total * 1.1).toLocaleString()}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="pt-6 space-y-4">
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <Link
-                                            href="/menu?append=true"
-                                            className="flex items-center justify-center py-5 bg-white text-[#111111] rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-zinc-50 transition-all shadow-md border border-zinc-100"
-                                        >
-                                            + Add Extra
-                                        </Link>
-                                        <button
-                                            onClick={handleRequestWaiter}
-                                            className="py-5 bg-[#3D2329] text-[#EFE7D9] rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-[#D43425] transition-all shadow-md border border-[#D43425]/30"
-                                        >
-                                            {isRequesting ? "Summoning..." : "Call Waiter"}
-                                        </button>
                                     </div>
 
-                                    {['SERVED', 'READY'].includes(order.status) && (
-                                        <button
-                                            onClick={() => {
-                                                const savedName = localStorage.getItem('hp_guest_name');
-                                                if (!savedName) {
-                                                    setShowIdentityModal(true);
-                                                } else {
-                                                    // Proceed directly
-                                                    setIsRequesting(true);
-                                                    fetch(`/api/orders/${order.id}`, {
-                                                        method: 'PATCH',
-                                                        headers: { 'Content-Type': 'application/json' },
-                                                        body: JSON.stringify({ status: 'BILL_REQUESTED', version: order.version })
-                                                    }).then(res => {
-                                                        if (res.ok) fetchOrderStatus();
-                                                        setTimeout(() => setIsRequesting(false), 2000);
-                                                    });
-                                                }
-                                            }}
-                                            className="w-full py-5 bg-[#D43425] text-white rounded-2xl font-black text-xs uppercase tracking-[0.4em] hover:bg-black transition-all transform active:scale-95 shadow-xl border border-white/10"
-                                        >
-                                            {isRequesting ? "Requesting..." : "Request Final Bill"}
-                                        </button>
-                                    )}
-
-                                    <div className="flex items-center justify-center gap-3 py-4 opacity-30">
-                                        <div className="h-px grow bg-ink" />
-                                        <span className="text-[8px] font-black uppercase tracking-[0.5em]">Finis</span>
-                                        <div className="h-px grow bg-ink" />
+                                    <div className="pt-4 border-t-2 border-ink/10 flex justify-between items-baseline">
+                                        <span className="text-sm font-black uppercase tracking-widest opacity-30">Total Value</span>
+                                        <span className="text-3xl font-black text-[#D43425] tabular-nums">₹{order.grandTotal.toLocaleString()}</span>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="bg-[#EFE7D9] p-6 flex items-center gap-4 border-t border-ink/5">
-                                <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-lg border border-[#D43425]/20">
-                                    <div className="text-[#D43425] font-black text-[10px]">
-                                        {step < 4 ? "EST" : "✓"}
-                                    </div>
+                            <div className="pt-6 space-y-4 px-10 pb-10">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <Link
+                                        href="/menu?append=true"
+                                        className="flex items-center justify-center py-5 bg-white text-[#111111] rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-zinc-50 transition-all shadow-md border border-zinc-100"
+                                    >
+                                        + Add Extra
+                                    </Link>
+                                    <button
+                                        onClick={handleRequestWaiter}
+                                        className="py-5 bg-[#3D2329] text-[#EFE7D9] rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-[#D43425] transition-all shadow-md border border-[#D43425]/30"
+                                    >
+                                        {isRequesting ? "Summoning..." : "Call Waiter"}
+                                    </button>
                                 </div>
-                                <div className="flex flex-col">
-                                    <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-ink/70 leading-relaxed italic">
-                                        {step < 2 ? "Chef is currently hand-crafting your selection." :
-                                            step < 4 ? "Final plating and quality inspection in progress." :
-                                                "Your journey is complete. We hope you enjoyed it."}
-                                    </p>
-                                    {step < 4 && (
-                                        <span className="text-[8px] font-black text-[#D43425] uppercase tracking-widest mt-1">
-                                            Arrival Prediction: ~{step === 0 ? '15-20' : step === 1 ? '8-12' : '3-5'} Minutes
-                                        </span>
-                                    )}
+
+                                {['SERVED', 'READY'].includes(order.status) && (
+                                    <button
+                                        onClick={() => {
+                                            const savedName = localStorage.getItem('hp_guest_name');
+                                            if (!savedName) {
+                                                setShowIdentityModal(true);
+                                            } else {
+                                                // Proceed directly
+                                                setIsRequesting(true);
+                                                fetch(`/api/orders/${order.id}`, {
+                                                    method: 'PATCH',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ status: 'BILL_REQUESTED', version: order.version })
+                                                }).then(res => {
+                                                    if (res.ok) fetchOrderStatus();
+                                                    setTimeout(() => setIsRequesting(false), 2000);
+                                                });
+                                            }
+                                        }}
+                                        className="w-full py-5 bg-[#D43425] text-white rounded-2xl font-black text-xs uppercase tracking-[0.4em] hover:bg-black transition-all transform active:scale-95 shadow-xl border border-white/10"
+                                    >
+                                        {isRequesting ? "Requesting..." : "Request Final Bill"}
+                                    </button>
+                                )}
+
+                                <div className="flex items-center justify-center gap-3 py-4 opacity-30">
+                                    <div className="h-px grow bg-ink" />
+                                    <span className="text-[8px] font-black uppercase tracking-[0.5em]">Finis</span>
+                                    <div className="h-px grow bg-ink" />
                                 </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-[#EFE7D9] p-6 flex items-center gap-4 mt-6 rounded-3xl border border-ink/5 shadow-inner">
+                            <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-lg border border-[#D43425]/20">
+                                <div className="text-[#D43425] font-black text-[10px]">
+                                    {step < 4 ? "EST" : "✓"}
+                                </div>
+                            </div>
+                            <div className="flex flex-col">
+                                <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-ink/70 leading-relaxed italic">
+                                    {step < 2 ? "Chef is currently hand-crafting your selection." :
+                                        step < 4 ? "Final plating and quality inspection in progress." :
+                                            "Your journey is complete. We hope you enjoyed it."}
+                                </p>
+                                {step < 4 && (
+                                    <span className="text-[8px] font-black text-[#D43425] uppercase tracking-widest mt-1">
+                                        Arrival Prediction: ~{step === 0 ? '15-20' : step === 1 ? '8-12' : '3-5'} Minutes
+                                    </span>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -361,6 +414,7 @@ function OrderStatusContent() {
                                 alt="Service Concierge"
                                 fill
                                 priority
+                                sizes="(max-width: 768px) 160px, 224px"
                                 className="object-contain animate-float mix-blend-multiply brightness-110 contrast-125"
                             />
                         </div>
@@ -375,8 +429,8 @@ function OrderStatusContent() {
 
             {/* IDENTITY MODAL FOR BILLING */}
             {showIdentityModal && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-vellum w-full max-w-sm rounded-[2rem] p-8 shadow-2xl border border-[#D43425]/20 animate-in zoom-in-05 duration-300">
+                <div className="fixed inset-0 z-100 flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="bg-vellum w-full max-w-sm rounded-4xl p-8 shadow-2xl border border-[#D43425]/20 animate-in zoom-in-05 duration-300">
                         <div className="text-center mb-6">
                             <h2 className="text-3xl font-playfair font-black text-ink italic">The Final Touch</h2>
                             <p className="text-[10px] font-bold uppercase tracking-widest text-[#D43425] mt-2">Who shall we address this bill to?</p>

@@ -12,7 +12,7 @@ import {
     OrderError,
 } from "@/lib/services/order";
 import { verifyToken } from "@/lib/auth";
-import type { OrderStatus } from "@/generated/prisma";
+import type { OrderStatus } from "@prisma/client";
 
 // ============================================
 // Response Types
@@ -34,7 +34,11 @@ interface OrderResponse {
     status: string;
     version: number;
     items: OrderItemResponse[];
-    total: number;
+    total: number; // For backward compatibility
+    subtotal: number;
+    gstAmount: number;
+    serviceChargeAmount: number;
+    grandTotal: number;
     createdAt: string;
     closedAt?: string;
     customerName: string | null;
@@ -91,7 +95,11 @@ export async function GET(
                 quantity: item.quantity,
                 status: item.status,
             })),
-            total,
+            total: Number((order as any).grandTotal || total),
+            subtotal: Number((order as any).subtotal || total),
+            gstAmount: Number((order as any).gstAmount || 0),
+            serviceChargeAmount: Number((order as any).serviceChargeAmount || 0),
+            grandTotal: Number((order as any).grandTotal || total),
             createdAt: order.createdAt.toISOString(),
             closedAt: order.closedAt?.toISOString(),
             customerName: order.customerName,
@@ -159,7 +167,7 @@ export async function PATCH(
             );
         }
 
-        const { status, version } = body as { status: OrderStatus; version: number };
+        const { status, version, customerName } = body as { status: OrderStatus; version: number; customerName?: string };
 
         // Validate status
         const validStatuses: OrderStatus[] = ["NEW", "PREPARING", "READY", "SERVED", "BILL_REQUESTED", "CLOSED"];
@@ -186,8 +194,8 @@ export async function PATCH(
             );
         }
 
-        // Update order
-        const order = await updateOrderStatus(id, status, version, actorId);
+        // Update order (now supports customerName for billing flow)
+        const order = await updateOrderStatus(id, status, version, actorId, customerName);
 
         // Calculate total
         const total = order.items.reduce((sum, item) => {
@@ -209,6 +217,10 @@ export async function PATCH(
                 status: item.status,
             })),
             total,
+            subtotal: Number((order as any).subtotal || total),
+            gstAmount: Number((order as any).gstAmount || 0),
+            serviceChargeAmount: Number((order as any).serviceChargeAmount || 0),
+            grandTotal: Number((order as any).grandTotal || total),
             createdAt: order.createdAt.toISOString(),
             closedAt: order.closedAt?.toISOString(),
             customerName: order.customerName,

@@ -11,15 +11,20 @@ export async function GET() {
         const stockItems = await prisma.menuItem.findMany({
             where: { deletedAt: null },
             include: {
-                inventory: true
+                inventory: true,
+                category: true
             },
-            orderBy: { category: 'asc' }
+            orderBy: {
+                category: {
+                    name: 'asc'
+                }
+            }
         });
 
         const formattedItems = stockItems.map(item => ({
             id: item.id,
             name: item.name,
-            category: item.category,
+            category: item.category?.name || 'General',
             quantity: item.inventory?.quantity || 0,
             isAvailable: item.isAvailable, // Added availability status
             unit: 'pcs',

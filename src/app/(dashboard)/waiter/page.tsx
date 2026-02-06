@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -68,10 +69,8 @@ export default function WaiterDashboard() {
                     ...t,
                     order: oData.orders?.find((o: any) => o.tableCode === t.tableCode)
                 }));
-
-                if (uData.success && uData.user.role === 'WAITER') {
-                    mapped = mapped.filter((t: any) => t.assignedWaiterId === uData.user.id);
-                }
+                // Sort by table code
+                mapped.sort((a: any, b: any) => a.tableCode.localeCompare(b.tableCode, undefined, { numeric: true }));
 
                 setTables(mapped);
             }
@@ -124,13 +123,13 @@ export default function WaiterDashboard() {
         const orderStatus = table.order?.status;
         const tableStatus = table.status;
 
-        if (tableStatus === 'DIRTY') return { id: 'DIRTY', label: 'Cleaning', accent: '#71717A', text: 'text-zinc-500' };
-        if (orderStatus === 'READY') return { id: 'READY', label: 'Ready', accent: '#22C55E', text: 'text-green-600' };
-        if (orderStatus === 'BILL_REQUESTED') return { id: 'BILL_REQ', label: 'Bill', accent: '#EF4444', text: 'text-red-500' };
-        if (orderStatus === 'SERVED') return { id: 'SERVED', label: 'Eating', accent: '#3B82F6', text: 'text-blue-500' };
-        if (orderStatus === 'NEW' || orderStatus === 'PREPARING') return { id: 'ACTIVE', label: 'Preparing', accent: '#F59E0B', text: 'text-amber-600' };
+        if (tableStatus === 'DIRTY') return { id: 'DIRTY', label: 'Needs Cleaning', accent: '#F59E0B', text: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100' };
+        if (orderStatus === 'READY') return { id: 'READY', label: 'Order Ready', accent: '#22C55E', text: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200 shadow-lg shadow-green-100' };
+        if (orderStatus === 'BILL_REQUESTED') return { id: 'BILL_REQ', label: 'Bill Requested', accent: '#D43425', text: 'text-red-500', bg: 'bg-red-50', border: 'border-red-100' };
+        if (orderStatus === 'SERVED') return { id: 'SERVED', label: 'Guest Dining', accent: '#3D2329', text: 'text-zinc-600', bg: 'bg-zinc-50', border: 'border-zinc-100' };
+        if (orderStatus === 'NEW' || orderStatus === 'PREPARING') return { id: 'ACTIVE', label: 'Chef Preparing', accent: '#3B82F6', text: 'text-blue-500', bg: 'bg-blue-50', border: 'border-blue-100' };
 
-        return { id: 'VACANT', label: 'Vacant', accent: '#E4E4E7', text: 'text-zinc-300' };
+        return { id: 'VACANT', label: 'Vacant', accent: '#E4E4E7', text: 'text-zinc-300', bg: 'bg-white', border: 'border-zinc-100' };
     };
 
     const filteredTables = useMemo(() => {
@@ -153,25 +152,27 @@ export default function WaiterDashboard() {
 
     if (!mounted) return null;
 
-    return (
-        <div className="h-full bg-white flex flex-col overflow-hidden">
+    if (loading && tables.length === 0) return <div className="p-20 text-center font-black uppercase text-zinc-300 animate-pulse">Syncing Waiter Terminal...</div>;
 
-            {/* MINIMALIST HEADER INFO */}
-            <div className="px-6 py-6 border-b border-zinc-100 shrink-0">
-                <div className="flex items-center justify-between mb-6">
+    return (
+        <div className="h-full bg-[#FDFCF9] flex flex-col overflow-hidden font-sans">
+
+            {/* HEADER */}
+            <header className="px-8 py-8 border-b border-zinc-100 shrink-0 bg-white">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div>
-                        <h1 className="text-xl font-bold text-[#111111] tracking-tight">Tables</h1>
-                        <p className="text-[10px] text-zinc-400 font-medium uppercase tracking-widest mt-1">
-                            {tables.filter(t => t.status !== 'VACANT').length} occupied &bull; {currentUser?.name}
+                        <h1 className="text-3xl font-black text-zinc-900 tracking-tighter uppercase">Service Deck</h1>
+                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em] mt-1">
+                            Authorized: {currentUser?.name || 'Staff'} &bull; Station Alpha
                         </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex bg-zinc-100 p-1 rounded-xl">
                         {(['ALL', 'READY', 'ACTIVE', 'DIRTY'] as const).map(filter => (
                             <button
                                 key={filter}
                                 onClick={() => setActiveFilter(filter)}
-                                className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all ${activeFilter === filter ? 'bg-[#111111] text-white shadow-sm' : 'bg-zinc-50 text-zinc-400 hover:text-zinc-600'}`}
+                                className={`px-5 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeFilter === filter ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-400 hover:text-zinc-600'}`}
                             >
                                 {filter}
                             </button>
@@ -179,28 +180,28 @@ export default function WaiterDashboard() {
                     </div>
                 </div>
 
-                {/* SUBTLE ALERTS */}
                 <AnimatePresence>
                     {(notification || outOfStockItems.length > 0) && (
                         <motion.div
                             initial={{ opacity: 0, y: -10 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="bg-zinc-50 rounded-xl p-3 flex items-center justify-between border border-zinc-100"
+                            exit={{ opacity: 0 }}
+                            className="mt-6 bg-zinc-950 text-white rounded-2xl p-4 flex items-center justify-between border border-white/10"
                         >
-                            <div className="flex items-center gap-3">
-                                <div className={`w-1.5 h-1.5 rounded-full ${outOfStockItems.length > 0 ? 'bg-amber-500' : 'bg-green-500'}`} />
-                                <span className="text-[10px] font-bold text-[#111111] uppercase tracking-wider">
-                                    {notification || `Inventory Alert: ${outOfStockItems.join(', ')}`}
+                            <div className="flex items-center gap-4">
+                                <div className={`w-2 h-2 rounded-full ${outOfStockItems.length > 0 ? 'bg-amber-500 animate-pulse' : 'bg-green-500'}`} />
+                                <span className="text-[10px] font-black uppercase tracking-wider">
+                                    {notification || `Stock Warning: ${outOfStockItems.join(', ')}`}
                                 </span>
                             </div>
-                            <button onClick={() => setNotification(null)} className="text-[10px] font-bold text-zinc-400 hover:text-[#111111]">Hide</button>
+                            <button onClick={() => setNotification(null)} className="text-[9px] font-black text-zinc-500 hover:text-white uppercase tracking-widest">Acknowledge</button>
                         </motion.div>
                     )}
                 </AnimatePresence>
-            </div>
+            </header>
 
             {/* TABLE GRID */}
-            <div className="grow overflow-y-auto px-6 py-8 no-scrollbar pb-32">
+            <main className="grow overflow-y-auto px-8 py-10 no-scrollbar pb-32">
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
                     <AnimatePresence mode="popLayout">
                         {filteredTables.map((table) => {
@@ -208,40 +209,53 @@ export default function WaiterDashboard() {
                             const isUpdating = updatingTableId === table.id;
 
                             return (
-                                <motion.div key={table.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                                    <Link
-                                        href={theme.id === 'VACANT' || theme.id === 'DIRTY' ? '#' : `/waiter/table/${table.id}`}
-                                        className={`group block p-5 rounded-2xl border transition-all ${isUpdating ? 'opacity-50' : ''} ${theme.id === 'VACANT' ? 'bg-white border-zinc-100' : 'bg-white border-zinc-200 shadow-sm'}`}
-                                    >
+                                <motion.div
+                                    key={table.id}
+                                    layout
+                                    initial={{ scale: 0.9, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    className="relative"
+                                >
+                                    <div className={`p-6 rounded-[2.5rem] border-2 transition-all flex flex-col h-full ${isUpdating ? 'opacity-50' : ''} ${theme.bg} ${theme.border}`}>
                                         <div className="flex items-center justify-between mb-4">
-                                            <span className="text-2xl font-bold tracking-tighter text-[#111111]">{table.tableCode}</span>
-                                            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: theme.accent }} />
+                                            <span className={`text-4xl font-black tracking-tighter ${theme.id === 'VACANT' ? 'text-zinc-200' : 'text-zinc-900'}`}>{table.tableCode.replace('T-', '')}</span>
+                                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: theme.accent }} />
                                         </div>
 
-                                        <div className="flex flex-col gap-1">
-                                            <span className={`text-[9px] font-bold uppercase tracking-widest ${theme.text}`}>{theme.label}</span>
-                                            <span className="text-[8px] font-medium text-zinc-300 uppercase tracking-widest leading-none">
-                                                {table.capacity} Seats
-                                            </span>
+                                        <div className="mb-8">
+                                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.text}`}>{theme.label}</p>
+                                            <p className="text-[8px] font-bold text-zinc-400 uppercase mt-1">Capacity: {table.capacity}</p>
                                         </div>
 
-                                        {/* SIMPLE ACTIONS */}
-                                        <div className="mt-6 border-t border-zinc-50 pt-4">
-                                            {theme.id === 'DIRTY' ? (
-                                                <button onClick={(e) => handleMarkCleaned(e, table.id)} className="w-full text-center text-[10px] font-bold text-[#111111] uppercase tracking-widest py-1 bg-zinc-50 rounded-lg">Reset</button>
+                                        {/* ACTIONS */}
+                                        <div className="mt-auto space-y-2">
+                                            {theme.id === 'VACANT' ? (
+                                                <Link
+                                                    href={`/menu?tableId=${table.id}&staffMode=true`}
+                                                    className="block w-full text-center text-[10px] font-black text-white bg-zinc-900 uppercase tracking-widest py-4 rounded-2xl hover:bg-[#D43425] transition-colors"
+                                                >
+                                                    Take Order
+                                                </Link>
+                                            ) : theme.id === 'DIRTY' ? (
+                                                <button onClick={(e) => handleMarkCleaned(e, table.id)} className="w-full text-center text-[10px] font-black text-white bg-amber-500 uppercase tracking-widest py-4 rounded-2xl">Mark Clean</button>
                                             ) : theme.id === 'READY' ? (
-                                                <button onClick={(e) => handleMarkServed(e, table)} className="w-full text-center text-[10px] font-bold text-green-600 uppercase tracking-widest py-1 bg-green-50 rounded-lg">Serve</button>
+                                                <button onClick={(e) => handleMarkServed(e, table)} className="w-full text-center text-[10px] font-black text-white bg-green-500 uppercase tracking-widest py-4 rounded-2xl shadow-lg shadow-green-100">Serve Plate</button>
                                             ) : (
-                                                <div className="w-4 h-px bg-zinc-100" />
+                                                <Link
+                                                    href={`/waiter/table/${table.id}`}
+                                                    className="block w-full text-center text-[10px] font-black text-zinc-500 bg-white border border-zinc-100 uppercase tracking-widest py-4 rounded-2xl hover:bg-zinc-50"
+                                                >
+                                                    View Details
+                                                </Link>
                                             )}
                                         </div>
-                                    </Link>
+                                    </div>
                                 </motion.div>
                             );
                         })}
                     </AnimatePresence>
                 </div>
-            </div>
+            </main>
 
             <style jsx global>{`
                 .no-scrollbar::-webkit-scrollbar { display: none; }

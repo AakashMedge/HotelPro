@@ -114,44 +114,51 @@ export default function KitchenInventory() {
             {/* INVENTORY GRID */}
             <div className="grow overflow-y-auto px-6 py-8 no-scrollbar pb-32">
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-                    {filteredItems.map(item => {
-                        const isLow = item.quantity <= item.threshold;
-                        const is86 = !item.isAvailable;
-                        return (
-                            <div
-                                key={item.id}
-                                className={`p-5 rounded-2xl border transition-all ${is86 ? 'opacity-40 grayscale' : 'bg-white border-zinc-100 shadow-sm'}`}
-                            >
-                                <div className="flex items-start justify-between mb-4">
-                                    <div className="grow">
-                                        <h3 className="text-sm font-bold text-[#111111] truncate">{item.name}</h3>
-                                        <span className="text-[9px] font-bold text-zinc-300 uppercase tracking-widest">{item.category}</span>
+                    <AnimatePresence>
+                        {filteredItems.map(item => {
+                            const isLow = item.quantity <= item.threshold;
+                            const is86 = !item.isAvailable;
+                            return (
+                                <motion.div
+                                    layout
+                                    initial={{ opacity: 0, scale: 0.9 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    key={item.id}
+                                    className={`p-6 rounded-4xl border transition-all relative flex flex-col group ${is86 ? 'bg-zinc-50 border-zinc-100 opacity-60' : 'bg-white border-zinc-100 shadow-sm hover:shadow-xl hover:-translate-y-1'}`}
+                                >
+                                    <div className="flex items-start justify-between mb-4">
+                                        <div className="grow min-w-0">
+                                            <h3 className={`text-xs font-black uppercase tracking-tight truncate ${is86 ? 'text-zinc-400' : 'text-zinc-900'}`}>{item.name}</h3>
+                                            <span className="text-[9px] font-bold text-zinc-300 uppercase tracking-widest">{item.category}</span>
+                                        </div>
+                                        {isLow && !is86 && (
+                                            <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)] animate-pulse" />
+                                        )}
                                     </div>
-                                    {isLow && !is86 && <div className="w-1.5 h-1.5 rounded-full bg-red-500" />}
-                                </div>
 
-                                <div className="flex items-baseline gap-1 mb-6">
-                                    <span className={`text-2xl font-bold tracking-tighter ${isLow ? 'text-red-500' : 'text-[#111111]'}`}>{item.quantity}</span>
-                                    <span className="text-[10px] font-bold text-zinc-300 uppercase">{item.unit}</span>
-                                </div>
+                                    <div className="flex items-baseline gap-1 mt-auto py-4">
+                                        <span className={`text-3xl font-black tracking-tighter tabular-nums ${isLow ? 'text-red-500' : 'text-zinc-900'}`}>{item.quantity}</span>
+                                        <span className="text-[10px] font-black text-zinc-300 uppercase">{item.unit}</span>
+                                    </div>
 
-                                <div className="pt-4 border-t border-zinc-50 flex gap-2">
-                                    <button
-                                        onClick={() => handleAdjust(item.id, item.quantity)}
-                                        className="flex-1 py-1.5 bg-zinc-50 rounded-lg text-[9px] font-bold uppercase text-zinc-400 hover:text-[#111111]"
-                                    >
-                                        Edit
-                                    </button>
-                                    <button
-                                        onClick={() => toggle86(item.id, item.isAvailable)}
-                                        className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold uppercase transition-colors ${is86 ? 'bg-red-600 text-white' : 'bg-[#111111] text-white'}`}
-                                    >
-                                        {is86 ? 'In' : '86'}
-                                    </button>
-                                </div>
-                            </div>
-                        );
-                    })}
+                                    <div className="flex gap-2 pt-4 border-t border-zinc-50">
+                                        <button
+                                            onClick={() => handleAdjust(item.id, item.quantity)}
+                                            className="flex-1 py-2.5 bg-zinc-50 rounded-xl text-[9px] font-black uppercase tracking-widest text-zinc-400 hover:text-black transition-colors"
+                                        >
+                                            Qty
+                                        </button>
+                                        <button
+                                            onClick={() => toggle86(item.id, item.isAvailable)}
+                                            className={`flex-1 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${is86 ? 'bg-red-600 text-white shadow-lg shadow-red-200' : 'bg-zinc-900 text-white hover:bg-black'}`}
+                                        >
+                                            {is86 ? 'In' : '86'}
+                                        </button>
+                                    </div>
+                                </motion.div>
+                            );
+                        })}
+                    </AnimatePresence>
                 </div>
             </div>
 

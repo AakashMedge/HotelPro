@@ -83,16 +83,23 @@ export async function POST(
             );
         }
 
-        // 2. Find user by username
+        // 2. Find user by username with client info
         const user = await prisma.user.findUnique({
             where: { username: username.toLowerCase().trim() },
             select: {
                 id: true,
+                clientId: true,
                 username: true,
                 name: true,
                 passwordHash: true,
                 role: true,
                 isActive: true,
+                client: {
+                    select: {
+                        status: true,
+                        name: true
+                    }
+                }
             },
         });
 
@@ -122,13 +129,22 @@ export async function POST(
             );
         }
 
-        // 6. Create session in database
+        // 6. CHECK CLIENT STATUS (New for SaaS multi-tenancy)
+        // Block login if client/restaurant is suspended
+        if (user.client.status === 'SUSPENDED') {
+            return NextResponse.json(
+                { success: false, error: "Restaurant account is suspended. Please contact support." },
+                { status: 403 }
+            );
+        }
+
+        // 7. Create session in database
         const session = await createSession(user.id);
 
-        // 7. Sign JWT token
-        const token = await signToken(user.id, user.role, session.id);
+        // 8. Sign JWT token (includes clientId for tenant isolation)
+        const token = await signToken(user.id, user.role, user.clientId, session.id);
 
-        // 8. Build response with user info
+        // 9. Build response with user info
         const response = NextResponse.json<LoginSuccessResponse>(
             {
                 success: true,

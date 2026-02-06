@@ -10,6 +10,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 type LineItem = {
     name: string;
     qty: number;
+    // New Fields
+    variant?: { name: string };
+    modifiers?: { name: string }[];
+    notes?: string;
 };
 
 type Ticket = {
@@ -54,7 +58,13 @@ export default function KitchenKDS() {
                 fullId: order.id,
                 table: order.tableCode.replace('T-', ''),
                 status: order.status,
-                items: order.items.map(i => ({ name: i.itemName, qty: i.quantity })),
+                items: order.items.map(i => ({
+                    name: i.itemName,
+                    qty: i.quantity,
+                    variant: i.selectedVariant,
+                    modifiers: i.selectedModifiers,
+                    notes: i.notes
+                })),
                 createdAt: new Date(order.createdAt).getTime(),
                 version: order.version,
             }));
@@ -150,7 +160,7 @@ export default function KitchenKDS() {
                                     layout
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
-                                    className={`p-5 rounded-2xl border transition-all ${isUpdating ? 'opacity-50' : ''} ${isLate ? 'border-red-100 bg-red-50/20' : 'border-zinc-100 bg-white shadow-sm'}`}
+                                    className={`p-5 rounded-2xl border transition-all flex flex-col ${isUpdating ? 'opacity-50' : ''} ${isLate ? 'border-red-100 bg-red-50/20' : 'border-zinc-100 bg-white shadow-sm'}`}
                                 >
                                     <div className="flex items-center justify-between mb-4">
                                         <div className="flex flex-col">
@@ -163,29 +173,57 @@ export default function KitchenKDS() {
                                         </div>
                                     </div>
 
-                                    <div className="space-y-2 mb-6 min-h-[80px]">
+                                    <div className="space-y-4 mb-6 grow">
                                         {ticket.items.map((item, i) => (
-                                            <div key={i} className="flex items-start gap-3">
-                                                <span className="text-xs font-bold text-[#111111] bg-zinc-50 px-1.5 py-0.5 rounded-md">{item.qty}</span>
-                                                <span className="text-xs font-medium text-zinc-600 uppercase tracking-tight mt-0.5">{item.name}</span>
+                                            <div key={i} className="flex flex-col gap-1 border-b border-dashed border-zinc-100 pb-2 last:border-0">
+                                                <div className="flex items-start gap-3">
+                                                    <span className="text-xs font-bold text-[#111111] bg-zinc-50 px-1.5 py-0.5 rounded-md shrink-0">{item.qty}</span>
+                                                    <span className="text-xs font-bold text-zinc-800 uppercase tracking-tight mt-0.5">{item.name}</span>
+                                                </div>
+
+                                                {/* MODIFICATIONS DISPLAY */}
+                                                {(item.variant || (item.modifiers && item.modifiers.length > 0) || item.notes) && (
+                                                    <div className="pl-9 space-y-1">
+                                                        {/* Variant Tag */}
+                                                        {item.variant && (
+                                                            <div className="inline-block bg-zinc-100 text-zinc-600 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider mr-1">
+                                                                {item.variant.name}
+                                                            </div>
+                                                        )}
+
+                                                        {/* Modifiers List */}
+                                                        {item.modifiers?.map((mod, idx) => (
+                                                            <div key={idx} className="flex items-center gap-1 text-[10px] font-medium text-red-500">
+                                                                <span>• {mod.name}</span>
+                                                            </div>
+                                                        ))}
+
+                                                        {/* Notes */}
+                                                        {item.notes && (
+                                                            <div className="text-[10px] italic text-zinc-400 bg-yellow-50 p-1.5 rounded border border-yellow-100/50 mt-1">
+                                                                "{item.notes}"
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
 
-                                    <div className="pt-4 border-t border-zinc-50">
+                                    <div className="pt-4 border-t border-zinc-50 mt-auto">
                                         {activeTab === 'NEW' ? (
                                             <button
                                                 onClick={() => moveStatus(ticket.id, 'PREPARING')}
-                                                className="w-full text-center text-[10px] font-bold text-white uppercase tracking-widest py-2 bg-[#111111] rounded-lg active:scale-95 transition-all"
+                                                className="w-full text-center text-[10px] font-bold text-white uppercase tracking-widest py-3 bg-[#111111] rounded-xl hover:bg-black active:scale-95 transition-all shadow-sm"
                                             >
                                                 Start Prep
                                             </button>
                                         ) : (
                                             <button
                                                 onClick={() => moveStatus(ticket.id, 'READY')}
-                                                className="w-full text-center text-[10px] font-bold text-white uppercase tracking-widest py-2 bg-green-600 rounded-lg active:scale-95 transition-all"
+                                                className="w-full text-center text-[10px] font-bold text-white uppercase tracking-widest py-3 bg-green-600 rounded-xl hover:bg-green-700 active:scale-95 transition-all shadow-green-200 shadow-lg"
                                             >
-                                                Complete
+                                                Complete Order
                                             </button>
                                         )}
                                     </div>

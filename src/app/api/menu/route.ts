@@ -7,9 +7,11 @@
  * to browse the menu via QR scan.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getTenantFromRequest } from "@/lib/tenant";
 
+// Updated Interface to include new fields
 interface MenuItemResponse {
     id: string;
     name: string;
@@ -17,6 +19,10 @@ interface MenuItemResponse {
     description?: string;
     price: number;
     isAvailable: boolean;
+    isVeg: boolean;
+    imageUrl?: string | null;
+    variants: any[];
+    modifierGroups: any[];
 }
 
 interface MenuResponse {
@@ -30,21 +36,38 @@ interface MenuResponse {
  * 
  * Returns all available menu items.
  * Customers use this to view the menu before ordering.
+ * NOW UPDATED: Respects Manager's "Active Collection" Toggles.
  */
-export async function GET(): Promise<NextResponse<MenuResponse>> {
+export async function GET(request: NextRequest): Promise<NextResponse<MenuResponse>> {
     try {
+        // 1. Detect Tenant (Multi-Tenancy)
+        const tenant = await getTenantFromRequest();
+        if (!tenant) {
+            return NextResponse.json({ success: false, error: "Identifying tenant failed" }, { status: 400 });
+        }
+
         const menuItems = await prisma.menuItem.findMany({
             where: {
+                clientId: tenant.id,
                 deletedAt: null,
                 isAvailable: true,
+                // Feature: Only show items from Active Categories (Time-based menu)
+                OR: [
+                    { category: { isActive: true } },
+                    { categoryId: null } // Show uncategorized items (fallback)
+                ]
             },
-            select: {
-                id: true,
-                name: true,
+            include: {
                 category: true,
-                description: true,
-                price: true,
-                isAvailable: true,
+                variants: true,
+                modifierGroups: {
+                    include: {
+                        modifierGroup: {
+                            include: { options: true }
+                        }
+                    },
+                    orderBy: { displayOrder: 'asc' }
+                }
             },
             orderBy: {
                 name: "asc",
@@ -52,13 +75,43 @@ export async function GET(): Promise<NextResponse<MenuResponse>> {
         });
 
         // Convert Decimal to number for JSON serialization
-        const items: MenuItemResponse[] = menuItems.map((item) => ({
+        // Map relational Category Name to string for frontend compatibility
+        const items: MenuItemResponse[] = menuItems.map((item: any) => ({
             id: item.id,
             name: item.name,
-            category: item.category,
+            category: item.category?.name || "General",
             description: item.description || undefined,
             price: Number(item.price),
+            // New fields
+            specialPrice: item.specialPrice ? Number(item.specialPrice) : undefined,
+            isSpecialPriceActive: item.isSpecialPriceActive,
+            specialPriceStart: item.specialPriceStart,
+            specialPriceEnd: item.specialPriceEnd,
+            isChefSpecial: item.isChefSpecial,
+            isGlutenFree: item.isGlutenFree,
+
             isAvailable: item.isAvailable,
+            isVeg: Boolean(item.isVeg),
+            imageUrl: item.imageUrl,
+            // Pass through the new complex data
+            variants: item.variants.map((v: any) => ({
+                id: v.id,
+                name: v.name,
+                price: Number(v.price)
+            })),
+            modifierGroups: item.modifierGroups.map((mg: any) => ({
+                modifierGroup: {
+                    id: mg.modifierGroup.id,
+                    name: mg.modifierGroup.name,
+                    minSelection: mg.modifierGroup.minSelection,
+                    maxSelection: mg.modifierGroup.maxSelection,
+                    options: mg.modifierGroup.options.map((opt: any) => ({
+                        id: opt.id,
+                        name: opt.name,
+                        price: Number(opt.price)
+                    }))
+                }
+            }))
         }));
 
         return NextResponse.json({

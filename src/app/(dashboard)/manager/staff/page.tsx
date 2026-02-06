@@ -10,9 +10,18 @@ type StaffMember = {
     role: 'ADMIN' | 'MANAGER' | 'WAITER' | 'KITCHEN' | 'CASHIER';
     isActive: boolean;
     createdAt: string;
+    totalOrders: number;
+    totalSales: number;
+    assignedTables: {
+        id: string;
+        tableCode: string;
+        section: string | null;
+        status: string;
+    }[];
 };
 
 export default function StaffPage() {
+    const [activeTab, setActiveTab] = useState<'roster' | 'performance' | 'shifts'>('roster');
     const [staff, setStaff] = useState<StaffMember[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAddModal, setShowAddModal] = useState(false);
@@ -22,7 +31,7 @@ export default function StaffPage() {
         name: '',
         username: '',
         password: '',
-        role: 'WAITER'
+        role: 'WAITER' as 'ADMIN' | 'MANAGER' | 'WAITER' | 'KITCHEN' | 'CASHIER'
     });
     const [submitting, setSubmitting] = useState(false);
 
@@ -83,52 +92,173 @@ export default function StaffPage() {
         <div className="h-full overflow-y-auto p-4 md:p-8 lg:p-10 hide-scrollbar bg-[#FDFCF9]">
             <div className="max-w-7xl mx-auto space-y-8 pb-32">
 
-                <div className="flex justify-between items-end border-b border-zinc-100 pb-6">
-                    <div>
-                        <h2 className="text-3xl font-black tracking-tighter uppercase text-zinc-900">Staff Roster</h2>
-                        <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mt-1">Manage Access & Roles</p>
+                {/* COMMAND CENTER HEADER */}
+                <div className="bg-white rounded-[2.5rem] p-10 border border-zinc-100 shadow-sm space-y-8">
+                    <div className="flex justify-between items-end">
+                        <div>
+                            <h2 className="text-4xl font-black tracking-tighter uppercase text-zinc-900 leading-none">Command Center</h2>
+                            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.3em] mt-3">Personnel & Performance Intelligence</p>
+                        </div>
+                        <button
+                            onClick={() => setShowAddModal(true)}
+                            className="bg-[#D43425] text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-red-500/10"
+                        >
+                            + Draft New Member
+                        </button>
                     </div>
-                    <button
-                        onClick={() => setShowAddModal(true)}
-                        className="bg-[#D43425] text-white px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-zinc-900 transition-colors shadow-lg shadow-red-500/20"
-                    >
-                        + Add Member
-                    </button>
+
+                    <div className="flex gap-4 pt-4 overflow-x-auto no-scrollbar">
+                        {[
+                            { id: 'roster', label: 'Team Roster', icon: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' },
+                            { id: 'performance', label: 'Performance', icon: 'M23 6l-9.5 9.5-5-5L1 18' },
+                            { id: 'shifts', label: 'Shift Coverage', icon: 'M12 2v20M2 12h20' }
+                        ].map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id as any)}
+                                className={`flex items-center gap-3 px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === tab.id ? 'bg-zinc-900 text-white shadow-xl translate-y-[-2px]' : 'bg-zinc-50 text-zinc-400 hover:bg-zinc-100'}`}
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d={tab.icon} /></svg>
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {staff.map((member) => (
-                        <div key={member.id} className="bg-white border border-zinc-100 p-6 rounded-2xl flex flex-col gap-4 group hover:shadow-xl hover:border-zinc-200 transition-all">
-                            <div className="flex justify-between items-start">
-                                <div className="w-12 h-12 rounded-xl bg-zinc-100 flex items-center justify-center font-black text-xl text-zinc-400 group-hover:bg-[#D43425] group-hover:text-white transition-colors">
-                                    {member.name.charAt(0)}
+                {/* VIEW: TEAM ROSTER */}
+                {activeTab === 'roster' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {staff.map((member) => (
+                            <div key={member.id} className="bg-white border border-zinc-100 p-8 rounded-[3rem] flex flex-col gap-6 group hover:shadow-2xl hover:border-zinc-200 transition-all duration-500 hover:-translate-y-1">
+                                <div className="flex justify-between items-start">
+                                    <div className="w-16 h-16 rounded-2xl bg-zinc-50 flex items-center justify-center font-black text-2xl text-zinc-300 group-hover:bg-[#D43425] group-hover:text-white transition-all transform group-hover:rotate-3 shadow-inner">
+                                        {member.name.charAt(0)}
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1.5">
+                                        <span className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border shadow-sm ${member.role === 'WAITER' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                                            member.role === 'KITCHEN' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                                                member.role === 'MANAGER' ? 'bg-purple-50 text-purple-600 border-purple-100' :
+                                                    'bg-zinc-50 text-zinc-600 border-zinc-100'
+                                            }`}>
+                                            {member.role}
+                                        </span>
+                                        <div className={`w-2 h-2 rounded-full ${member.isActive ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-zinc-300'} animate-pulse`} />
+                                    </div>
                                 </div>
-                                <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border ${member.role === 'WAITER' ? 'bg-blue-50 text-blue-600 border-blue-100' :
-                                    member.role === 'KITCHEN' ? 'bg-amber-50 text-amber-600 border-amber-100' :
-                                        member.role === 'MANAGER' ? 'bg-purple-50 text-purple-600 border-purple-100' :
-                                            'bg-zinc-50 text-zinc-600 border-zinc-100'
-                                    }`}>
-                                    {member.role}
-                                </span>
+
+                                <div>
+                                    <h3 className="text-2xl font-black text-zinc-900 tracking-tight leading-tight">{member.name}</h3>
+                                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em] mt-1">Personnel ID: @{member.username}</p>
+                                </div>
+
+                                <div className="pt-6 border-t border-zinc-50 flex justify-between items-center group-hover:opacity-100 transition-opacity">
+                                    <div className="flex flex-col">
+                                        <span className="text-[8px] font-black text-zinc-300 uppercase tracking-widest">Enrolled</span>
+                                        <span className="text-[10px] font-bold text-zinc-500">{new Date(member.createdAt).toLocaleDateString()}</span>
+                                    </div>
+                                    <button
+                                        onClick={() => handleDelete(member.id)}
+                                        className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-all transform hover:scale-110 active:scale-90"
+                                    >
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* VIEW: PERFORMANCE ANALYTICS */}
+                {activeTab === 'performance' && (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {staff.filter(s => s.role === 'WAITER').sort((a, b) => b.totalSales - a.totalSales).map((waiter, idx) => (
+                                <div key={waiter.id} className="bg-white rounded-[2.5rem] p-8 border border-zinc-100 shadow-sm relative overflow-hidden group">
+                                    {idx === 0 && (
+                                        <div className="absolute -top-2 -right-2 bg-amber-400 text-white p-6 rotate-12 shadow-xl">
+                                            <span className="text-[10px] font-black uppercase tracking-widest">Star Waiter</span>
+                                        </div>
+                                    )}
+                                    <div className="relative z-10 flex flex-col gap-6">
+                                        <div className="flex justify-between items-center">
+                                            <div className="w-14 h-14 rounded-full bg-zinc-50 flex items-center justify-center font-black text-xl text-zinc-300 border border-zinc-100">
+                                                {waiter.name.charAt(0)}
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-2xl font-black text-zinc-900 leading-none">₹{Number(waiter.totalSales).toLocaleString()}</div>
+                                                <div className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mt-1">Total Sales Vol.</div>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <h3 className="text-lg font-black text-zinc-900">{waiter.name}</h3>
+                                            <div className="w-full bg-zinc-100 h-2 rounded-full mt-3 overflow-hidden">
+                                                <div
+                                                    className="bg-[#D43425] h-full rounded-full"
+                                                    style={{ width: `${Math.min(100, (waiter.totalOrders / 50) * 100)}%` }}
+                                                />
+                                            </div>
+                                            <div className="flex justify-between mt-2">
+                                                <span className="text-[9px] font-black text-zinc-400 uppercase">{waiter.totalOrders} Orders Handled</span>
+                                                <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">{idx === 0 ? 'Top Performer' : `#${idx + 1} Rank`}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* VIEW: SHIFT COVERAGE */}
+                {activeTab === 'shifts' && (
+                    <div className="bg-white rounded-[2.5rem] p-10 border border-zinc-100 shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                            <div className="space-y-6">
+                                <h4 className="text-xl font-black text-zinc-900 uppercase tracking-tighter">Floor Assignments</h4>
+                                <div className="space-y-4">
+                                    {staff.filter(s => s.role === 'WAITER').map(waiter => (
+                                        <div key={waiter.id} className="flex items-center justify-between p-6 bg-zinc-50 rounded-2xl border border-zinc-100">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center font-black text-zinc-400 text-xs shadow-sm">
+                                                    {waiter.name.charAt(0)}
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-black text-zinc-900">{waiter.name}</div>
+                                                    <div className="text-[9px] font-bold text-zinc-400 uppercase">{waiter.assignedTables.length} Tables Active</div>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                {waiter.assignedTables.map(t => (
+                                                    <span key={t.id} className={`px-3 py-1 rounded-lg text-[8px] font-black text-white ${t.status === 'ACTIVE' ? 'bg-[#D43425]' : 'bg-green-500'}`}>T-{t.tableCode}</span>
+                                                ))}
+                                                {waiter.assignedTables.length === 0 && <span className="text-[8px] font-bold text-zinc-300 uppercase">Awaiting Post...</span>}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
 
-                            <div>
-                                <h3 className="text-lg font-black text-zinc-900 leading-tight">{member.name}</h3>
-                                <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">@{member.username}</p>
-                            </div>
-
-                            <div className="pt-4 border-t border-zinc-50 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                <span className="text-[10px] font-bold text-zinc-300 uppercase">Active since {new Date(member.createdAt).getFullYear()}</span>
-                                <button
-                                    onClick={() => handleDelete(member.id)}
-                                    className="text-[10px] font-black text-red-500 uppercase tracking-widest hover:underline"
-                                >
-                                    Remove
-                                </button>
+                            <div className="bg-zinc-900 rounded-4xl p-8 text-white flex flex-col justify-between">
+                                <div>
+                                    <h4 className="text-xl font-black uppercase tracking-tighter">Floor Summary</h4>
+                                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-1">Real-time occupancy status</p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-6 my-10">
+                                    <div className="p-6 bg-white/5 rounded-2xl border border-white/10">
+                                        <div className="text-3xl font-black">{staff.filter(s => s.isActive).length}</div>
+                                        <div className="text-[8px] font-black uppercase text-zinc-500 tracking-widest mt-2">Active Staff</div>
+                                    </div>
+                                    <div className="p-6 bg-white/5 rounded-2xl border border-white/10">
+                                        <div className="text-3xl font-black">{staff.reduce((acc, s) => acc + s.assignedTables.length, 0)}</div>
+                                        <div className="text-[8px] font-black uppercase text-zinc-500 tracking-widest mt-2">Tables Covered</div>
+                                    </div>
+                                </div>
+                                <button className="w-full bg-white text-black py-4 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-zinc-200 transition-colors">Generate Coverage Report</button>
                             </div>
                         </div>
-                    ))}
-                </div>
+                    </div>
+                )}
 
             </div>
 
@@ -181,7 +311,7 @@ export default function StaffPage() {
                                         <button
                                             key={role}
                                             type="button"
-                                            onClick={() => setFormData({ ...formData, role })}
+                                            onClick={() => setFormData({ ...formData, role: role as any })}
                                             className={`p-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${formData.role === role
                                                 ? 'bg-zinc-900 text-white border-zinc-900'
                                                 : 'bg-white text-zinc-400 border-zinc-200 hover:border-zinc-300'

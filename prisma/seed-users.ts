@@ -1,5 +1,5 @@
 
-import { PrismaClient } from '../src/generated/prisma';
+import { PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -29,6 +29,22 @@ async function main() {
         { username: 'money', name: 'Mr. Krabs', role: 'CASHIER' },
     ];
 
+    // Ensure we have a client to associate users with
+    let client = await prisma.client.findFirst({
+        where: { slug: 'taj' }
+    });
+
+    if (!client) {
+        client = await prisma.client.create({
+            data: {
+                name: "The Taj Residency",
+                slug: "taj",
+                plan: "PREMIUM",
+                status: "ACTIVE"
+            }
+        });
+    }
+
     for (const user of users) {
         const existing = await prisma.user.findUnique({
             where: { username: user.username },
@@ -37,6 +53,7 @@ async function main() {
         if (!existing) {
             await prisma.user.create({
                 data: {
+                    clientId: client.id,
                     username: user.username,
                     name: user.name,
                     passwordHash: password,

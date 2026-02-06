@@ -1,0 +1,346 @@
+/**
+ * HQ Client Management Actions
+ * 
+ * Server-side business logic for managing clients from Super Admin HQ.
+ * Keep all HQ operations in this file for clean separation.
+ */
+
+import { prisma } from "@/lib/db";
+import { AuditAction, ClientPlan, ClientStatus } from "@prisma/client";
+import { hashPassword } from "@/lib/auth/password";
+import {
+    CreateClientInput,
+    UpdateClientInput,
+    ClientWithStats,
+    PLAN_PRICING,
+    TRIAL_PERIOD_DAYS,
+    ClientSubscription
+} from "@/lib/types/hq.types";
+
+// ============================================
+// CLIENT CRUD OPERATIONS
+// ============================================
+
+/**
+ * Get all clients with stats for HQ dashboard
+ */
+export async function getClientsWithStats(): Promise<ClientWithStats[]> {
+    const clients = await prisma.client.findMany({
+        include: {
+            _count: {
+                select: {
+                    users: true,
+                    orders: true,
+                    tables: true,
+                    menuItems: true
+                }
+            }
+        },
+        orderBy: { createdAt: 'desc' }
+    });
+
+    // Add dummy subscription data for each client
+    return clients.map(client => ({
+        ...client,
+        subscription: generateDummySubscription(client.plan, client.createdAt)
+    }));
+}
+
+/**
+ * Get single client by ID with full details
+ */
+export async function getClientById(clientId: string): Promise<ClientWithStats | null> {
+    const client = await prisma.client.findUnique({
+        where: { id: clientId },
+        include: {
+            _count: {
+                select: {
+                    users: true,
+                    orders: true,
+                    tables: true,
+                    menuItems: true
+                }
+            },
+            users: {
+                where: { role: 'ADMIN' },
+                select: {
+                    id: true,
+                    username: true,
+                    name: true,
+                    isActive: true,
+                    createdAt: true
+                }
+            }
+        }
+    });
+
+    if (!client) return null;
+
+    return {
+        ...client,
+        subscription: generateDummySubscription(client.plan, client.createdAt)
+    } as ClientWithStats;
+}
+
+/**
+ * Create a new client with admin user
+ * This is the main onboarding function
+ */
+export async function createNewClient(input: CreateClientInput): Promise<{ success: boolean; clientId?: string; error?: string }> {
+    try {
+        // 1. Validate slug uniqueness
+        const existingSlug = await prisma.client.findUnique({
+            where: { slug: input.slug.toLowerCase().trim() }
+        });
+        if (existingSlug) {
+            return { success: false, error: "This slug is already taken. Choose a different one." };
+        }
+
+        // 2. Validate username uniqueness
+        const existingUsername = await prisma.user.findUnique({
+            where: { username: input.adminUsername.toLowerCase().trim() }
+        });
+        if (existingUsername) {
+            return { success: false, error: "This admin username is already taken." };
+        }
+
+        // 3. Hash password
+        const passwordHash = await hashPassword(input.adminPassword);
+
+        // 4. Create client, admin user, and settings in transaction
+        const client = await prisma.$transaction(async (tx) => {
+            // Create Client
+            const newClient = await tx.client.create({
+                data: {
+                    name: input.name.trim(),
+                    slug: input.slug.toLowerCase().trim(),
+                    domain: input.domain?.trim() || null,
+                    plan: input.plan,
+                    status: ClientStatus.TRIAL  // Always start with trial
+                }
+            });
+
+            // Create Admin User for this Client
+            await tx.user.create({
+                data: {
+                    clientId: newClient.id,
+                    username: input.adminUsername.toLowerCase().trim(),
+                    name: input.adminName.trim(),
+                    passwordHash: passwordHash,
+                    role: 'ADMIN',
+                    isActive: true
+                }
+            });
+
+            // Create Default Restaurant Settings
+            await tx.restaurantSettings.create({
+                data: {
+                    clientId: newClient.id,
+                    businessName: input.name.trim()
+                }
+            });
+
+            // Log the creation
+            await tx.auditLog.create({
+                data: {
+                    clientId: newClient.id,
+                    action: AuditAction.CLIENT_CREATED,
+                    metadata: {
+                        name: newClient.name,
+                        slug: newClient.slug,
+                        plan: newClient.plan,
+                        adminUsername: input.adminUsername
+                    }
+                }
+            });
+
+            return newClient;
+        });
+
+        return { success: true, clientId: client.id };
+
+    } catch (error) {
+        console.error("[HQ] Create client error:", error);
+        return { success: false, error: "Failed to create client. Please try again." };
+    }
+}
+
+/**
+ * Update an existing client
+ */
+export async function updateClient(
+    clientId: string,
+    input: UpdateClientInput
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const existingClient = await prisma.client.findUnique({
+            where: { id: clientId }
+        });
+
+        if (!existingClient) {
+            return { success: false, error: "Client not found." };
+        }
+
+        // Track what changed for audit
+        const changes: Record<string, { from: string; to: string }> = {};
+
+        if (input.plan && input.plan !== existingClient.plan) {
+            changes.plan = { from: existingClient.plan, to: input.plan };
+        }
+        if (input.status && input.status !== existingClient.status) {
+            changes.status = { from: existingClient.status, to: input.status };
+        }
+
+        await prisma.$transaction(async (tx) => {
+            // Update client
+            await tx.client.update({
+                where: { id: clientId },
+                data: {
+                    name: input.name?.trim(),
+                    plan: input.plan,
+                    status: input.status,
+                    domain: input.domain?.trim()
+                }
+            });
+
+            // Log plan change if applicable
+            if (changes.plan) {
+                await tx.auditLog.create({
+                    data: {
+                        clientId: clientId,
+                        action: AuditAction.PLAN_CHANGED,
+                        metadata: changes as object
+                    }
+                });
+            }
+
+            // Log status change if applicable
+            if (changes.status) {
+                await tx.auditLog.create({
+                    data: {
+                        clientId: clientId,
+                        action: AuditAction.SETTING_CHANGED,
+                        metadata: {
+                            type: 'status_change',
+                            from: changes.status.from,
+                            to: changes.status.to
+                        } as object
+                    }
+                });
+            }
+        });
+
+        return { success: true };
+
+    } catch (error) {
+        console.error("[HQ] Update client error:", error);
+        return { success: false, error: "Failed to update client." };
+    }
+}
+
+/**
+ * Suspend a client (sets status to SUSPENDED)
+ */
+export async function suspendClient(clientId: string, reason: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        await prisma.$transaction(async (tx) => {
+            await tx.client.update({
+                where: { id: clientId },
+                data: { status: ClientStatus.SUSPENDED }
+            });
+
+            await tx.auditLog.create({
+                data: {
+                    clientId: clientId,
+                    action: AuditAction.SETTING_CHANGED,
+                    metadata: { type: 'client_suspended', reason }
+                }
+            });
+        });
+
+        return { success: true };
+    } catch (error) {
+        console.error("[HQ] Suspend client error:", error);
+        return { success: false, error: "Failed to suspend client." };
+    }
+}
+
+/**
+ * Activate a client (sets status to ACTIVE)
+ */
+export async function activateClient(clientId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        await prisma.$transaction(async (tx) => {
+            await tx.client.update({
+                where: { id: clientId },
+                data: { status: ClientStatus.ACTIVE }
+            });
+
+            await tx.auditLog.create({
+                data: {
+                    clientId: clientId,
+                    action: AuditAction.SETTING_CHANGED,
+                    metadata: { type: 'client_activated' }
+                }
+            });
+        });
+
+        return { success: true };
+    } catch (error) {
+        console.error("[HQ] Activate client error:", error);
+        return { success: false, error: "Failed to activate client." };
+    }
+}
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+/**
+ * Generate dummy subscription data based on plan
+ * This will be replaced with real billing integration later
+ */
+function generateDummySubscription(plan: ClientPlan, createdAt: Date): ClientSubscription {
+    const now = new Date();
+    const trialEnd = new Date(createdAt);
+    trialEnd.setDate(trialEnd.getDate() + TRIAL_PERIOD_DAYS);
+
+    const isTrialActive = now < trialEnd;
+
+    // For demo: billing cycle is monthly from creation date
+    const nextBilling = new Date(createdAt);
+    while (nextBilling < now) {
+        nextBilling.setMonth(nextBilling.getMonth() + 1);
+    }
+
+    return {
+        planStartDate: createdAt,
+        planEndDate: nextBilling,
+        trialEndsAt: trialEnd,
+        isTrialActive: isTrialActive,
+        nextBillingDate: nextBilling,
+        monthlyPrice: PLAN_PRICING[plan]
+    };
+}
+
+/**
+ * Validate slug format
+ */
+export function isValidSlug(slug: string): boolean {
+    // Only lowercase letters, numbers, and hyphens
+    const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+    return slugRegex.test(slug) && slug.length >= 3 && slug.length <= 30;
+}
+
+/**
+ * Generate a slug from hotel name
+ */
+export function generateSlugFromName(name: string): string {
+    return name
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\s-]/g, '')  // Remove special chars
+        .replace(/\s+/g, '-')           // Spaces to hyphens
+        .replace(/-+/g, '-')            // Multiple hyphens to single
+        .substring(0, 30);              // Limit length
+}

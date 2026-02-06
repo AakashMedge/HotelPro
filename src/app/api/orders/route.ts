@@ -16,7 +16,8 @@ import {
     type CreateOrderInput,
 } from "@/lib/services/order";
 import { prisma } from "@/lib/db";
-import type { OrderStatus } from "@/generated/prisma";
+import { getTenantFromRequest } from "@/lib/tenant";
+import type { OrderStatus } from "@prisma/client";
 
 // ============================================
 // Response Types
@@ -29,6 +30,9 @@ interface OrderItemResponse {
     price: number;
     quantity: number;
     status: string;
+    selectedVariant?: any;
+    selectedModifiers?: any;
+    notes?: string | null;
 }
 
 interface OrderResponse {
@@ -40,6 +44,10 @@ interface OrderResponse {
     customerName: string | null;
     items: OrderItemResponse[];
     total: number;
+    subtotal: number;
+    gstAmount: number;
+    serviceChargeAmount: number;
+    grandTotal: number;
     createdAt: string;
 }
 
@@ -64,24 +72,6 @@ interface OrdersListResponse {
 // POST /api/orders - Create Order
 // ============================================
 
-/**
- * Create a new order.
- * 
- * Customer scans QR → selects items → submits order.
- * 
- * Request Body:
- * {
- *   tableId: string,
- *   items: [{ menuItemId: string, quantity: number }]
- * }
- * 
- * Response:
- * {
- *   success: true,
- *   order: { id, tableCode, status, items, total, createdAt }
- * }
- */
-
 export async function POST(
     request: NextRequest
 ): Promise<NextResponse<CreateOrderSuccessResponse | OrderErrorResponse>> {
@@ -98,7 +88,6 @@ export async function POST(
     }
 
     try {
-        // Parse request body
         const body = await request.json().catch(() => null);
 
         if (!body) {
@@ -108,16 +97,62 @@ export async function POST(
             );
         }
 
-        // Validate required fields
         const { tableId, tableCode, items, customerName, sessionId } = body as any;
+
+        // 1. Detect Tenant (Multi-Tenancy)
+        let tenant = await getTenantFromRequest();
+
+        // ULTIMATE FALLBACK: If tenant detection failed (e.g. no cookie on localhost)
+        // search for the hotel based on the tableId or tableCode provided.
+        if (!tenant) {
+            console.log("[ORDERS API] Tenant not detected, entering Global Discovery mode...");
+            if (tableId) {
+                const table = await prisma.table.findUnique({
+                    where: { id: tableId },
+                    include: { client: true }
+                });
+                if (table?.client) {
+                    tenant = {
+                        id: table.client.id,
+                        name: table.client.name,
+                        slug: table.client.slug,
+                        plan: table.client.plan
+                    };
+                }
+            } else if (tableCode) {
+                const table = await prisma.table.findFirst({
+                    where: {
+                        deletedAt: null,
+                        OR: [
+                            { tableCode: String(tableCode) },
+                            { tableCode: `T-${String(tableCode).padStart(2, '0')}` }
+                        ]
+                    },
+                    include: { client: true }
+                });
+                if (table?.client) {
+                    tenant = {
+                        id: table.client.id,
+                        name: table.client.name,
+                        slug: table.client.slug,
+                        plan: table.client.plan
+                    };
+                }
+            }
+        }
+
+        if (!tenant) {
+            return NextResponse.json({ success: false, error: "Identifying hotel failed. Please scan QR or pick a hotel first." }, { status: 400 });
+        }
 
         let resolvedTableId = tableId;
 
         // Auto-resolve tableId from tableCode if missing (Magic Demo Mode)
         if (!resolvedTableId && tableCode) {
-            console.log(`[ORDERS API] Attempting to resolve tableCode: ${tableCode}`);
+            console.log(`[ORDERS API] Attempting to resolve tableCode: ${tableCode} for client ${tenant.slug}`);
             const table = await prisma.table.findFirst({
                 where: {
+                    clientId: tenant.id,
                     OR: [
                         { tableCode: String(tableCode) },
                         { tableCode: `T-${String(tableCode).padStart(2, '0')}` }
@@ -128,9 +163,9 @@ export async function POST(
             if (table) {
                 resolvedTableId = table.id;
             } else {
-                // Create table on the fly for demo if it doesn't exist
                 const newTable = await prisma.table.create({
                     data: {
+                        clientId: tenant.id,
                         tableCode: String(tableCode).startsWith('T-') ? tableCode : `T-${String(tableCode).padStart(2, '0')}`,
                         capacity: 4,
                         status: 'ACTIVE'
@@ -168,15 +203,18 @@ export async function POST(
             }
         }
 
-        // Create order via service
-        const order = await createOrder({ tableId: resolvedTableId, items, customerName, sessionId });
+        const order = await createOrder({
+            tableId: resolvedTableId,
+            items,
+            customerName,
+            sessionId,
+            clientId: tenant.id
+        });
 
-        // Calculate total
         const total = order.items.reduce((sum, item) => {
             return sum + Number(item.priceSnapshot) * item.quantity;
         }, 0);
 
-        // Format response
         const response: OrderResponse = {
             id: order.id,
             tableId: order.tableId,
@@ -191,19 +229,23 @@ export async function POST(
                 price: Number(item.priceSnapshot),
                 quantity: item.quantity,
                 status: item.status,
+                selectedVariant: item.selectedVariant,
+                selectedModifiers: item.selectedModifiers,
+                notes: item.notes
             })),
-            total,
+            total: Number((order as any).grandTotal || total),
+            subtotal: Number((order as any).subtotal || total),
+            gstAmount: Number((order as any).gstAmount || 0),
+            serviceChargeAmount: Number((order as any).serviceChargeAmount || 0),
+            grandTotal: Number((order as any).grandTotal || total),
             createdAt: order.createdAt.toISOString(),
         };
-
-        console.log(`[ORDERS API] Order created: ${order.id} for table ${order.table.tableCode}`);
 
         return NextResponse.json({
             success: true,
             order: response,
         });
     } catch (error) {
-        // Handle known order errors
         if (error instanceof OrderError) {
             const statusMap: Record<string, number> = {
                 INVALID_INPUT: 400,
@@ -232,61 +274,59 @@ export async function POST(
 // GET /api/orders - List Orders
 // ============================================
 
-/**
- * Get orders, optionally filtered by status.
- * 
- * Query params:
- * - status: comma-separated list (e.g., "NEW,PREPARING")
- * - limit: max number of orders
- * 
- * Used by:
- * - Kitchen: status=NEW,PREPARING
- * - Waiter: status=READY,SERVED
- * - Cashier: status=SERVED
- */
 export async function GET(
     request: NextRequest
 ): Promise<NextResponse<OrdersListResponse>> {
     try {
+        // 1. Detect Tenant (Multi-Tenancy)
+        const tenant = await getTenantFromRequest();
+        if (!tenant) {
+            return NextResponse.json({ success: false, error: "Identifying hotel failed" }, { status: 400 });
+        }
+
         const { searchParams } = new URL(request.url);
 
-        // Parse status filter
         const statusParam = searchParams.get("status");
         const statuses: OrderStatus[] = statusParam
             ? (statusParam.split(",") as OrderStatus[])
             : ["NEW", "PREPARING", "READY", "SERVED"];
 
-        // Parse limit
         const limitParam = searchParams.get("limit");
         const limit = limitParam ? parseInt(limitParam, 10) : 50;
 
-        // Fetch orders
-        const orders = await getOrdersByStatus(statuses, { limit });
+        const orders = await getOrdersByStatus(statuses, { limit, clientId: tenant.id });
 
-        // Format response
-        const formattedOrders: OrderResponse[] = orders.map((order) => {
-            const total = order.items.reduce((sum, item) => {
+        const formattedOrders: OrderResponse[] = orders.map((o) => {
+            const total = o.items.reduce((sum, item) => {
                 return sum + Number(item.priceSnapshot) * item.quantity;
             }, 0);
 
-            return {
-                id: order.id,
-                tableId: order.tableId,
-                tableCode: order.table.tableCode,
-                status: order.status,
-                version: order.version,
-                customerName: order.customerName,
-                items: order.items.map((item) => ({
+            const mapped: OrderResponse = {
+                id: o.id,
+                tableId: o.tableId,
+                tableCode: o.table.tableCode,
+                status: o.status,
+                version: o.version,
+                customerName: o.customerName,
+                items: o.items.map((item: any) => ({
                     id: item.id,
                     menuItemId: item.menuItemId,
                     itemName: item.itemName,
                     price: Number(item.priceSnapshot),
                     quantity: item.quantity,
                     status: item.status,
+                    selectedVariant: item.selectedVariant,
+                    selectedModifiers: item.selectedModifiers,
+                    notes: item.notes
                 })),
-                total,
-                createdAt: order.createdAt.toISOString(),
+                total: Number((o as any).grandTotal || total),
+                subtotal: Number((o as any).subtotal || total),
+                gstAmount: Number((o as any).gstAmount || 0),
+                serviceChargeAmount: Number((o as any).serviceChargeAmount || 0),
+                grandTotal: Number((o as any).grandTotal || total),
+                createdAt: o.createdAt.toISOString()
             };
+            return mapped;
         });
 
         return NextResponse.json({
