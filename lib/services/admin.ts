@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { AuditAction } from "@prisma/client";
 import { logAudit } from "./audit";
+import { getAggregatedPlatformStats } from "./metrics";
 
 export interface PlatformStats {
     totalClients: number;
@@ -15,51 +16,24 @@ export interface PlatformStats {
 
 /**
  * Fetch high-level platform statistics for the Super Admin Dashboard.
+ * Aggregates data from both SHARED and DEDICATED databases.
  */
 export async function getPlatformStats(): Promise<PlatformStats> {
-    const [
-        totalClients,
-        totalOrders,
-        revenueData,
-        activeUsers,
-        plans
-    ] = await Promise.all([
-        prisma.client.count(),
-        prisma.order.count(),
-        prisma.order.aggregate({
-            _sum: {
-                grandTotal: true
-            }
-        }),
-        prisma.user.count({
-            where: { isActive: true }
-        }),
-        prisma.client.groupBy({
-            by: ['plan'],
-            _count: {
-                plan: true
-            }
-        })
-    ]);
-
-    return {
-        totalClients,
-        totalOrders,
-        totalRevenue: Number(revenueData._sum.grandTotal || 0),
-        activeUsers,
-        plansDistribution: plans.map(p => ({
-            plan: p.plan,
-            count: p._count.plan
-        }))
-    };
+    return await getAggregatedPlatformStats();
 }
 
 /**
  * Fetch a list of all clients with basic info.
  */
 export async function getAllClients() {
-    return await prisma.client.findMany({
-        include: {
+    return await (prisma.client as any).findMany({
+        select: {
+            id: true,
+            name: true,
+            slug: true,
+            plan: true,
+            status: true,
+            createdAt: true,
             _count: {
                 select: { users: true, orders: true }
             }
@@ -84,12 +58,12 @@ export async function createClient(data: {
 }) {
     return await prisma.$transaction(async (tx) => {
         // 1. Create Client
-        const client = await tx.client.create({
+        const client = await (tx.client as any).create({
             data: {
                 name: data.name,
                 slug: data.slug.toLowerCase().trim(),
                 plan: data.plan,
-                status: 'ACTIVE'
+                status: 'ACTIVE' as any,
             }
         });
 
@@ -113,10 +87,6 @@ export async function createClient(data: {
             }
         });
 
-        // 4. Log the Event (Outside transaction or inside? Let's do outside for speed or inside for consistency. 
-        // Note: prisma.$transaction doesn't easily support our logAudit since it uses the global prisma client.
-        // We will log it after the transaction succeeds.
-
         return client;
     });
 }
@@ -128,7 +98,7 @@ export async function onboardHotelAndLog(data: any) {
     const client = await createClient(data);
     await logAudit({
         clientId: client.id,
-        action: AuditAction.CLIENT_CREATED,
+        action: 'CLIENT_CREATED' as any,
         metadata: { name: client.name, slug: client.slug }
     });
     return client;
@@ -155,7 +125,7 @@ export async function getSecurityEvents() {
     return await prisma.auditLog.findMany({
         where: {
             action: {
-                in: [AuditAction.UNAUTHORIZED_ACCESS, AuditAction.LOGIN_FAILURE, AuditAction.PLAN_CHANGED]
+                in: ['UNAUTHORIZED_ACCESS' as any, 'LOGIN_FAILURE' as any, 'PLAN_CHANGED' as any]
             }
         },
         include: {

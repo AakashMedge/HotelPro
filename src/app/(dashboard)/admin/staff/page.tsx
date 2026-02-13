@@ -1,7 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, UserPlus, Shield, ChefHat, Receipt, UserCheck, X, AlertCircle } from 'lucide-react';
+import {
+    Users, UserPlus, Shield, ChefHat, Receipt, UserCheck, X,
+    AlertCircle, Search, Filter, MoreHorizontal, Edit2,
+    Power, Key, Mail, Fingerprint, Trash2, ArrowRight, Loader2
+} from 'lucide-react';
 
 type StaffMember = {
     id: string;
@@ -13,40 +17,31 @@ type StaffMember = {
 };
 
 const ROLE_CONFIG = {
-    ADMIN: { icon: Shield, color: 'from-slate-600 to-slate-800', bgColor: 'bg-slate-100', textColor: 'text-slate-700' },
-    MANAGER: { icon: UserCheck, color: 'from-purple-500 to-purple-700', bgColor: 'bg-purple-100', textColor: 'text-purple-700' },
-    WAITER: { icon: Users, color: 'from-blue-500 to-blue-700', bgColor: 'bg-blue-100', textColor: 'text-blue-700' },
-    KITCHEN: { icon: ChefHat, color: 'from-amber-500 to-amber-700', bgColor: 'bg-amber-100', textColor: 'text-amber-700' },
-    CASHIER: { icon: Receipt, color: 'from-emerald-500 to-emerald-700', bgColor: 'bg-emerald-100', textColor: 'text-emerald-700' },
+    ADMIN: { color: 'text-slate-600', bg: 'bg-slate-50', icon: Shield },
+    MANAGER: { color: 'text-purple-600', bg: 'bg-purple-50', icon: UserCheck },
+    WAITER: { color: 'text-blue-600', bg: 'bg-blue-50', icon: Users },
+    KITCHEN: { color: 'text-orange-600', bg: 'bg-orange-50', icon: ChefHat },
+    CASHIER: { color: 'text-emerald-600', bg: 'bg-emerald-50', icon: Receipt },
 };
 
 export default function AdminStaffPage() {
     const [staff, setStaff] = useState<StaffMember[]>([]);
     const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState('');
     const [showAddModal, setShowAddModal] = useState(false);
 
-    // Form State
-    const [formData, setFormData] = useState({
-        name: '',
-        username: '',
-        password: '',
-        role: 'WAITER' as 'ADMIN' | 'MANAGER' | 'WAITER' | 'KITCHEN' | 'CASHIER'
-    });
+    // Form States
+    const [formData, setFormData] = useState({ name: '', username: '', password: '', role: 'WAITER' as any });
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
 
-    const fetchStaff = async () => {
-        try {
-            const res = await fetch('/api/staff');
-            const data = await res.json();
-            if (data.success) {
-                setStaff(data.staff);
-            }
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
+    const fetchStaff = () => {
+        fetch('/api/staff')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) setStaff(data.staff);
+                setLoading(false);
+            });
     };
 
     useEffect(() => {
@@ -57,14 +52,6 @@ export default function AdminStaffPage() {
         e.preventDefault();
         setSubmitting(true);
         setError('');
-
-        // Validation
-        if (formData.password.length < 6) {
-            setError('Password must be at least 6 characters');
-            setSubmitting(false);
-            return;
-        }
-
         try {
             const res = await fetch('/api/staff', {
                 method: 'POST',
@@ -72,17 +59,15 @@ export default function AdminStaffPage() {
                 body: JSON.stringify(formData)
             });
             const data = await res.json();
-
-            if (res.ok && data.success) {
+            if (data.success) {
                 setShowAddModal(false);
                 setFormData({ name: '', username: '', password: '', role: 'WAITER' });
                 fetchStaff();
             } else {
-                setError(data.error || 'Failed to create staff member');
+                setError(data.error || 'Failed to create staff');
             }
         } catch (err) {
-            setError('Network error. Please try again.');
-            console.error(err);
+            setError('Network error');
         } finally {
             setSubmitting(false);
         }
@@ -96,279 +81,190 @@ export default function AdminStaffPage() {
                 body: JSON.stringify({ isActive: !currentStatus })
             });
             if (res.ok) fetchStaff();
-        } catch (err) {
-            console.error(err);
-        }
+        } catch (err) { console.error(err); }
     };
 
-    if (loading) {
-        return (
-            <div className="h-full flex items-center justify-center bg-slate-50">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-10 h-10 border-3 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
-                    <p className="text-sm text-slate-500 font-medium">Loading Staff...</p>
-                </div>
-            </div>
-        );
-    }
-
-    // Group staff by role
-    const staffByRole = {
-        ADMIN: staff.filter(s => s.role === 'ADMIN'),
-        MANAGER: staff.filter(s => s.role === 'MANAGER'),
-        WAITER: staff.filter(s => s.role === 'WAITER'),
-        KITCHEN: staff.filter(s => s.role === 'KITCHEN'),
-        CASHIER: staff.filter(s => s.role === 'CASHIER'),
+    const handleDelete = async (id: string) => {
+        if (!confirm('Are you sure you want to delete this staff member?')) return;
+        try {
+            const res = await fetch(`/api/staff/${id}`, { method: 'DELETE' });
+            if (res.ok) fetchStaff();
+        } catch (err) { console.error(err); }
     };
+
+    const filteredStaff = staff.filter(s =>
+        s.name.toLowerCase().includes(search.toLowerCase()) ||
+        s.username.toLowerCase().includes(search.toLowerCase())
+    );
+
+    if (loading) return (
+        <div className="h-full flex items-center justify-center">
+            <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+        </div>
+    );
 
     return (
-        <div className="h-full overflow-y-auto p-6 md:p-10 bg-slate-50">
-            <div className="max-w-7xl mx-auto space-y-8 pb-20">
+        <div className="p-6 md:p-10 space-y-8 max-w-7xl mx-auto">
 
-                {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-800">Staff Management</h1>
-                        <p className="text-sm text-slate-500 mt-1">
-                            {staff.length} team members • {staff.filter(s => s.isActive).length} active
-                        </p>
-                    </div>
-                    <button
-                        onClick={() => setShowAddModal(true)}
-                        className="flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-sm transition-all shadow-sm shadow-blue-200 active:scale-95"
-                    >
-                        <UserPlus className="w-4 h-4" />
-                        Add Staff Member
-                    </button>
+            {/* Header - Truly Minimalist */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-8">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Staff</h1>
+                    <p className="text-sm text-slate-500 font-medium">{staff.length} team members registered</p>
                 </div>
-
-                {/* Empty State */}
-                {staff.length === 0 && (
-                    <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center">
-                        <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                            <Users className="w-8 h-8 text-slate-400" />
-                        </div>
-                        <h3 className="text-lg font-semibold text-slate-800 mb-2">No Staff Members Yet</h3>
-                        <p className="text-slate-500 mb-6">Start by adding your first team member.</p>
-                        <button
-                            onClick={() => setShowAddModal(true)}
-                            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-sm transition-all"
-                        >
-                            Add Your First Staff Member
-                        </button>
-                    </div>
-                )}
-
-                {/* Staff Grid by Role */}
-                {staff.length > 0 && (
-                    <div className="space-y-8">
-                        {(['MANAGER', 'WAITER', 'KITCHEN', 'CASHIER'] as const).map(role => {
-                            const roleStaff = staffByRole[role];
-                            if (roleStaff.length === 0) return null;
-
-                            const config = ROLE_CONFIG[role];
-                            const Icon = config.icon;
-
-                            return (
-                                <div key={role}>
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <div className={`w-8 h-8 rounded-lg bg-linear-to-br ${config.color} flex items-center justify-center`}>
-                                            <Icon className="w-4 h-4 text-white" />
-                                        </div>
-                                        <h2 className="text-lg font-semibold text-slate-800">
-                                            {role}s <span className="text-slate-400 font-normal">({roleStaff.length})</span>
-                                        </h2>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        {roleStaff.map(member => (
-                                            <StaffCard
-                                                key={member.id}
-                                                member={member}
-                                                onToggleStatus={handleToggleStatus}
-                                            />
-                                        ))}
-                                    </div>
-                                </div>
-                            );
-                        })}
-
-                        {/* Admin Users (read-only) */}
-                        {staffByRole.ADMIN.length > 0 && (
-                            <div>
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className={`w-8 h-8 rounded-lg bg-linear-to-br ${ROLE_CONFIG.ADMIN.color} flex items-center justify-center`}>
-                                        <Shield className="w-4 h-4 text-white" />
-                                    </div>
-                                    <h2 className="text-lg font-semibold text-slate-800">
-                                        Administrators <span className="text-slate-400 font-normal">({staffByRole.ADMIN.length})</span>
-                                    </h2>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {staffByRole.ADMIN.map(member => (
-                                        <StaffCard
-                                            key={member.id}
-                                            member={member}
-                                            onToggleStatus={handleToggleStatus}
-                                            isAdmin
-                                        />
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
+                <button
+                    onClick={() => setShowAddModal(true)}
+                    className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-semibold text-sm hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-sm"
+                >
+                    <UserPlus className="w-4 h-4" />
+                    New Member
+                </button>
             </div>
 
-            {/* Add Staff Modal */}
+            {/* List View - More Minimalist than Cards */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-slate-50 flex items-center gap-4 bg-slate-50/30">
+                    <Search className="w-4 h-4 text-slate-400 ml-2" />
+                    <input
+                        type="text"
+                        placeholder="Search staff members..."
+                        className="bg-transparent border-none text-sm font-medium focus:ring-0 w-full outline-none"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="border-b border-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50/50">
+                                <th className="px-6 py-4">Name</th>
+                                <th className="px-6 py-4">Username</th>
+                                <th className="px-6 py-4">Role</th>
+                                <th className="px-6 py-4 text-center">Status</th>
+                                <th className="px-6 py-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {filteredStaff.map((member) => {
+                                const role = ROLE_CONFIG[member.role] || ROLE_CONFIG.WAITER;
+                                const Icon = role.icon;
+                                return (
+                                    <tr key={member.id} className="hover:bg-slate-50/50 transition-colors group">
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-8 h-8 rounded-lg ${role.bg} ${role.color} flex items-center justify-center`}>
+                                                    <Icon className="w-4 h-4" />
+                                                </div>
+                                                <span className="text-sm font-semibold text-slate-700">{member.name}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className="text-sm font-medium text-slate-400">@{member.username}</span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${role.bg} ${role.color}`}>
+                                                {member.role}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            {member.role === 'ADMIN' ? (
+                                                <div className="px-3 py-1 rounded-lg text-[10px] font-bold uppercase bg-slate-100 text-slate-400 cursor-not-allowed">
+                                                    Protected
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={() => handleToggleStatus(member.id, member.isActive)}
+                                                    className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase transition-all ${member.isActive
+                                                            ? 'bg-emerald-50 text-emerald-600'
+                                                            : 'bg-rose-50 text-rose-600'
+                                                        }`}
+                                                >
+                                                    {member.isActive ? 'Active' : 'Inactive'}
+                                                </button>
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                                {member.role !== 'ADMIN' && (
+                                                    <button
+                                                        onClick={() => handleDelete(member.id)}
+                                                        className="p-2 opacity-0 group-hover:opacity-100 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-all"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* ADD MODAL - Minimalist */}
             {showAddModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95">
-                        <div className="flex items-center justify-between mb-6">
-                            <h3 className="text-xl font-bold text-slate-800">Add Staff Member</h3>
-                            <button
-                                onClick={() => setShowAddModal(false)}
-                                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                            >
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/10 backdrop-blur-sm">
+                    <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between mb-8">
+                            <div>
+                                <h3 className="text-xl font-bold text-slate-900 tracking-tight">Add Member</h3>
+                                <p className="text-xs text-slate-400 font-medium">Create a new system sub-account.</p>
+                            </div>
+                            <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-slate-50 rounded-xl transition-colors">
                                 <X className="w-5 h-5 text-slate-400" />
                             </button>
                         </div>
 
                         {error && (
-                            <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2 text-red-700">
+                            <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600 text-xs font-semibold">
                                 <AlertCircle className="w-4 h-4 shrink-0" />
-                                <p className="text-sm">{error}</p>
+                                {error}
                             </div>
                         )}
 
-                        <form onSubmit={handleCreate} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1.5">Full Name</label>
-                                <input
-                                    required
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                    placeholder="e.g. John Doe"
-                                    value={formData.name}
-                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                />
+                        <form onSubmit={handleCreate} className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Full Name</label>
+                                <input required className="w-full bg-slate-50 border-none rounded-2xl py-3 px-4 text-sm font-semibold focus:ring-2 focus:ring-indigo-100 outline-none" placeholder="e.g. Rahul Sharma" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
                             </div>
-
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Username</label>
-                                    <input
-                                        required
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        placeholder="johnd"
-                                        value={formData.username}
-                                        onChange={e => setFormData({ ...formData, username: e.target.value.toLowerCase().replace(/\s/g, '') })}
-                                    />
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Username</label>
+                                    <input required className="w-full bg-slate-50 border-none rounded-2xl py-3 px-4 text-sm font-semibold focus:ring-2 focus:ring-indigo-100 outline-none" placeholder="rahul" value={formData.username} onChange={e => setFormData({ ...formData, username: e.target.value.toLowerCase().replace(/\s/g, '') })} />
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
-                                    <input
-                                        required
-                                        type="password"
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        placeholder="••••••"
-                                        value={formData.password}
-                                        onChange={e => setFormData({ ...formData, password: e.target.value })}
-                                    />
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Password</label>
+                                    <input required type="password" className="w-full bg-slate-50 border-none rounded-2xl py-3 px-4 text-sm font-semibold focus:ring-2 focus:ring-indigo-100 outline-none" placeholder="••••••" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} />
                                 </div>
                             </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">Role</label>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {(['MANAGER', 'WAITER', 'KITCHEN', 'CASHIER'] as const).map(role => {
-                                        const config = ROLE_CONFIG[role];
-                                        const Icon = config.icon;
-                                        return (
-                                            <button
-                                                key={role}
-                                                type="button"
-                                                onClick={() => setFormData({ ...formData, role })}
-                                                className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${formData.role === role
-                                                        ? 'border-blue-500 bg-blue-50'
-                                                        : 'border-slate-200 hover:border-slate-300'
-                                                    }`}
-                                            >
-                                                <Icon className={`w-4 h-4 ${formData.role === role ? 'text-blue-600' : 'text-slate-400'}`} />
-                                                <span className={`text-sm font-medium ${formData.role === role ? 'text-blue-600' : 'text-slate-600'}`}>
-                                                    {role}
-                                                </span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Role Assignment</label>
+                                <select className="w-full bg-slate-50 border-none rounded-2xl py-3 px-4 text-sm font-semibold focus:ring-2 focus:ring-indigo-100 outline-none appearance-none" value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value })}>
+                                    <option value="WAITER">WAITER</option>
+                                    <option value="KITCHEN">KITCHEN</option>
+                                    <option value="CASHIER">CASHIER</option>
+                                    <option value="MANAGER">MANAGER</option>
+                                </select>
                             </div>
 
-                            <div className="pt-4 flex gap-3">
+                            <div className="pt-4">
                                 <button
-                                    type="button"
-                                    onClick={() => setShowAddModal(false)}
-                                    className="flex-1 py-3 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
                                     disabled={submitting}
-                                    className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-sm transition-colors disabled:opacity-50"
+                                    type="submit"
+                                    className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2"
                                 >
-                                    {submitting ? 'Creating...' : 'Create Account'}
+                                    {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                                    {submitting ? 'Processing...' : 'Create Account'}
                                 </button>
                             </div>
                         </form>
                     </div>
                 </div>
             )}
-        </div>
-    );
-}
 
-function StaffCard({
-    member,
-    onToggleStatus,
-    isAdmin = false
-}: {
-    member: StaffMember;
-    onToggleStatus: (id: string, status: boolean) => void;
-    isAdmin?: boolean;
-}) {
-    const config = ROLE_CONFIG[member.role];
-    const Icon = config.icon;
-
-    return (
-        <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm hover:shadow-md transition-all group">
-            <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                    <div className={`w-12 h-12 rounded-xl bg-linear-to-br ${config.color} flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform`}>
-                        <span className="text-white font-bold text-lg">{member.name.charAt(0)}</span>
-                    </div>
-                    <div>
-                        <h3 className="font-semibold text-slate-800">{member.name}</h3>
-                        <p className="text-xs text-slate-500">@{member.username}</p>
-                    </div>
-                </div>
-                <div className={`w-3 h-3 rounded-full ${member.isActive ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-slate-50 flex items-center justify-between">
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${config.bgColor} ${config.textColor}`}>
-                    {member.role}
-                </span>
-                {!isAdmin && (
-                    <button
-                        onClick={() => onToggleStatus(member.id, member.isActive)}
-                        className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${member.isActive
-                                ? 'text-red-600 hover:bg-red-50'
-                                : 'text-emerald-600 hover:bg-emerald-50'
-                            }`}
-                    >
-                        {member.isActive ? 'Deactivate' : 'Activate'}
-                    </button>
-                )}
-            </div>
         </div>
     );
 }

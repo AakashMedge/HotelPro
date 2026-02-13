@@ -1,8 +1,6 @@
-
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
-import Link from 'next/link';
+import { useState, useEffect, useCallback, Suspense, useMemo, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import MobileNav from '@/components/public/MobileNav';
@@ -18,9 +16,11 @@ interface CartItem {
     title: string;
     price: number;
     quantity: number;
-    image: string;
-    selectedVariant?: { id: string, name: string, price: number };
-    selectedModifiers?: { id: string, name: string, price: number }[];
+    imageUrl: string | null;
+    category: string;
+    isVeg: boolean;
+    selectedVariant?: { id: string; name: string; price: number };
+    selectedModifiers?: { id: string; name: string; price: number }[];
     notes?: string;
 }
 
@@ -32,25 +32,69 @@ interface ApiResponse {
 }
 
 // ============================================
-// Constants & Styles
+// Category Placeholder System
 // ============================================
+
+const CATEGORY_GRADIENTS: Record<string, string> = {
+    'Signature': 'from-stone-300 to-stone-500',
+    'Appetizers': 'from-amber-200 to-amber-400',
+    'Starters': 'from-amber-200 to-amber-400',
+    'Main Course': 'from-stone-400 to-stone-600',
+    'Desserts': 'from-rose-200 to-rose-400',
+    'Wine & Drinks': 'from-slate-300 to-slate-500',
+    'Drinks': 'from-sky-200 to-sky-400',
+    'Biryani': 'from-amber-300 to-amber-500',
+    'Rice': 'from-amber-200 to-amber-400',
+    'Breads': 'from-amber-300 to-stone-400',
+    'Soups': 'from-orange-200 to-orange-400',
+    'Salads': 'from-emerald-200 to-emerald-400',
+    "Chef's Selection": 'from-violet-200 to-violet-400',
+};
 
 const CATEGORY_PRIORITY = ['Signature', 'Appetizers', 'Main Course', 'Desserts', 'Wine & Drinks'];
 
-const IMAGE_MAP: Record<string, string> = {
-    'Wagyu Beef Tenderloin': '/images/menu/wagyu.png',
-    'Perigord Black Truffle Risotto': '/images/menu/risotto.png',
-    'Luxury Tandoori Lobster': '/images/menu/lobster.png',
-    'Burrata di Puglia': '/images/menu/burrata.png',
-    'Saffron Paneer Tikka': '/images/menu/paneer.png',
-    'Wild-Caught Sea Bass': '/images/menu/wagyu.png',
-    'Grand Cru Chocolate Fondant': '/images/menu/fondant.png',
-    'Royal Chai Panna Cotta': '/images/menu/chai.png',
-    'Vintage Reserve Red': '/images/menu/wine.png',
-    'Imperial Masala Chai': '/images/menu/chai.png'
-};
+function getGradient(category: string): string {
+    return CATEGORY_GRADIENTS[category] || 'from-zinc-300 to-zinc-500';
+}
 
-const DEFAULT_IMAGE = '/images/menu/wagyu.png';
+// ============================================
+// Minimal Image Component
+// ============================================
+
+function FoodImage({ src, category, title, className = '' }: {
+    src: string | null | undefined;
+    category: string;
+    title: string;
+    className?: string;
+}) {
+    const [imgError, setImgError] = useState(false);
+    const hasImage = !!src && !imgError;
+
+    if (hasImage) {
+        return (
+            <div className={`relative overflow-hidden bg-zinc-100 ${className}`}>
+                <Image
+                    src={src}
+                    alt={title}
+                    fill
+                    className="object-cover"
+                    onError={() => setImgError(true)}
+                    sizes="(max-width: 768px) 50vw, 200px"
+                    loading="eager"
+                />
+            </div>
+        );
+    }
+
+    return (
+        <div className={`relative overflow-hidden ${className}`}>
+            <div className={`absolute inset-0 bg-linear-to-br ${getGradient(category)}`} />
+            <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">{category}</span>
+            </div>
+        </div>
+    );
+}
 
 // ============================================
 // Core Component
@@ -59,25 +103,104 @@ const DEFAULT_IMAGE = '/images/menu/wagyu.png';
 function MenuContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
+    const categoryScrollRef = useRef<HTMLDivElement>(null);
+    const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
     const tableId = searchParams.get('tableId');
     const tableCode = searchParams.get('tableCode');
     const isStaffMode = searchParams.get('staff') === 'true';
     const staffTableId = searchParams.get('staffTableId');
 
-    const [activeCategory, setActiveCategory] = useState('Signature');
+    // State
+    const [activeCategory, setActiveCategory] = useState(CATEGORY_PRIORITY[0]);
     const [menuItems, setMenuItems] = useState<FullMenuItem[]>([]);
     const [categories, setCategories] = useState<string[]>([]);
     const [cart, setCart] = useState<CartItem[]>([]);
+    const [hotelName, setHotelName] = useState('');
+
+    // UI
     const [isMenuRevealed, setIsMenuRevealed] = useState(false);
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [executing, setExecuting] = useState(false);
     const [selectedItemForModal, setSelectedItemForModal] = useState<FullMenuItem | null>(null);
     const [mounted, setMounted] = useState(false);
+    const [isSearchOpen, setIsSearchOpen] = useState(false);
+    const [headerScrolled, setHeaderScrolled] = useState(false);
+    const [isScrollSpy, setIsScrollSpy] = useState(false);
+    const [isNamePromptOpen, setIsNamePromptOpen] = useState(false);
+    const [customerNameInput, setCustomerNameInput] = useState('');
 
-    // Search & Filter State
+    // Filters
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTags, setActiveTags] = useState<string[]>([]);
-    const [isSearchVisible, setIsSearchVisible] = useState(false);
+
+    // Session countdown
+    const [sessionSecondsLeft, setSessionSecondsLeft] = useState<number | null>(null);
+    const sessionStartRef = useRef<number>(Date.now());
+    const SESSION_TIMEOUT = 5 * 60;
+    const SESSION_WARNING = 60;
+
+    // ============================================
+    // Session Countdown Timer
+    // ============================================
+    useEffect(() => {
+        if (isStaffMode) return;
+        const hasExistingOrder = !!localStorage.getItem('hp_active_order_id');
+        if (hasExistingOrder) return;
+
+        const interval = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - sessionStartRef.current) / 1000);
+            const remaining = SESSION_TIMEOUT - elapsed;
+
+            if (remaining <= 0) {
+                clearInterval(interval);
+                localStorage.removeItem('hp_table_id');
+                localStorage.removeItem('hp_table_code');
+                localStorage.removeItem('hp_session_id');
+                router.push('/welcome-guest?expired=true');
+                return;
+            }
+
+            if (remaining <= SESSION_WARNING) {
+                setSessionSecondsLeft(remaining);
+            }
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [isStaffMode, router]);
+
+    useEffect(() => {
+        if (cart.length > 0) {
+            sessionStartRef.current = Date.now();
+            setSessionSecondsLeft(null);
+        }
+    }, [cart.length]);
+
+    // ============================================
+    // Scroll tracking
+    // ============================================
+    useEffect(() => {
+        const onScroll = () => {
+            setHeaderScrolled(window.scrollY > 60);
+            if (!isScrollSpy) return;
+            const scrollY = window.scrollY + 180;
+            for (const cat of categories) {
+                const el = sectionRefs.current[cat];
+                if (el) {
+                    const top = el.offsetTop;
+                    const bottom = top + el.offsetHeight;
+                    if (scrollY >= top && scrollY < bottom) {
+                        setActiveCategory(cat);
+                        const chipEl = document.getElementById(`chip-${cat}`);
+                        chipEl?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                        break;
+                    }
+                }
+            }
+        };
+        window.addEventListener('scroll', onScroll, { passive: true });
+        return () => window.removeEventListener('scroll', onScroll);
+    }, [categories, isScrollSpy]);
 
     // ============================================
     // Logic: Menu Initialization
@@ -86,31 +209,29 @@ function MenuContent() {
     const initMenu = useCallback(async () => {
         try {
             const res = await fetch('/api/menu');
+            if (res.status === 401) { router.push('/welcome-guest'); return; }
             const data: ApiResponse = await res.json();
             if (data.success && data.items) {
-                const formatted: FullMenuItem[] = data.items.map(item => ({
+                const formatted: FullMenuItem[] = data.items.map((item) => ({
                     id: item.id,
                     title: item.name,
                     description: item.description,
                     priceRaw: Number(item.price),
-                    imageUrl: item.imageUrl,
+                    imageUrl: item.imageUrl || null,
                     isVeg: item.isVeg || false,
                     isAvailable: item.isAvailable,
-                    category: item.category?.name || 'Chef\'s Selection',
+                    category: item.category?.name || item.category || "Chef's Selection",
                     variants: item.variants || [],
                     modifierGroups: item.modifierGroups || [],
-
-                    // New fields for search & pricing
                     isChefSpecial: item.isChefSpecial || false,
                     isGlutenFree: item.isGlutenFree || false,
                     specialPrice: item.specialPrice,
                     isSpecialPriceActive: item.isSpecialPriceActive,
                     specialPriceStart: item.specialPriceStart,
-                    specialPriceEnd: item.specialPriceEnd
+                    specialPriceEnd: item.specialPriceEnd,
                 }));
-
                 setMenuItems(formatted);
-                const uniqueCats = Array.from(new Set(formatted.map(i => i.category)));
+                const uniqueCats = Array.from(new Set(formatted.map((i) => i.category)));
                 const sortedCats = uniqueCats.sort((a, b) => {
                     const idxA = CATEGORY_PRIORITY.indexOf(a);
                     const idxB = CATEGORY_PRIORITY.indexOf(b);
@@ -123,22 +244,19 @@ function MenuContent() {
                 if (sortedCats.length > 0) setActiveCategory(sortedCats[0]);
             }
         } catch (err) {
-            console.error("Menu fetch error", err);
+            console.error('Menu fetch error', err);
         }
-    }, []);
+    }, [router]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
-
-        // Auto-fix table selection if missing but present in URL
         if (tableId) localStorage.setItem('hp_table_id', tableId);
         if (tableCode) localStorage.setItem('hp_table_code', tableCode);
-
-        // Staff Mode Safety
         if (isStaffMode && staffTableId) {
             localStorage.setItem('hp_table_id', staffTableId);
             localStorage.setItem('hp_table_code', `T-${staffTableId.slice(0, 2)}`);
         }
+        setHotelName(localStorage.getItem('hp_hotel_name') || '');
     }, [isStaffMode, staffTableId, tableId, tableCode]);
 
     useEffect(() => {
@@ -146,81 +264,134 @@ function MenuContent() {
         initMenu();
         const timer = setTimeout(() => {
             setIsMenuRevealed(true);
-        }, 800);
+            setIsScrollSpy(true);
+        }, 300);
         return () => clearTimeout(timer);
     }, [initMenu]);
 
     // ============================================
-    // Logic: Cart Management
+    // Cart Logic — Unified localStorage Sync
     // ============================================
 
-    const addToCart = (item: FullMenuItem, config: { variant?: any, modifiers?: any[], finalPrice: number, qty: number, notes: string }) => {
+    // Load cart from localStorage on mount (sync with AI page)
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        try {
+            const raw = localStorage.getItem('hp_cart');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    const restored: CartItem[] = parsed.map((i: any) => ({
+                        cartId: i.cartId || Math.random().toString(36).substr(2, 9),
+                        menuItemId: i.menuItemId || i.id,
+                        title: i.title || i.name,
+                        price: i.price,
+                        quantity: i.quantity,
+                        imageUrl: i.imageUrl || null,
+                        category: i.category || '',
+                        isVeg: i.isVeg || false,
+                        selectedVariant: i.selectedVariant,
+                        selectedModifiers: i.selectedModifiers,
+                        notes: i.notes,
+                    }));
+                    setCart(restored);
+                }
+            }
+        } catch { /* ignore parse errors */ }
+    }, []);
+
+    // Persist cart to localStorage on every change (sync with AI page)
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        localStorage.setItem('hp_cart', JSON.stringify(cart));
+    }, [cart]);
+
+    const addToCart = (item: FullMenuItem, config: { variant?: any; modifiers?: any[]; finalPrice: number; qty: number; notes: string }) => {
         const cartId = Math.random().toString(36).substr(2, 9);
         const newItem: CartItem = {
-            cartId,
-            menuItemId: item.id,
-            title: item.title,
-            image: item.imageUrl || IMAGE_MAP[item.title] || DEFAULT_IMAGE,
-            price: config.finalPrice,
-            quantity: config.qty,
-            selectedVariant: config.variant,
-            selectedModifiers: config.modifiers,
-            notes: config.notes
+            cartId, menuItemId: item.id, title: item.title,
+            imageUrl: item.imageUrl || null, category: item.category,
+            isVeg: item.isVeg, price: config.finalPrice, quantity: config.qty,
+            selectedVariant: config.variant, selectedModifiers: config.modifiers, notes: config.notes,
         };
-        setCart(prev => [...prev, newItem]);
+        setCart((prev) => [...prev, newItem]);
     };
 
-    const removeFromCart = (cartId: string) => {
-        setCart(prev => prev.filter(i => i.cartId !== cartId));
+    const quickAddToCart = (item: FullMenuItem) => {
+        if (item.variants.length > 0 || item.modifierGroups.length > 0) {
+            setSelectedItemForModal(item);
+            return;
+        }
+        const price = isHappyHourActive(item) && item.specialPrice ? item.specialPrice : item.priceRaw;
+        addToCart(item, { finalPrice: price, qty: 1, notes: '' });
+    };
+
+    const updateCartItemQty = (menuItemId: string, delta: number) => {
+        setCart((prev) => {
+            const idx = prev.findIndex((c) => c.menuItemId === menuItemId);
+            if (idx === -1) return prev;
+            const updated = [...prev];
+            const newQty = updated[idx].quantity + delta;
+            if (newQty <= 0) updated.splice(idx, 1);
+            else updated[idx] = { ...updated[idx], quantity: newQty };
+            return updated;
+        });
     };
 
     const executeOrder = async () => {
         const currentTableId = tableId || localStorage.getItem('hp_table_id');
         const currentTableCode = tableCode || localStorage.getItem('hp_table_code');
-
         if (!currentTableId || cart.length === 0 || executing) return;
+
+        // Check for customer name (unless staff mode)
+        if (!isStaffMode) {
+            const storedName = localStorage.getItem('hp_guest_name');
+            if (!storedName) {
+                setIsNamePromptOpen(true);
+                return;
+            }
+        }
+
+        proceedWithOrder(currentTableId, currentTableCode);
+    };
+
+    const handleNameSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!customerNameInput.trim()) return;
+        localStorage.setItem('hp_guest_name', customerNameInput.trim());
+        setIsNamePromptOpen(false);
+        // Re-trigger execution
+        const currentTableId = tableId || localStorage.getItem('hp_table_id');
+        const currentTableCode = tableCode || localStorage.getItem('hp_table_code');
+        if (currentTableId) proceedWithOrder(currentTableId, currentTableCode);
+    };
+
+    const proceedWithOrder = async (currentTableId: string, currentTableCode: string | null) => {
         setExecuting(true);
         try {
             const activeOrderId = localStorage.getItem('hp_active_order_id');
             const isAppending = searchParams.get('append') === 'true';
-
-            const items = cart.map(item => ({
-                menuItemId: item.menuItemId,
-                quantity: item.quantity,
+            const items = cart.map((item) => ({
+                menuItemId: item.menuItemId, quantity: item.quantity,
                 selectedVariant: item.selectedVariant ? { name: item.selectedVariant.name, price: item.selectedVariant.price } : undefined,
-                selectedModifiers: item.selectedModifiers ? item.selectedModifiers.map(m => ({ name: m.name, price: m.price })) : undefined,
-                notes: item.notes
+                selectedModifiers: item.selectedModifiers ? item.selectedModifiers.map((m) => ({ name: m.name, price: m.price })) : undefined,
+                notes: item.notes,
             }));
-
             if (isAppending && activeOrderId && !isStaffMode) {
-                const res = await fetch(`/api/orders/${activeOrderId}/items`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ items })
-                });
+                const res = await fetch(`/api/orders/${activeOrderId}/items`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
                 if (!res.ok) throw new Error('Adding items failed');
+                setCart([]); localStorage.removeItem('hp_cart');
                 router.push(`/order-status?id=${activeOrderId}`);
             } else {
                 const res = await fetch('/api/orders', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        tableId: currentTableId,
-                        tableCode: currentTableCode,
-                        customerName: isStaffMode ? "Staff Service" : (localStorage.getItem('hp_guest_name') || 'Guest'),
-                        sessionId: localStorage.getItem('hp_session_id'),
-                        items
-                    })
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tableId: currentTableId, tableCode: currentTableCode, customerName: isStaffMode ? 'Staff Service' : localStorage.getItem('hp_guest_name') || 'Guest', sessionId: localStorage.getItem('hp_session_id'), items }),
                 });
                 const data = await res.json();
                 if (!data.success) throw new Error(data.error || 'Placing order failed');
-
-                if (isStaffMode) {
-                    router.push('/waiter');
-                } else {
-                    localStorage.setItem('hp_active_order_id', data.order.id);
-                    router.push(`/order-status?id=${data.order.id}`);
-                }
+                setCart([]); localStorage.removeItem('hp_cart');
+                if (isStaffMode) { router.push('/waiter'); }
+                else { localStorage.setItem('hp_active_order_id', data.order.id); router.push(`/order-status?id=${data.order.id}`); }
             }
         } catch (err) {
             alert(err instanceof Error ? err.message : 'An error occurred');
@@ -229,167 +400,146 @@ function MenuContent() {
     };
 
     const basketCount = cart.reduce((a, b) => a + b.quantity, 0);
-    const basketTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const basketTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
     // ============================================
-    // Logic: Filtering System
+    // Pricing helpers
     // ============================================
 
     const isHappyHourActive = (item: FullMenuItem) => {
         if (!item.isSpecialPriceActive || !item.specialPrice) return false;
-        if (!item.specialPriceStart || !item.specialPriceEnd) return true; // Always active if no window set
-
+        if (!item.specialPriceStart || !item.specialPriceEnd) return true;
         const now = new Date();
         const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
         return currentTime >= item.specialPriceStart && currentTime <= item.specialPriceEnd;
     };
 
-    const filteredItems = menuItems.filter(item => {
-        const matchesCategory = item.category === activeCategory;
-        const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.description?.toLowerCase().includes(searchQuery.toLowerCase());
+    const getItemPrice = (item: FullMenuItem) => {
+        const base = item.variants.length > 0 ? Math.min(...item.variants.map((v: any) => v.price)) : item.priceRaw;
+        return isHappyHourActive(item) && item.specialPrice ? item.specialPrice : base;
+    };
 
-        const matchesTags = activeTags.length === 0 || activeTags.every(tag => {
-            if (tag === 'VEG') return item.isVeg;
-            if (tag === 'NON-VEG') return !item.isVeg;
-            if (tag === 'GLUTEN-FREE') return item.isGlutenFree;
-            if (tag === 'CHEF-SPECIAL') return item.isChefSpecial;
-            if (tag === 'HAPPY-HOUR') return isHappyHourActive(item);
-            return true;
+    const getItemCartQty = (menuItemId: string) => {
+        return cart.filter((c) => c.menuItemId === menuItemId).reduce((a, b) => a + b.quantity, 0);
+    };
+
+    const popularItems = useMemo(() => {
+        const specials = menuItems.filter((i) => i.isChefSpecial && i.isAvailable);
+        return specials.length >= 3 ? specials.slice(0, 8) : menuItems.filter((i) => i.isAvailable).slice(0, 6);
+    }, [menuItems]);
+
+    const scrollToCategory = (cat: string) => {
+        setActiveCategory(cat);
+        const el = sectionRefs.current[cat];
+        if (el) {
+            const top = el.offsetTop - 140;
+            window.scrollTo({ top, behavior: 'smooth' });
+        }
+    };
+
+    // ─── Scroll Lock for Cart ───
+    useEffect(() => {
+        if (isCartOpen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = '';
+        }
+        return () => { document.body.style.overflow = ''; };
+    }, [isCartOpen]);
+
+    const searchResults = useMemo(() => {
+        if (searchQuery.length === 0) return [];
+        return menuItems.filter((item) => {
+            const q = searchQuery.toLowerCase();
+            const matchesSearch = item.title.toLowerCase().includes(q) || item.description?.toLowerCase().includes(q) || item.category.toLowerCase().includes(q);
+            const matchesTags = activeTags.length === 0 || activeTags.every((tag) => {
+                if (tag === 'VEG') return item.isVeg;
+                if (tag === 'NON-VEG') return !item.isVeg;
+                if (tag === 'GF') return item.isGlutenFree;
+                return true;
+            });
+            return matchesSearch && matchesTags;
         });
+    }, [menuItems, searchQuery, activeTags]);
 
-        // If search is active, ignore categories to show all matches
-        if (searchQuery.length > 0) return matchesSearch && matchesTags;
-        return matchesCategory && matchesSearch && matchesTags;
-    });
+    const itemsByCategory = useMemo(() => {
+        const map: Record<string, FullMenuItem[]> = {};
+        for (const cat of categories) {
+            map[cat] = menuItems.filter((item) => {
+                const matchesCat = item.category === cat;
+                const matchesTags = activeTags.length === 0 || activeTags.every((tag) => {
+                    if (tag === 'VEG') return item.isVeg;
+                    if (tag === 'NON-VEG') return !item.isVeg;
+                    if (tag === 'GF') return item.isGlutenFree;
+                    return true;
+                });
+                return matchesCat && matchesTags;
+            });
+        }
+        return map;
+    }, [menuItems, categories, activeTags]);
 
     if (!mounted) return null;
 
+    const displayTableCode = tableCode || localStorage.getItem('hp_table_code') || '';
+    const displayHotelName = hotelName || 'Restaurant';
+
     return (
-        <main className="min-h-screen bg-[#FDFCF8] text-[#1A1A1A] font-sans relative overflow-x-hidden selection:bg-[var(--tenant-primary)]/10">
-            {/* BACKGROUND TEXTURE */}
-            <div className="fixed inset-0 pointer-events-none opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/natural-paper.png')] z-0" />
+        <div className="min-h-screen bg-white pb-24">
 
-            {/* STAFF MODE BANNER */}
-            {isStaffMode && (
-                <div className="bg-black text-white text-[10px] font-black uppercase tracking-[0.4em] py-2.5 text-center fixed w-full z-100 top-0 shadow-lg">
-                    Terminal Active &bull; Table {tableCode?.replace('T-', '')}
-                </div>
-            )}
-
-            {/* CUSTOMIZATION MODAL */}
-            {selectedItemForModal && (
-                <ItemCustomizationModal
-                    item={selectedItemForModal}
-                    isOpen={!!selectedItemForModal}
-                    onClose={() => setSelectedItemForModal(null)}
-                    onAdd={(config) => {
-                        addToCart(selectedItemForModal, config);
-                        setSelectedItemForModal(null);
-                    }}
-                />
-            )}
-
-            {/* PREMIUM STICKY HEADER */}
-            <header className={`sticky ${isStaffMode ? 'top-8' : 'top-0'} z-50 bg-white/80 backdrop-blur-xl px-4 md:px-12 py-4 flex flex-col border-b border-black/5 shadow-[0_4px_30px_rgba(0,0,0,0.03)] transition-all duration-500`}>
-                <div className="flex justify-between items-center w-full">
-                    <Link href={isStaffMode ? "/waiter" : "/welcome-guest"} className="p-2.5 hover:bg-zinc-100 rounded-full transition-colors">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
-                    </Link>
-
-                    {!isSearchVisible ? (
-                        <div className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
-                            <span className="text-[var(--tenant-primary)] font-black text-xl tracking-tighter uppercase">HotelPro</span>
-                            <span className="text-[8px] uppercase font-bold tracking-[0.5em] text-zinc-400 mt-0.5">La Carte Royale</span>
-                        </div>
-                    ) : (
-                        <div className="flex-1 max-w-sm mx-4 animate-in slide-in-from-right-4 duration-300">
-                            <div className="relative group">
-                                <input
-                                    autoFocus
-                                    type="text"
-                                    placeholder="Search for a masterpiece..."
-                                    className="w-full bg-zinc-100/50 border-none rounded-2xl py-2.5 px-4 text-sm font-medium focus:ring-2 focus:ring-[var(--tenant-primary)]/20 focus:bg-white transition-all outline-none"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                />
-                                {searchQuery && (
-                                    <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-black">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setIsSearchVisible(!isSearchVisible)}
-                            className={`p-2.5 rounded-full transition-colors ${isSearchVisible ? 'bg-[var(--tenant-primary)] text-white' : 'hover:bg-zinc-100'}`}
-                        >
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                        </button>
-                        <button
-                            onClick={() => setIsCartOpen(true)}
-                            className="relative p-2.5 hover:bg-zinc-100 rounded-full transition-colors group"
-                        >
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 0 1-8 0" /></svg>
-                            {basketCount > 0 && (
-                                <span className="absolute -top-1 -right-1 bg-[var(--tenant-primary)] text-white text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full ring-4 ring-white shadow-lg animate-in zoom-in duration-300">
-                                    {basketCount}
-                                </span>
-                            )}
-                        </button>
-                    </div>
-                </div>
-            </header>
-
-            {/* HERO SECTION */}
-            <section className="px-6 py-12 md:py-20 text-center relative z-10">
-                <div className="max-w-4xl mx-auto space-y-4">
-                    <span className="inline-block px-3 py-1 bg-[var(--tenant-primary)]/10 text-[var(--tenant-primary)] text-[9px] font-bold uppercase tracking-[0.3em] rounded-full">
-                        H&P Gastronomy 2026
-                    </span>
-                    <h1 className="text-4xl md:text-6xl font-playfair font-black text-[#1A1A1A] italic leading-tight">
-                        Culinary Masterpieces
-                    </h1>
-                    <p className="text-zinc-500 text-xs md:text-sm font-medium tracking-wide max-w-lg mx-auto leading-relaxed">
-                        Hand-selected ingredients prepared with precision for an unparalleled dining experience.
+            {/* Session Expiry Warning */}
+            {sessionSecondsLeft !== null && sessionSecondsLeft > 0 && (
+                <div className="fixed top-0 left-0 right-0 z-50 bg-[#1A1A1A] text-white px-4 py-2.5 flex items-center justify-between" style={{ animation: 'slideDown 0.3s ease' }}>
+                    <p className="text-xs font-medium tracking-wide">
+                        Table hold expires in <span className="font-bold tabular-nums">{sessionSecondsLeft}s</span>
                     </p>
+                    <p className="text-[10px] text-white/50">Add an item to stay</p>
                 </div>
-            </section>
+            )}
 
-            {/* STICKY CATEGORY NAV & TAGS */}
-            <div className={`sticky ${isStaffMode ? 'top-32' : 'top-[73px]'} z-40 bg-white/90 backdrop-blur-md border-y border-black/5 overflow-x-auto no-scrollbar py-2`}>
-                {/* Categories */}
-                {!searchQuery && (
-                    <div className="flex gap-4 px-6 md:px-12 min-w-max justify-center mb-2 animate-in fade-in duration-500">
-                        {categories.map((cat) => (
-                            <button
-                                key={cat}
-                                onClick={() => setActiveCategory(cat)}
-                                className={`px-5 py-2.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-widest transition-all duration-300 ${activeCategory === cat ? 'bg-[var(--tenant-primary)] text-white shadow-lg shadow-red-500/20' : 'text-zinc-400 hover:text-black hover:bg-zinc-100'}`}
-                            >
-                                {cat}
-                            </button>
-                        ))}
+            {/* Staff Mode Banner */}
+            {isStaffMode && (
+                <div className="bg-[#1A1A1A] text-white text-[10px] font-semibold uppercase tracking-[0.25em] py-2 text-center fixed w-full z-50 top-0">
+                    Staff Mode · Table {displayTableCode.replace('T-', '')}
+                </div>
+            )}
+
+            {/* ─── Header ─── */}
+            <div className={`px-5 pt-6 pb-5 ${isStaffMode ? 'mt-8' : ''}`}>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-xl font-bold text-[#1A1A1A] tracking-tight">{displayHotelName}</h1>
+                        <p className="text-xs text-zinc-400 mt-0.5 font-medium">
+                            {displayTableCode && (
+                                <span className="text-[#1A1A1A]">Table {displayTableCode.replace('T-', '')} · </span>
+                            )}
+                            Dine In
+                        </p>
                     </div>
-                )}
+                    <button
+                        onClick={() => setIsSearchOpen(true)}
+                        className="w-10 h-10 rounded-full border border-zinc-200 flex items-center justify-center text-zinc-400 active:scale-95 transition-transform"
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                    </button>
+                </div>
 
-                {/* Quick Tags */}
-                <div className="flex gap-2 px-6 md:px-12 min-w-max justify-center pb-1">
+                {/* Filter pills */}
+                <div className="flex gap-2 mt-4">
                     {[
-                        { id: 'CHEF-SPECIAL', label: 'Chef\'s Pick', color: 'bg-amber-100 text-amber-700' },
-                        { id: 'HAPPY-HOUR', label: 'Happy Hour', color: 'bg-red-100 text-red-700' },
-                        { id: 'VEG', label: 'Pure Veg', color: 'bg-green-100 text-green-700' },
-                        { id: 'GLUTEN-FREE', label: 'Gluten-Free', color: 'bg-blue-100 text-blue-700' }
-                    ].map(tag => {
+                        { id: 'VEG', label: 'Veg' },
+                        { id: 'NON-VEG', label: 'Non-Veg' },
+                        { id: 'GF', label: 'Gluten Free' },
+                    ].map((tag) => {
                         const isActive = activeTags.includes(tag.id);
                         return (
                             <button
                                 key={tag.id}
-                                onClick={() => setActiveTags(prev => isActive ? prev.filter(t => t !== tag.id) : [...prev, tag.id])}
-                                className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest transition-all duration-300 border ${isActive ? 'bg-[#1A1A1A] text-white border-[#1A1A1A] scale-105' : 'bg-white text-zinc-400 border-black/5 hover:border-black/20'}`}
+                                onClick={() => setActiveTags((prev) => (isActive ? prev.filter((t) => t !== tag.id) : [...prev, tag.id]))}
+                                className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-all border ${isActive
+                                    ? 'bg-[#1A1A1A] text-white border-[#1A1A1A]'
+                                    : 'bg-white text-zinc-500 border-zinc-200 hover:border-zinc-300'
+                                    }`}
                             >
                                 {tag.label}
                             </button>
@@ -398,268 +548,347 @@ function MenuContent() {
                 </div>
             </div>
 
-            {/* GRID LAYOUT */}
-            <section className="px-6 md:px-12 py-12 min-h-[60vh] max-w-7xl mx-auto">
-                {searchQuery && (
-                    <div className="mb-12 text-center animate-in fade-in slide-in-from-top-4 duration-500">
-                        <span className="text-zinc-400 text-[10px] uppercase font-bold tracking-widest">Searching Results for</span>
-                        <h2 className="text-3xl font-playfair font-black text-[#1A1A1A] italic">"{searchQuery}"</h2>
-                        <button onClick={() => setSearchQuery('')} className="mt-4 text-[10px] font-black uppercase text-[var(--tenant-primary)] underline decoration-2 underline-offset-4">Clear All Filters</button>
+            {/* ─── Search Overlay ─── */}
+            {isSearchOpen && (
+                <div className="fixed inset-0 z-50 bg-white flex flex-col">
+                    <div className="flex items-center gap-3 px-4 py-4 border-b border-zinc-100">
+                        <button onClick={() => { setIsSearchOpen(false); setSearchQuery(''); }} className="w-9 h-9 rounded-full border border-zinc-200 flex items-center justify-center shrink-0">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5" /><path d="M12 19l-7-7 7-7" /></svg>
+                        </button>
+                        <input autoFocus type="text" placeholder="Search dishes..."
+                            className="flex-1 text-sm font-medium placeholder:text-zinc-300 outline-none bg-transparent"
+                            value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                        {searchQuery && (
+                            <button onClick={() => setSearchQuery('')} className="text-zinc-300 p-1">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                            </button>
+                        )}
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4">
+                        {searchQuery.length === 0 ? (
+                            <div className="text-center mt-20">
+                                <p className="text-zinc-300 text-sm">Search our menu</p>
+                            </div>
+                        ) : (
+                            <div>
+                                <p className="text-[10px] font-medium uppercase tracking-widest text-zinc-400 mb-3">{searchResults.length} result{searchResults.length !== 1 ? 's' : ''}</p>
+                                {searchResults.map((item) => (
+                                    <div key={item.id}
+                                        className="flex items-center gap-3 py-3 border-b border-zinc-50 last:border-0"
+                                        onClick={() => { setSelectedItemForModal(item); setIsSearchOpen(false); setSearchQuery(''); }}>
+                                        <FoodImage src={item.imageUrl} category={item.category} title={item.title} className="w-12 h-12 rounded-lg shrink-0" />
+                                        <div className="flex-1 min-w-0">
+                                            <h4 className="font-semibold text-sm truncate text-[#1A1A1A]">{item.title}</h4>
+                                            <p className="text-sm text-zinc-500 mt-0.5">₹{getItemPrice(item)}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                                {searchResults.length === 0 && (
+                                    <div className="text-center py-16">
+                                        <p className="text-zinc-400 text-sm">No dishes found for &ldquo;{searchQuery}&rdquo;</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* ─── Category Tabs ─── */}
+            <div className={`sticky ${isStaffMode ? 'top-8' : 'top-0'} z-30 bg-white transition-shadow duration-200 ${headerScrolled ? 'shadow-sm' : ''}`}>
+                <div ref={categoryScrollRef} className="flex gap-1 px-4 py-2.5 overflow-x-auto no-scrollbar">
+                    {categories.map((cat) => {
+                        const isActive = activeCategory === cat;
+                        const countInCat = (itemsByCategory[cat] || []).length;
+                        if (countInCat === 0 && activeTags.length > 0) return null;
+                        return (
+                            <button id={`chip-${cat}`} key={cat} onClick={() => scrollToCategory(cat)}
+                                className={`px-4 py-2 rounded-full text-xs font-medium transition-all shrink-0 ${isActive
+                                    ? 'bg-[#1A1A1A] text-white'
+                                    : 'text-zinc-400 hover:text-zinc-600'
+                                    }`}>
+                                {cat}
+                            </button>
+                        );
+                    })}
+                </div>
+                <div className="h-px bg-zinc-100" />
+            </div>
+
+            {/* ─── Popular Section ─── */}
+            {popularItems.length > 0 && !searchQuery && activeTags.length === 0 && (
+                <div className="px-5 pt-5 pb-1">
+                    <h2 className="text-sm font-semibold text-[#1A1A1A] uppercase tracking-wide mb-4">Popular</h2>
+                    <div className="flex gap-3 overflow-x-auto no-scrollbar pb-3 -mx-5 px-5">
+                        {popularItems.map((item) => {
+                            const qty = getItemCartQty(item.id);
+                            return (
+                                <div key={item.id} className="shrink-0 w-[130px]"
+                                    onClick={() => { if (item.isAvailable) setSelectedItemForModal(item); }}>
+                                    <div className="relative aspect-square rounded-xl overflow-hidden bg-zinc-100 mb-2">
+                                        <FoodImage src={item.imageUrl} category={item.category} title={item.title} className="w-full h-full" />
+                                        {item.isChefSpecial && (
+                                            <div className="absolute top-2 left-2 bg-[#1A1A1A] text-[8px] font-semibold text-white px-2 py-0.5 rounded uppercase tracking-wide">Bestseller</div>
+                                        )}
+                                        {item.isAvailable && (
+                                            <button onClick={(e) => { e.stopPropagation(); quickAddToCart(item); }}
+                                                className={`absolute bottom-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition-all ${qty > 0 ? 'bg-[#1A1A1A] text-white' : 'bg-white text-[#1A1A1A] shadow-md'
+                                                    }`}>
+                                                {qty > 0 ? <span className="text-[10px] font-bold">{qty}</span> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>}
+                                            </button>
+                                        )}
+                                    </div>
+                                    <h4 className="text-xs font-medium leading-tight line-clamp-2 text-[#1A1A1A]">{item.title}</h4>
+                                    <p className="text-xs text-zinc-400 mt-0.5">₹{getItemPrice(item)}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* ─── Menu Sections ─── */}
+            <div className="px-5 pt-3 pb-4">
+                {categories.map((cat) => {
+                    const items = itemsByCategory[cat] || [];
+                    if (items.length === 0) return null;
+                    return (
+                        <div key={cat} ref={(el) => { sectionRefs.current[cat] = el; }} className="mb-8">
+                            <div className="flex items-center justify-between mb-3">
+                                <h2 className="text-sm font-semibold text-[#1A1A1A] uppercase tracking-wide">{cat}</h2>
+                                <span className="text-[10px] text-zinc-300 font-medium">{items.length} items</span>
+                            </div>
+
+                            <div className="space-y-0 divide-y divide-zinc-100">
+                                {isMenuRevealed && items.map((item) => {
+                                    const qty = getItemCartQty(item.id);
+                                    const price = getItemPrice(item);
+                                    const isDiscounted = isHappyHourActive(item);
+                                    const hasCustomization = item.variants.length > 0 || item.modifierGroups.length > 0;
+
+                                    return (
+                                        <div key={item.id}
+                                            className={`flex gap-4 py-4 ${!item.isAvailable ? 'opacity-40' : ''}`}
+                                            onClick={() => { if (item.isAvailable) setSelectedItemForModal(item); }}>
+
+                                            {/* Info */}
+                                            <div className="flex-1 min-w-0">
+                                                {item.isChefSpecial && (
+                                                    <span className="text-[9px] font-semibold text-amber-600 uppercase tracking-wider">Bestseller</span>
+                                                )}
+                                                <h3 className="font-medium text-[15px] leading-snug text-[#1A1A1A] mt-0.5">{item.title}</h3>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <span className="font-semibold text-sm text-[#1A1A1A]">₹{price}</span>
+                                                    {item.variants.length > 0 && !isDiscounted && (
+                                                        <span className="text-[10px] text-zinc-400">onwards</span>
+                                                    )}
+                                                    {isDiscounted && (
+                                                        <>
+                                                            <span className="text-[11px] line-through text-zinc-300">₹{item.priceRaw}</span>
+                                                            <span className="text-[9px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">OFFER</span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                                {item.description && (
+                                                    <p className="text-[12px] text-zinc-400 leading-relaxed line-clamp-2 mt-1.5">{item.description}</p>
+                                                )}
+                                            </div>
+
+                                            {/* Image + Add */}
+                                            <div className="relative shrink-0 flex flex-col items-center">
+                                                <FoodImage src={item.imageUrl} category={item.category} title={item.title}
+                                                    className="w-24 h-24 rounded-lg" />
+                                                {!item.isAvailable && (
+                                                    <div className="absolute inset-0 bg-white/60 rounded-lg flex items-center justify-center">
+                                                        <span className="text-[9px] font-semibold uppercase tracking-widest text-zinc-500">Sold Out</span>
+                                                    </div>
+                                                )}
+                                                {item.isAvailable && (
+                                                    <div className="absolute -bottom-2.5" onClick={(e) => e.stopPropagation()}>
+                                                        {qty > 0 ? (
+                                                            <div className="flex items-center bg-[#1A1A1A] rounded-lg overflow-hidden shadow-sm">
+                                                                <button onClick={() => updateCartItemQty(item.id, -1)} className="w-8 h-8 flex items-center justify-center text-white text-sm font-medium">-</button>
+                                                                <span className="w-6 text-center text-white text-xs font-bold">{qty}</span>
+                                                                <button onClick={() => updateCartItemQty(item.id, 1)} className="w-8 h-8 flex items-center justify-center text-white text-sm font-medium">+</button>
+                                                            </div>
+                                                        ) : (
+                                                            <button onClick={() => quickAddToCart(item)}
+                                                                className="bg-white border border-zinc-200 text-[#1A1A1A] px-5 py-1.5 rounded-lg text-xs font-semibold shadow-sm active:scale-95 transition-transform uppercase tracking-wide">
+                                                                Add{hasCustomization && '+'}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    );
+                })}
+
+                {categories.every((cat) => (itemsByCategory[cat] || []).length === 0) && isMenuRevealed && (
+                    <div className="py-20 text-center">
+                        <p className="text-sm text-zinc-400">No dishes match your filters</p>
+                        <button onClick={() => { setSearchQuery(''); setActiveTags([]); }} className="mt-3 text-xs font-medium text-zinc-600 underline underline-offset-4">Clear Filters</button>
                     </div>
                 )}
+            </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-12">
-                    {isMenuRevealed && filteredItems.map((item, idx) => {
-                        const inCartQty = cart.filter(c => c.menuItemId === item.id).reduce((a, b) => a + b.quantity, 0);
-                        const isDiscounted = isHappyHourActive(item);
-                        const basePrice = item.variants.length > 0 ? Math.min(...item.variants.map((v: any) => v.price)) : item.priceRaw;
-                        const displayPrice = isDiscounted ? item.specialPrice : basePrice;
+            {/* ─── Item Modal ─── */}
+            {selectedItemForModal && (
+                <ItemCustomizationModal
+                    item={selectedItemForModal}
+                    isOpen={!!selectedItemForModal}
+                    onClose={() => setSelectedItemForModal(null)}
+                    onAdd={(config) => { addToCart(selectedItemForModal, config); setSelectedItemForModal(null); }}
+                />
+            )}
 
-                        return (
-                            <div
-                                key={item.id}
-                                className={`group relative bg-white rounded-[2.5rem] p-4 border border-black/[0.03] shadow-[0_20px_50px_rgba(0,0,0,0.04)] hover:shadow-[0_40px_80px_rgba(0,0,0,0.08)] transition-all duration-500 hover:-translate-y-2 cursor-pointer ${!item.isAvailable ? 'grayscale opacity-50' : ''}`}
-                                style={{ animation: `fadeUp 0.8s cubic-bezier(0.2, 0, 0, 1) forwards ${idx * 0.05}s` }}
-                                onClick={() => { if (item.isAvailable) setSelectedItemForModal(item); }}
-                            >
-                                <div className="relative aspect-4/3 overflow-hidden rounded-[2rem] bg-zinc-100 mb-6 flex-shrink-0">
-                                    <Image
-                                        src={item.imageUrl || IMAGE_MAP[item.title] || DEFAULT_IMAGE}
-                                        alt={item.title}
-                                        fill
-                                        className="object-cover transition-transform duration-1000 group-hover:scale-110"
-                                    />
-
-                                    {/* STATUS BADGES */}
-                                    <div className="absolute top-4 left-4 flex flex-col gap-2 scale-90 origin-top-left">
-                                        <div className="p-1.5 bg-white/90 backdrop-blur-md rounded-lg shadow-xl border border-black/5 flex items-center justify-center">
-                                            <div className={`w-2.5 h-2.5 rounded-full ${item.isVeg ? 'bg-green-500' : 'bg-red-500'}`} />
-                                        </div>
-                                        {item.isChefSpecial && (
-                                            <div className="px-3 py-1 bg-amber-400 text-white text-[8px] font-black uppercase tracking-widest rounded-lg shadow-lg">Chef's Pick</div>
-                                        )}
-                                        {item.isGlutenFree && (
-                                            <div className="px-3 py-1 bg-blue-500 text-white text-[8px] font-black uppercase tracking-widest rounded-lg shadow-lg">Gluten-Free</div>
-                                        )}
-                                        {isDiscounted && (
-                                            <div className="px-3 py-1 bg-red-600 text-white text-[8px] font-black uppercase tracking-widest rounded-lg shadow-lg animate-pulse">Happy Hour</div>
-                                        )}
-                                    </div>
-
-                                    {/* QUANTITY IN CART */}
-                                    {inCartQty > 0 && (
-                                        <div className="absolute top-4 right-4 bg-[var(--tenant-primary)] text-white w-10 h-10 rounded-full flex items-center justify-center font-black text-sm shadow-2xl animate-bounce">
-                                            {inCartQty}
-                                        </div>
-                                    )}
-
-                                    {!item.isAvailable && (
-                                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                                            <span className="px-6 py-2 bg-white text-black font-black text-[10px] uppercase tracking-[0.3em] rounded-full">
-                                                Sold Out
-                                            </span>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="px-2 pb-2">
-                                    <div className="flex justify-between items-start mb-3">
-                                        <h3 className="font-playfair text-xl font-black text-[#1A1A1A] group-hover:text-[var(--tenant-primary)] transition-colors line-clamp-1">
-                                            {item.title}
-                                        </h3>
-                                        <div className="flex flex-col items-end">
-                                            <div className="flex items-center gap-2">
-                                                {isDiscounted && (
-                                                    <span className="text-zinc-300 line-through text-xs font-bold decoration-[var(--tenant-primary)]">₹{basePrice}</span>
-                                                )}
-                                                <span className="text-[var(--tenant-primary)] font-black text-lg tabular-nums">
-                                                    ₹{displayPrice}
-                                                </span>
-                                            </div>
-                                            {item.variants.length > 0 && !isDiscounted && (
-                                                <span className="text-[8px] font-bold text-zinc-400 uppercase tracking-widest mt-0.5">Start</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <p className="text-xs text-zinc-500 font-medium leading-relaxed italic line-clamp-2 opacity-70 group-hover:opacity-100 transition-opacity">
-                                        {item.description}
-                                    </p>
-
-                                    <div className="mt-6 flex items-center justify-between">
-                                        <div className="flex items-center gap-1.5">
-                                            {item.isGlutenFree && (
-                                                <span className="text-[7px] font-black text-blue-500 border border-blue-200 px-1.5 py-0.5 rounded-full uppercase">GF</span>
-                                            )}
-                                            <div className="w-1.5 h-1.5 rounded-full bg-zinc-200" />
-                                            <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
-                                                {item.category}
-                                            </span>
-                                        </div>
-                                        <div className="w-10 h-10 rounded-full bg-zinc-50 flex items-center justify-center text-[var(--tenant-primary)] group-hover:bg-[var(--tenant-primary)] group-hover:text-white transition-all shadow-inner">
-                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )
-                    })}
-
-                    {isMenuRevealed && filteredItems.length === 0 && (
-                        <div className="col-span-full py-20 text-center space-y-6">
-                            <div className="w-24 h-24 bg-zinc-50 rounded-full flex items-center justify-center mx-auto text-zinc-200">
-                                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
-                            </div>
-                            <div>
-                                <h3 className="text-2xl font-playfair font-black text-[#1A1A1A] italic">No Masterpieces Found</h3>
-                                <p className="text-xs text-zinc-400 font-medium mt-2">Try adjusting your search or filters to find something else.</p>
-                            </div>
-                            <button onClick={() => { setSearchQuery(''); setActiveTags([]); }} className="px-8 py-3 bg-[#1A1A1A] text-white text-[10px] font-black uppercase tracking-widest rounded-full">Explore All Dishes</button>
-                        </div>
-                    )}
-                </div>
-            </section>
-
-            {/* FLOATING TRAY (MOBILE) */}
+            {/* ─── Cart Bar ─── */}
             {basketCount > 0 && !isCartOpen && (
-                <div className="fixed bottom-24 left-1/2 -translate-x-1/2 w-[90vw] max-w-sm z-60 animate-in slide-in-from-bottom-10 fade-in duration-500">
-                    <button
-                        onClick={() => setIsCartOpen(true)}
-                        className="w-full bg-[#1A1A1A] text-white p-4 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex items-center justify-between px-8 border border-white/10 group active:scale-95 transition-transform"
-                    >
-                        <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center relative">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 0 1-8 0" /></svg>
-                                <span className="absolute -top-1 -right-1 bg-[var(--tenant-primary)] text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center">
-                                    {basketCount}
-                                </span>
-                            </div>
-                            <div className="flex flex-col items-start">
-                                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">View Cart</span>
-                                <span className="text-sm font-black tracking-tight">₹{basketTotal.toLocaleString()}</span>
-                            </div>
+                <div className="fixed bottom-[60px] left-0 right-0 z-40 px-4" style={{ animation: 'slideUp 0.3s ease' }}>
+                    <button onClick={() => setIsCartOpen(true)}
+                        className="w-full bg-[#1A1A1A] text-white py-3.5 px-5 rounded-xl flex items-center justify-between active:scale-[0.99] transition-transform">
+                        <div className="text-left">
+                            <p className="text-[10px] text-white/50 font-medium uppercase tracking-wider">{basketCount} item{basketCount > 1 ? 's' : ''}</p>
+                            <p className="text-sm font-bold mt-0.5">₹{basketTotal.toLocaleString()}</p>
                         </div>
-                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--tenant-primary)]">
-                            Checkout
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
+                            View Cart
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14" /><path d="M12 5l7 7-7 7" /></svg>
                         </div>
                     </button>
                 </div>
             )}
 
-            {/* CART DRAWER - TOP TIER PRIORITY */}
-            <div className={`fixed inset-0 z-[9000] transition-all duration-500 ${isCartOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
-                {/* BACKDROP */}
-                <div
-                    className="absolute inset-0 bg-black/60 backdrop-blur-md"
-                    onClick={() => setIsCartOpen(false)}
-                />
+            {/* ─── Cart Drawer ─── */}
+            <div className={`fixed inset-0 z-50 transition-all duration-300 ${isCartOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+                <div className="absolute inset-0 bg-black/40" onClick={() => setIsCartOpen(false)} />
+                <div className={`absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl flex flex-col max-h-[85vh] transition-transform duration-300 ${isCartOpen ? 'translate-y-0' : 'translate-y-full'}`}>
 
-                {/* DRAWER CONTENT */}
-                <div className={`absolute bottom-0 left-0 right-0 max-h-[92vh] bg-white rounded-t-[3rem] shadow-[0_-20px_100px_rgba(0,0,0,0.4)] flex flex-col transform transition-all duration-700 ease-[cubic-bezier(0.2,0,0,1)] z-10 ${isCartOpen ? 'translate-y-0' : 'translate-y-full'}`}>
-                    <div className="px-6 pt-10 pb-16 overflow-y-auto max-h-[88vh] hide-scrollbar">
-                        {/* HEADER */}
-                        <div className="flex justify-between items-center mb-10 sticky top-0 bg-white z-20 pb-4">
-                            <div>
-                                <h2 className="text-3xl font-playfair font-black text-[#1A1A1A] italic">Order Selection</h2>
-                                <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mt-1 italic font-playfair">Review your curated items</p>
-                            </div>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setIsCartOpen(false);
-                                }}
-                                className="w-12 h-12 rounded-full bg-zinc-50 flex items-center justify-center text-zinc-400 hover:text-black transition-all hover:scale-110 active:scale-95 shadow-inner"
-                            >
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                            </button>
+                    <div className="w-full h-5 flex items-center justify-center shrink-0 cursor-pointer" onClick={() => setIsCartOpen(false)}>
+                        <div className="w-8 h-0.5 bg-zinc-200 rounded-full" />
+                    </div>
+
+                    <div className="px-5 pb-3 flex justify-between items-center">
+                        <div>
+                            <h2 className="text-base font-bold text-[#1A1A1A]">Your Order</h2>
+                            {displayTableCode && (
+                                <p className="text-[10px] text-zinc-400 mt-0.5">Table {displayTableCode.replace('T-', '')}</p>
+                            )}
                         </div>
+                        <button onClick={() => setIsCartOpen(false)} className="w-8 h-8 rounded-full border border-zinc-200 flex items-center justify-center">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                        </button>
+                    </div>
 
+                    <div className="px-5 flex-1 overflow-y-auto">
                         {cart.length === 0 ? (
-                            <div className="py-20 text-center space-y-6">
-                                <div className="w-24 h-24 bg-zinc-50 rounded-full flex items-center justify-center mx-auto mb-6 text-zinc-200 shadow-inner">
-                                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 0 1-8 0" /></svg>
-                                </div>
-                                <h3 className="font-playfair text-2xl font-black text-zinc-400 italic">Empty Order Binder</h3>
-                                <p className="text-xs text-zinc-400 font-medium">Begin your journey by adding masterpieces.</p>
-                                <button
-                                    onClick={() => setIsCartOpen(false)}
-                                    className="mt-8 px-10 py-4 bg-zinc-900 text-white text-[10px] font-black uppercase tracking-widest rounded-full hover:bg-black transition-all active:scale-95 shadow-xl"
-                                >
-                                    Explore Menu
-                                </button>
+                            <div className="py-10 text-center text-zinc-400">
+                                <p className="text-sm">Cart is empty</p>
                             </div>
                         ) : (
-                            <div className="space-y-6">
+                            <div className="divide-y divide-zinc-100">
                                 {cart.map((item) => (
-                                    <div key={item.cartId} className="flex items-start gap-5 p-5 rounded-4xl bg-white border border-black/[0.03] shadow-sm hover:shadow-md transition-shadow">
-                                        <div className="relative w-24 h-24 rounded-[1.5rem] overflow-hidden shadow-sm shrink-0 border border-black/5">
-                                            <Image src={item.image} alt={item.title} fill className="object-cover" />
+                                    <div key={item.cartId} className="flex gap-3 items-center py-3">
+                                        <FoodImage src={item.imageUrl} category={item.category} title={item.title}
+                                            className="w-12 h-12 rounded-lg shrink-0" />
+                                        <div className="flex-1 min-w-0">
+                                            <h4 className="font-medium text-sm truncate text-[#1A1A1A]">{item.title}</h4>
+                                            {item.selectedVariant && <p className="text-[10px] text-zinc-400">{item.selectedVariant.name}</p>}
+                                            <p className="font-semibold text-sm text-[#1A1A1A] mt-0.5">₹{item.price * item.quantity}</p>
                                         </div>
-                                        <div className="flex-1 min-w-0 flex flex-col h-24 justify-between py-1">
-                                            <div className="flex justify-between items-start">
-                                                <div>
-                                                    <h4 className="font-black text-[#1A1A1A] uppercase text-xs tracking-tight truncate pr-4">{item.title}</h4>
-                                                    <div className="text-[9px] text-zinc-400 mt-1 space-x-2">
-                                                        {item.selectedVariant && <span className="font-bold text-[var(--tenant-primary)]">{item.selectedVariant.name}</span>}
-                                                        {item.selectedModifiers?.map(m => (<span key={m.id} className="inline-block">+ {m.name}</span>))}
-                                                    </div>
-                                                </div>
-                                                <button
-                                                    onClick={() => removeFromCart(item.cartId)}
-                                                    className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm"
-                                                >
-                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                                </button>
-                                            </div>
-
-                                            <div className="flex justify-between items-end">
-                                                <div className="flex items-center gap-2 bg-zinc-50 px-3 py-1.5 rounded-full border border-black/5">
-                                                    <span className="text-[10px] font-black text-zinc-400 uppercase">Qty</span>
-                                                    <span className="text-xs font-black text-zinc-900">{item.quantity}</span>
-                                                </div>
-                                                <span className="font-playfair text-xl font-black text-[var(--tenant-primary)]">₹{(item.price * item.quantity).toLocaleString()}</span>
-                                            </div>
+                                        <div className="flex items-center bg-zinc-100 rounded-lg overflow-hidden shrink-0">
+                                            <button onClick={() => updateCartItemQty(item.menuItemId, -1)} className="w-8 h-8 flex items-center justify-center text-zinc-600 text-sm">-</button>
+                                            <span className="w-5 text-center text-xs font-bold text-[#1A1A1A]">{item.quantity}</span>
+                                            <button onClick={() => updateCartItemQty(item.menuItemId, 1)} className="w-8 h-8 flex items-center justify-center text-zinc-600 text-sm">+</button>
                                         </div>
                                     </div>
                                 ))}
-
-                                <div className="mt-12 space-y-4 pt-10 border-t border-black/5">
-                                    <div className="flex justify-between items-baseline">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Consolidated Sum</span>
-                                        <span className="text-4xl font-playfair font-black text-[#1A1A1A] tabular-nums underline decoration-[var(--tenant-primary)]/30 underline-offset-8">₹{basketTotal.toLocaleString()}</span>
-                                    </div>
-
-                                    <p className="text-[9px] text-zinc-400 font-medium leading-relaxed italic">
-                                        * Final taxes and service charges will be calculated on the next page.
-                                    </p>
-
-                                    <button
-                                        onClick={executeOrder}
-                                        disabled={executing}
-                                        className="w-full py-6 mt-6 bg-[var(--tenant-primary)] text-white rounded-4xl font-black text-xs uppercase tracking-[0.4em] shadow-[0_20px_40px_rgba(212,52,37,0.3)] active:scale-[0.98] transition-all disabled:opacity-50 disabled:grayscale"
-                                    >
-                                        {executing ? 'Authorizing...' : isStaffMode ? 'Commit to Kitchen' : 'Confirm Order'}
-                                    </button>
-                                </div>
                             </div>
                         )}
                     </div>
+
+                    {cart.length > 0 && (
+                        <div className="p-5 border-t border-zinc-100">
+                            <div className="flex justify-between items-baseline mb-4">
+                                <span className="text-xs text-zinc-400">Subtotal</span>
+                                <span className="text-lg font-bold text-[#1A1A1A]">₹{basketTotal.toLocaleString()}</span>
+                            </div>
+                            <p className="text-[10px] text-zinc-300 mb-3">Taxes calculated at billing</p>
+                            <button onClick={executeOrder} disabled={executing}
+                                className="w-full py-3.5 bg-[#1A1A1A] text-white rounded-xl font-semibold text-sm uppercase tracking-wide active:scale-[0.98] transition-all disabled:opacity-50">
+                                {executing ? (
+                                    <span className="flex items-center justify-center gap-2">
+                                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        Placing Order...
+                                    </span>
+                                ) : (
+                                    `Place Order · ₹${basketTotal.toLocaleString()}`
+                                )}
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* MOBILE NAV COMPONENT */}
+            {/* ─── Name Prompt Modal ─── */}
+            {isNamePromptOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95">
+                        <div className="text-center mb-6">
+                            <h3 className="text-xl font-bold text-[#1A1A1A]">One last thing...</h3>
+                            <p className="text-sm text-zinc-500 mt-1">What should we call you?</p>
+                        </div>
+                        <form onSubmit={handleNameSubmit} className="space-y-4">
+                            <input
+                                autoFocus
+                                required
+                                value={customerNameInput}
+                                onChange={(e) => setCustomerNameInput(e.target.value)}
+                                placeholder="Your Name"
+                                className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl text-center text-lg font-medium outline-none focus:ring-2 focus:ring-[#1A1A1A] text-[#1A1A1A]"
+                            />
+                            <div className="flex gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsNamePromptOpen(false)}
+                                    className="flex-1 py-3 text-sm font-medium text-zinc-500 hover:bg-zinc-50 rounded-xl transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={!customerNameInput.trim()}
+                                    className="flex-2 py-3 bg-[#1A1A1A] text-white rounded-xl font-bold text-sm disabled:opacity-50"
+                                >
+                                    Confirm Order
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+
+            {/* Mobile Nav */}
             {!isCartOpen && <MobileNav />}
 
-            {/* GLOBAL ANIMATIONS */}
             <style jsx global>{`
-                @keyframes fadeUp {
-                    from { opacity: 0; transform: translateY(30px); }
+                @keyframes slideUp {
+                    from { opacity: 0; transform: translateY(16px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                @keyframes slideDown {
+                    from { opacity: 0; transform: translateY(-100%); }
                     to { opacity: 1; transform: translateY(0); }
                 }
                 .no-scrollbar::-webkit-scrollbar { display: none; }
                 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
             `}</style>
-        </main>
+        </div>
     );
 }
 
@@ -670,9 +899,8 @@ function MenuContent() {
 export default function MenuPage() {
     return (
         <Suspense fallback={
-            <div className="min-h-screen bg-[#FDFCF8] flex items-center justify-center flex-col gap-6">
-                <div className="w-12 h-12 border-4 border-zinc-100 border-t-[var(--tenant-primary)] rounded-full animate-spin" />
-                <span className="text-[10px] font-black text-zinc-400 tracking-[0.5em] uppercase animate-pulse">Initializing Menu...</span>
+            <div className="min-h-screen bg-white flex items-center justify-center">
+                <div className="w-6 h-6 border-2 border-zinc-200 border-t-zinc-600 rounded-full animate-spin" />
             </div>
         }>
             <MenuContent />

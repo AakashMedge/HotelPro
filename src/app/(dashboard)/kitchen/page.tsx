@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ============================================
@@ -10,9 +10,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 type LineItem = {
     name: string;
     qty: number;
-    // New Fields
-    variant?: { name: string };
-    modifiers?: { name: string }[];
+    variant?: { name: string; price: number };
+    modifiers?: { name: string; price: number }[];
     notes?: string;
 };
 
@@ -20,7 +19,7 @@ type Ticket = {
     id: string;
     fullId: string;
     table: string;
-    status: 'NEW' | 'PREPARING' | 'READY';
+    status: 'NEW' | 'PREPARING' | 'READY' | 'SERVED';
     items: LineItem[];
     createdAt: number;
     version: number;
@@ -34,6 +33,12 @@ interface ApiOrder {
     items: any[];
     createdAt: string;
 }
+
+// ============================================
+// Constants
+// ============================================
+
+const NOTIFICATION_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'; // Professional bell
 
 // ============================================
 // Component
@@ -96,9 +101,30 @@ export default function KitchenKDS() {
     useEffect(() => {
         setMounted(true);
         fetchOrders();
-        const poll = setInterval(fetchOrders, 5000);
+
+        // ─── REAL-TIME SSE CONNECTION ───
+        const eventSource = new EventSource('/api/events');
+
+        eventSource.onmessage = (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                if (data.event === 'ORDER_CREATED' || data.event === 'ORDER_UPDATED') {
+                    // Instant refresh on any relevant order event
+                    fetchOrders();
+                }
+            } catch (err) {
+                console.error("SSE Parse Error:", err);
+            }
+        };
+
+        const poll = setInterval(fetchOrders, 30000); // Polling reduced to 30s as safety fallback
         const clock = setInterval(() => setCurrentTime(Date.now()), 1000);
-        return () => { clearInterval(poll); clearInterval(clock); };
+
+        return () => {
+            eventSource.close();
+            clearInterval(poll);
+            clearInterval(clock);
+        };
     }, [fetchOrders]);
 
     const filteredTickets = useMemo(() => {

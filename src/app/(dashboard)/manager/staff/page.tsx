@@ -33,6 +33,16 @@ export default function StaffPage() {
         password: '',
         role: 'WAITER' as 'ADMIN' | 'MANAGER' | 'WAITER' | 'KITCHEN' | 'CASHIER'
     });
+    // Edit/Manage State
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [editData, setEditData] = useState({
+        id: '',
+        name: '',
+        role: 'WAITER' as 'ADMIN' | 'MANAGER' | 'WAITER' | 'KITCHEN' | 'CASHIER',
+        newPassword: '' // Optional for reset
+    });
+    const [updating, setUpdating] = useState(false);
+
     const [submitting, setSubmitting] = useState(false);
 
     const fetchStaff = async () => {
@@ -73,6 +83,45 @@ export default function StaffPage() {
             console.error(err);
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    const handleStartEdit = (member: StaffMember) => {
+        setEditData({
+            id: member.id,
+            name: member.name,
+            role: member.role,
+            newPassword: ''
+        });
+        setShowEditModal(true);
+    };
+
+    const handleUpdate = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setUpdating(true);
+        try {
+            const res = await fetch(`/api/staff/${editData.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: editData.name,
+                    role: editData.role,
+                    password: editData.newPassword || undefined // Only send if set
+                })
+            });
+
+            if (res.ok) {
+                setShowEditModal(false);
+                fetchStaff();
+                alert('Staff member updated successfully');
+            } else {
+                alert('Failed to update staff');
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Error updating staff');
+        } finally {
+            setUpdating(false);
         }
     };
 
@@ -138,7 +187,9 @@ export default function StaffPage() {
                                         <span className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border shadow-sm ${member.role === 'WAITER' ? 'bg-blue-50 text-blue-600 border-blue-100' :
                                             member.role === 'KITCHEN' ? 'bg-amber-50 text-amber-600 border-amber-100' :
                                                 member.role === 'MANAGER' ? 'bg-purple-50 text-purple-600 border-purple-100' :
-                                                    'bg-zinc-50 text-zinc-600 border-zinc-100'
+                                                    member.role === 'CASHIER' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                        member.role === 'ADMIN' ? 'bg-rose-50 text-rose-600 border-rose-100' :
+                                                            'bg-zinc-50 text-zinc-600 border-zinc-100'
                                             }`}>
                                             {member.role}
                                         </span>
@@ -156,12 +207,24 @@ export default function StaffPage() {
                                         <span className="text-[8px] font-black text-zinc-300 uppercase tracking-widest">Enrolled</span>
                                         <span className="text-[10px] font-bold text-zinc-500">{new Date(member.createdAt).toLocaleDateString()}</span>
                                     </div>
-                                    <button
-                                        onClick={() => handleDelete(member.id)}
-                                        className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-all transform hover:scale-110 active:scale-90"
-                                    >
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                    </button>
+                                    {member.role !== 'ADMIN' && (
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => handleStartEdit(member)}
+                                                className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-600 hover:bg-zinc-900 hover:text-white transition-all"
+                                                title="Edit / Reset Password"
+                                            >
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(member.id)}
+                                                className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-all transform hover:scale-110 active:scale-90"
+                                                title="Remove Staff"
+                                            >
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         ))}
@@ -307,7 +370,7 @@ export default function StaffPage() {
                             <div>
                                 <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Role Assignment</label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {['WAITER', 'KITCHEN', 'CASHIER', 'MANAGER'].map(role => (
+                                    {['WAITER', 'KITCHEN', 'CASHIER'].map(role => (
                                         <button
                                             key={role}
                                             type="button"
@@ -337,6 +400,78 @@ export default function StaffPage() {
                                     className="flex-2 bg-[#D43425] text-white py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-700 transition-colors"
                                 >
                                     {submitting ? 'Creating...' : 'Create Account'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* EDIT MEMBER MODAL */}
+            {showEditModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+                        <h3 className="text-2xl font-black text-zinc-900 uppercase tracking-tighter mb-6">Manage Profile</h3>
+
+                        <form onSubmit={handleUpdate} className="space-y-6">
+                            <div>
+                                <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Full Name</label>
+                                <input
+                                    required
+                                    className="w-full bg-zinc-50 border border-zinc-200 p-3 rounded-xl font-bold text-zinc-900 focus:outline-none focus:border-zinc-400"
+                                    value={editData.name}
+                                    onChange={e => setEditData({ ...editData, name: e.target.value })}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Role Assignment</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {['WAITER', 'KITCHEN', 'CASHIER'].map(role => (
+                                        <button
+                                            key={role}
+                                            type="button"
+                                            onClick={() => setEditData({ ...editData, role: role as any })}
+                                            className={`p-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${editData.role === role
+                                                ? 'bg-zinc-900 text-white border-zinc-900'
+                                                : 'bg-white text-zinc-400 border-zinc-200 hover:border-zinc-300'
+                                                }`}
+                                        >
+                                            {role}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="p-4 bg-amber-50 rounded-xl border border-amber-100">
+                                <label className="block text-[10px] font-black text-amber-600 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                                    Reset Password
+                                </label>
+                                <input
+                                    type="password"
+                                    className="w-full bg-white border border-amber-200 p-3 rounded-xl font-bold text-zinc-900 focus:outline-none focus:border-amber-400 placeholder:text-amber-300/50"
+                                    placeholder="Enter new password to reset"
+                                    value={editData.newPassword}
+                                    onChange={e => setEditData({ ...editData, newPassword: e.target.value })}
+                                />
+                                <p className="text-[9px] font-bold text-amber-500 mt-2 uppercase tracking-wide">Leave blank to keep current password</p>
+                            </div>
+
+                            <div className="pt-4 flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowEditModal(false)}
+                                    className="flex-1 py-3 text-[10px] font-black text-zinc-400 hover:text-zinc-900 uppercase tracking-widest"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={updating}
+                                    className="flex-2 bg-zinc-900 text-white py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-black transition-colors"
+                                >
+                                    {updating ? 'Saving...' : 'Save Changes'}
                                 </button>
                             </div>
                         </form>

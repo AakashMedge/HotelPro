@@ -45,8 +45,24 @@ const nextConfig: NextConfig = {
         hostname: 'm.media-amazon.com',
         pathname: '**',
       },
+      {
+        protocol: 'https',
+        hostname: 'www.cookwithmanali.com',
+        pathname: '**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'www.mystore.in',
+        pathname: '**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'static.toiimg.com',
+        pathname: '**',
+      },
     ],
   },
 };
 
 export default nextConfig;
+

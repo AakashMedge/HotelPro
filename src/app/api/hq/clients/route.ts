@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
             adminName: body.adminName,
             adminEmail: body.adminEmail || '',
             adminPassword: body.adminPassword,
-            domain: body.domain
+            domain: body.domain,
         };
 
         const result = await createNewClient(input);

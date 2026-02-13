@@ -1,157 +1,156 @@
 /**
- * Tables API
+ * Tables API — Production-Grade
+ * GET  /api/tables         → List tables (tenant-isolated, fast)
+ * POST /api/tables         → Create table (manager/admin only)
  * 
- * GET /api/tables - Get all tables with their status
- * GET /api/tables/[tableCode] - Get a specific table by code
- * 
- * Public endpoint for QR-based ordering.
+ * Security:
+ * - Every query is tenant-scoped via clientId from signed cookie/JWT
+ * - Performance logging on every request
+ * - Connection pooling via Neon adapter
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, getDb, ensureClientSynced } from "@/lib/db";
 import { getTenantFromRequest } from "@/lib/tenant";
+import { requireRole } from "@/lib/auth";
+import { hasReachedLimit, PLAN_LIMITS } from "@/lib/subscription";
+import { ClientPlan } from "@prisma/client";
 
-interface TableResponse {
-    id: string;
-    tableCode: string;
-    capacity: number;
-    status: string;
-}
+// ============================================
+// GET /api/tables — Fast Discovery
+// ============================================
 
-interface TablesListResponse {
-    success: boolean;
-    tables?: TableResponse[];
-    error?: string;
-}
+export async function GET(request: NextRequest): Promise<NextResponse> {
+    const startTime = Date.now();
 
-/**
- * GET /api/tables
- * 
- * Get all tables with their current status.
- */
-export async function GET(
-    request: NextRequest
-): Promise<NextResponse<TablesListResponse>> {
     try {
-        // 1. Detect Tenant (Multi-Tenancy)
-        let tenant = await getTenantFromRequest();
+        // 1. Tenant Resolution (cryptographic, no guessing)
+        const tenant = await getTenantFromRequest();
 
+        if (!tenant) {
+            console.warn("[TABLES_GET] ✗ No tenant resolved. Blocking.");
+            return NextResponse.json(
+                { success: false, error: "Session expired. Please re-enter your access code." },
+                { status: 401 }
+            );
+        }
+
+        const db = getDb();
         const { searchParams } = new URL(request.url);
         const tableCode = searchParams.get("code");
 
-        // If no tenant is identified, we enter "Discovery Mode"
-        // This is crucial for localhost/QR scans where the hotel isn't in the URL.
-        if (!tenant && tableCode) {
-            // Search all tables for this code to identify the hotel
-            const discoveryTable = await prisma.table.findFirst({
-                where: {
-                    deletedAt: null,
-                    OR: [
-                        { tableCode: { equals: tableCode, mode: 'insensitive' } },
-                        { tableCode: { equals: `T-${tableCode}`, mode: 'insensitive' } }
-                    ]
-                },
-                select: { clientId: true }
-            });
-
-            if (discoveryTable) {
-                const client = await prisma.client.findUnique({
-                    where: { id: discoveryTable.clientId },
-                    select: { id: true, name: true, slug: true, plan: true }
-                });
-                if (client) tenant = client;
-            }
-        }
-
-        if (!tenant) {
-            return NextResponse.json({ success: false, error: "Identifying hotel failed. Please specify table or visit the hotel URL." }, { status: 400 });
-        }
-
+        // 2. Build tenant-scoped query
         let where: any = { clientId: tenant.id, deletedAt: null };
+
         if (tableCode) {
-            // Smart Matching: Handle "4", "04", and "T-04"
-            const paddedCode = tableCode.padStart(2, '0');
+            // Smart Matching: Handle "4", "04", "T-04", "T04"
+            const raw = tableCode.trim();
+            const paddedCode = raw.padStart(2, '0');
             where = {
-                clientId: tenant.id,
+                clientId: tenant.id,    // ← ALWAYS tenant-scoped
                 deletedAt: null,
                 OR: [
-                    { tableCode: { equals: tableCode, mode: 'insensitive' } },
-                    { tableCode: { equals: `T-${tableCode}`, mode: 'insensitive' } },
+                    { tableCode: { equals: raw, mode: 'insensitive' } },
+                    { tableCode: { equals: `T-${raw}`, mode: 'insensitive' } },
                     { tableCode: { equals: `T-${paddedCode}`, mode: 'insensitive' } },
-                    { tableCode: { equals: paddedCode, mode: 'insensitive' } }
+                    { tableCode: { equals: paddedCode, mode: 'insensitive' } },
+                    { tableCode: { equals: `T${raw}`, mode: 'insensitive' } },
+                    { tableCode: { equals: `T${paddedCode}`, mode: 'insensitive' } },
                 ]
             };
         }
 
-        const tables = await prisma.table.findMany({
+        // 3. Optimized query — only select what we need
+        const tables = await (db.table as any).findMany({
             where,
-            include: {
-                client: { select: { slug: true } },
+            select: {
+                id: true,
+                tableCode: true,
+                capacity: true,
+                status: true,
+                assignedWaiterId: true,
+                updatedAt: true,
                 orders: {
                     where: {
-                        status: {
-                            notIn: ["CLOSED"]
-                        }
+                        status: { notIn: ["CLOSED", "CANCELLED"] }
                     },
                     select: {
                         id: true,
                         customerName: true,
-                        sessionId: true,
                         status: true,
                     },
                     take: 1,
                     orderBy: { createdAt: 'desc' }
                 }
             },
-            orderBy: {
-                tableCode: "asc",
-            },
+            orderBy: { tableCode: "asc" },
         });
 
-        // Map and ensure capacity exists
-        const formattedTables = tables.map(t => ({
+        // ─── Ghost Session Protection (Shared Utility) ───
+        const { cleanupGhostSessions } = await import("@/lib/services/ghostSession");
+        cleanupGhostSessions(tables, db);
+
+        // 4. Format response (minimal payload for speed)
+        const formattedTables = tables.map((t: any) => ({
             id: t.id,
             tableCode: t.tableCode,
-            capacity: (t as any).capacity ?? 4,
+            capacity: t.capacity ?? 4,
             status: t.status,
             activeOrder: t.orders[0] || null,
             assignedWaiterId: t.assignedWaiterId,
-            clientSlug: (t as any).client?.slug,
+            claimedAt: t.status === "ACTIVE" && (!t.orders || t.orders.length === 0) ? t.updatedAt : null,
         }));
 
-        return NextResponse.json({
-            success: true,
-            tables: formattedTables as any,
-        });
-    } catch (error) {
-        console.error("[TABLES API] Error fetching tables:", error);
 
+        const elapsed = Date.now() - startTime;
+        console.log(`[TABLES_GET] ✓ ${tenant.name} | ${formattedTables.length} tables | ${elapsed}ms`);
+
+        // 5. Set cache headers for speed (stale-while-revalidate)
+        const response = NextResponse.json({
+            success: true,
+            tables: formattedTables,
+            _meta: { resolvedIn: `${elapsed}ms`, tenant: tenant.name }
+        });
+
+        // Cache for 2 seconds, serve stale for 10 seconds while revalidating
+        response.headers.set('Cache-Control', 'private, s-maxage=2, stale-while-revalidate=10');
+
+        return response;
+
+    } catch (error: any) {
+        const elapsed = Date.now() - startTime;
+        console.error(`[TABLES_GET] ✗ Error after ${elapsed}ms:`, error.message);
         return NextResponse.json(
-            { success: false, error: "Failed to fetch tables" },
+            { success: false, error: "Failed to fetch tables. Please try again." },
             { status: 500 }
         );
     }
 }
 
-/**
- * POST /api/tables
- * Create a new table (Tenant Isolated & Subscription Gated)
- */
-import { requireRole } from "@/lib/auth";
-import { hasReachedLimit, PLAN_LIMITS } from "@/lib/subscription";
-import { ClientPlan } from "@prisma/client";
+// ============================================
+// POST /api/tables — Create Table (Staff Only)
+// ============================================
 
 export async function POST(request: NextRequest) {
+    const startTime = Date.now();
+
     try {
+        // 1. Auth gate — only Manager/Admin can create tables
         const user = await requireRole(["MANAGER", "ADMIN"]);
         const { tableCode, capacity } = await request.json();
 
         if (!tableCode || !capacity) {
-            return NextResponse.json({ success: false, error: "Missing fields" }, { status: 400 });
+            return NextResponse.json(
+                { success: false, error: "Table code and capacity are required." },
+                { status: 400 }
+            );
         }
 
-        // 1. Subscription Check: Volume Gating
-        const tableCount = await prisma.table.count({
+        const db = getDb();
+
+
+        // 3. Subscription limit check
+        const tableCount = await (db.table as any).count({
             where: { clientId: user.clientId, deletedAt: null }
         });
 
@@ -159,37 +158,46 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({
                 success: false,
                 error: "Plan Limit Reached",
-                message: `Your current plan allows a maximum of ${PLAN_LIMITS[user.plan as ClientPlan].maxTables} tables.`
+                message: `Your plan allows max ${PLAN_LIMITS[user.plan as ClientPlan].maxTables} tables.`
             }, { status: 403 });
         }
 
-        // 2. Tenant Isolation Check
-        const existing = await prisma.table.findUnique({
+        // 4. Duplicate check (tenant-scoped)
+        const existing = await (db.table as any).findFirst({
             where: {
-                clientId_tableCode: {
-                    clientId: user.clientId,
-                    tableCode
-                }
+                clientId: user.clientId,
+                tableCode: { equals: tableCode, mode: 'insensitive' }
             }
         });
 
         if (existing) {
-            return NextResponse.json({ success: false, error: "Table Code exists" }, { status: 409 });
+            return NextResponse.json(
+                { success: false, error: `Table "${tableCode}" already exists.` },
+                { status: 409 }
+            );
         }
 
-        // 3. Create Table with clientId
-        const table = await prisma.table.create({
+        // 5. Create table
+        const table = await (db.table as any).create({
             data: {
                 clientId: user.clientId,
-                tableCode,
+                tableCode: tableCode.trim(),
                 capacity: Number(capacity),
                 status: "VACANT"
             }
         });
 
+        const elapsed = Date.now() - startTime;
+        console.log(`[TABLES_CREATE] ✓ ${tableCode} created | ${elapsed}ms`);
+
         return NextResponse.json({ success: true, table });
+
     } catch (error: any) {
-        console.error("[TABLES_CREATE] Error:", error);
-        return NextResponse.json({ success: false, error: error.message || "Failed to create table" }, { status: 500 });
+        const elapsed = Date.now() - startTime;
+        console.error(`[TABLES_CREATE] ✗ Error after ${elapsed}ms:`, error.message);
+        return NextResponse.json(
+            { success: false, error: error.message || "Failed to create table" },
+            { status: 500 }
+        );
     }
 }

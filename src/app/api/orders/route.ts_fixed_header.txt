@@ -1,0 +1,20 @@
+/**
+ * Orders API — Real-time POS Core
+ * 
+ * POST /api/orders - Create a new order (customer)
+ * GET /api/orders - Get orders (staff)
+ * 
+ * This is the HEART of the POS system.
+ */
+
+import { aj } from "@/lib/arcjet";
+import { NextRequest, NextResponse } from "next/server";
+import {
+    createOrder,
+    getOrdersByStatus,
+    OrderError,
+    type CreateOrderInput,
+} from "@/lib/services/order";
+import { prisma as controlPlanePrisma, getDb } from "@/lib/db";
+import { getTenantFromRequest } from "@/lib/tenant";
+import type { OrderStatus } from "@prisma/client";

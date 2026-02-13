@@ -1,15 +1,27 @@
+
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, getDb } from "@/lib/db";
+import { getTenantFromRequest } from "@/lib/tenant";
 
 /**
  * GET /api/kitchen/inventory
  * 
- * Returns all menu items with their current stock levels.
+ * Returns menu items with their current stock levels for the current hotel.
  */
 export async function GET() {
     try {
-        const stockItems = await prisma.menuItem.findMany({
-            where: { deletedAt: null },
+        const tenant = await getTenantFromRequest();
+        if (!tenant) {
+            return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+        }
+
+        const db = getDb();
+
+        const stockItems = await (db.menuItem as any).findMany({
+            where: {
+                clientId: tenant.id,
+                deletedAt: null
+            },
             include: {
                 inventory: true,
                 category: true
@@ -21,12 +33,12 @@ export async function GET() {
             }
         });
 
-        const formattedItems = stockItems.map(item => ({
+        const formattedItems = stockItems.map((item: any) => ({
             id: item.id,
             name: item.name,
             category: item.category?.name || 'General',
             quantity: item.inventory?.quantity || 0,
-            isAvailable: item.isAvailable, // Added availability status
+            isAvailable: item.isAvailable,
             unit: 'pcs',
             threshold: 10,
             lastUpdated: item.inventory ? getTimeAgo(item.inventory.updatedAt) : 'Never'
@@ -51,20 +63,36 @@ export async function GET() {
  */
 export async function PATCH(request: NextRequest) {
     try {
+        const tenant = await getTenantFromRequest();
+        if (!tenant) {
+            return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+        }
+
         const { menuItemId, quantity, isAvailable } = await request.json();
 
-        // If quantity is provided, update/upsert inventory
+        const db = getDb();
+
+        // 1. Verify ownership
+        const item = await (db.menuItem as any).findFirst({
+            where: { id: menuItemId, clientId: tenant.id }
+        });
+
+        if (!item) {
+            return NextResponse.json({ success: false, error: "Item not found" }, { status: 404 });
+        }
+
+        // 2. If quantity is provided, update/upsert inventory
         if (quantity !== undefined) {
-            await prisma.inventory.upsert({
+            await (db.inventory as any).upsert({
                 where: { menuItemId },
                 update: { quantity: parseInt(quantity) },
                 create: { menuItemId, quantity: parseInt(quantity) }
             });
         }
 
-        // If isAvailable is provided, update menu item
+        // 3. If isAvailable is provided, update menu item
         if (isAvailable !== undefined) {
-            await prisma.menuItem.update({
+            await (db.menuItem as any).update({
                 where: { id: menuItemId },
                 data: { isAvailable }
             });

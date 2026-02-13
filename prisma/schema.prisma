@@ -32,6 +32,8 @@ model User {
   auditLogs      AuditLog[]
   sessions       Session[]
   assignedTables Table[]
+  chatMessages   ChatMessage[]
+  chatAcks       ChatAck[]
   
   // Performance tracking for Command Center
   totalOrders    Int        @default(0)
@@ -57,6 +59,13 @@ model Client {
   status        ClientStatus @default(TRIAL)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?    // For soft-deletion/archiving
+
+  subscription   Subscription?
+
+  // Customer Access: The "Digital Key" for customer entry
+  accessCode          String?  @unique // e.g. "ROYAL99", normalized UPPERCASE
+  accessCodeUpdatedAt DateTime?
 
   users         User[]
   tables        Table[]
@@ -66,6 +75,9 @@ model Client {
   auditLogs     AuditLog[]
   settings      RestaurantSettings?
   modifierGroups ModifierGroup[]
+  inventories    Inventory[]
+  payments       Payment[]
+  chatChannels   ChatChannel[]
 }
 
 model Table {
@@ -184,10 +196,15 @@ model MenuItemModifierGroup {
 
 model Inventory {
   id         String   @id @default(uuid())
+  clientId   String
   menuItemId String   @unique
   quantity   Int
   updatedAt  DateTime @updatedAt
+  
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+
+  @@index([clientId])
 }
 
 // Restaurant-wide settings for tax and billing configuration
@@ -224,15 +241,18 @@ model Order {
   updatedAt    DateTime    @updatedAt
   closedAt     DateTime?
   customerName String?
+  customerPhone String?
   sessionId    String?
-  
-  // Tax & Billing (calculated at order creation, immutable snapshot)
-  subtotal              Decimal?  @db.Decimal(10, 2) // Sum of all item prices
-  gstAmount             Decimal?  @db.Decimal(10, 2) // GST calculated
-  serviceChargeAmount   Decimal?  @db.Decimal(10, 2) // Service charge calculated
-  grandTotal            Decimal?  @db.Decimal(10, 2) // Final payable amount
-  appliedGstRate        Decimal?  @db.Decimal(5, 2)  // Snapshot of GST rate used
-  appliedServiceRate    Decimal?  @db.Decimal(5, 2)  // Snapshot of service rate used
+  paymentMethod String?   @default("CASH") // CASH, UPI, CARD
+  settledById   String?   // The staff who closed the bill
+  // Tax & Billing (Strict Alignment)
+  subtotal            Decimal? @db.Decimal(10, 2)
+  discountAmount      Decimal? @db.Decimal(10, 2)
+  gstAmount           Decimal? @db.Decimal(10, 2)
+  serviceChargeAmount Decimal? @db.Decimal(10, 2)
+  grandTotal          Decimal? @db.Decimal(10, 2)
+  appliedGstRate      Decimal? @db.Decimal(5, 2)
+  appliedServiceRate  Decimal? @db.Decimal(5, 2)
   
   client       Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
   table        Table       @relation(fields: [tableId], references: [id])
@@ -267,12 +287,17 @@ model OrderItem {
 
 model Payment {
   id        String        @id @default(uuid())
+  clientId  String
   orderId   String        @unique
   method    PaymentMethod
   amount    Decimal       @db.Decimal(10, 2)
   status    PaymentStatus @default(PENDING)
   createdAt DateTime      @default(now())
+
+  client    Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   order     Order         @relation(fields: [orderId], references: [id])
+
+  @@index([clientId])
 }
 
 model AuditLog {
@@ -293,6 +318,18 @@ model AuditLog {
   @@index([orderId])
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+  INACTIVE
+}
+
 enum ClientPlan {
   BASIC
   ADVANCE
@@ -304,6 +341,11 @@ enum ClientStatus {
   ACTIVE
   SUSPENDED
   TRIAL
+  ARCHIVED
+  PROVISIONING
+  PROVISIONING_FAILED
+  PAST_DUE
+  CANCELED
 }
 
 enum UserRole {
@@ -369,4 +411,137 @@ enum AuditAction {
   UNAUTHORIZED_ACCESS
   SETTING_CHANGED
   SENSITIVE_DELETE
+  CLIENT_ARCHIVED
+
+  // Subscription Lifecycle
+  SUBSCRIPTION_CREATED
+  SUBSCRIPTION_UPDATED
+  SUBSCRIPTION_CANCELED
+  SUBSCRIPTION_SYNC_SUCCESS
+  SUBSCRIPTION_SYNC_FAILURE
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUBSCRIPTION & PLAN MODELS (Control-Plane Authority)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Plan {
+  id             String         @id @default(uuid())
+  name           String         @unique  // "Starter", "Growth", etc.
+  code           ClientPlan     @unique  // Maps to BASIC, ADVANCE, PREMIUM, BUSINESS
+  price          Decimal        @db.Decimal(10, 2)
+  features       Json           // { "ai_assistant": true, "inventory": true, ... }
+  limits         Json           // { "tables": 30, "menuItems": 300 }
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  subscriptions  Subscription[]
+}
+
+model Subscription {
+  id               String             @id @default(uuid())
+  clientId         String             @unique
+  planId           String
+  status           SubscriptionStatus @default(TRIALING)
+  version          Int                @default(1) // Monotonic: always increments
+  billingCycle     String             @default("MONTHLY")
+  currentPeriodEnd DateTime?
+  graceUntil       DateTime?          // Tenant stays operational until this date
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  client           Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  plan             Plan               @relation(fields: [planId], references: [id])
+  audits           SubscriptionAudit[]
+
+  @@index([planId])
+}
+
+model SubscriptionAudit {
+  id               String       @id @default(uuid())
+  subscriptionId   String
+  previousPlanId   String?
+  newPlanId        String?
+  previousStatus   String?
+  newStatus        String?
+  reason           String?      // "upgrade", "downgrade", "payment_failed", etc.
+  metadata         Json?        // Extra context (invoice ID, admin who changed it)
+  createdAt        DateTime     @default(now())
+
+  subscription     Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+}
+
+// CHAT & HUB MODELS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ChatChannel {
+  id        String   @id @default(uuid())
+  clientId  String
+  name      String   // e.g. "GENERAL", "SERVICE", "ADMIN"
+  type      ChatChannelType @default(GENERAL)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+
+  @@unique([clientId, name])
+  @@index([clientId])
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  channelId String
+  senderId  String
+  content   String
+  severity  MessageSeverity @default(INFO)
+  orderId   String?  // Contextual link to an order
+
+  // Attachments (Voice / Image)
+  attachmentUrl   String?
+  attachmentType  AttachmentType?
+
+  createdAt DateTime @default(now())
+
+  channel   ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  sender    User        @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  acks      ChatAck[]
+
+  @@index([channelId])
+  @@index([senderId])
+}
+
+model ChatAck {
+  id        String   @id @default(uuid())
+  messageId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+}
+
+enum ChatChannelType {
+  GENERAL
+  SERVICE
+  ADMIN_ONLY
+}
+
+enum MessageSeverity {
+  INFO
+  WARN
+  URGENT
+  STOCK_OUT
+}
+
+enum AttachmentType {
+  IMAGE
+  AUDIO
+  VIDEO
+  FILE
 }

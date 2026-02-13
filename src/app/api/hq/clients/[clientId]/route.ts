@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getClientById, updateClient, suspendClient, activateClient } from "@/lib/hq/client-actions";
+import { getClientById, updateClient, suspendClient, activateClient, archiveClient, restoreClient } from "@/lib/hq/client-actions";
 import { HQApiResponse, UpdateClientInput } from "@/lib/types/hq.types";
 import { requireSuperAdmin } from "@/lib/hq/auth";
 
@@ -87,6 +87,24 @@ export async function PATCH(
             });
         }
 
+        if (body.action === 'archive') {
+            const result = await archiveClient(clientId);
+            return NextResponse.json<HQApiResponse>({
+                success: result.success,
+                error: result.error,
+                message: result.success ? "Client moved to archive." : undefined
+            });
+        }
+
+        if (body.action === 'restore') {
+            const result = await restoreClient(clientId);
+            return NextResponse.json<HQApiResponse>({
+                success: result.success,
+                error: result.error,
+                message: result.success ? "Client restored to active status." : undefined
+            });
+        }
+
         // 4. Regular update
         const input: UpdateClientInput = {
             name: body.name,
@@ -141,11 +159,18 @@ export async function DELETE(
             );
         }
 
-        // NOTE: In production, you might want to soft-delete
-        // For now, we'll just respond with not implemented
+        // NOTE: In production, we'll use soft-delete (archive)
+        const result = await archiveClient(clientId);
+
+        if (!result.success) {
+            return NextResponse.json<HQApiResponse>(
+                { success: false, error: result.error },
+                { status: 400 }
+            );
+        }
+
         return NextResponse.json<HQApiResponse>(
-            { success: false, error: "Client deletion is disabled for safety. Use suspend instead." },
-            { status: 403 }
+            { success: true, message: "Client successfully archived and all access revoked." }
         );
 
     } catch (error: any) {
@@ -156,4 +181,3 @@ export async function DELETE(
         );
     }
 }
-

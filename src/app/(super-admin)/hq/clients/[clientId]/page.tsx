@@ -20,10 +20,14 @@ import {
     Clock,
     Shield,
     Settings2,
-    UserPlus
+    UserPlus,
+    Database,
+    Zap,
+    Archive,
+    Loader2,
+    XCircle
 } from 'lucide-react';
 import { getClientById } from '@/lib/hq/client-actions';
-import { PLAN_PRICING } from '@/lib/types/hq.types';
 import HQClientActions from './HQClientActions';
 
 interface PageProps {
@@ -54,91 +58,126 @@ export default async function ClientDetailPage({ params }: PageProps) {
         }).format(amount);
     };
 
-    const statusConfig = {
-        ACTIVE: { icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100' },
-        TRIAL: { icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100' },
-        SUSPENDED: { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100' }
+    const statusConfig: Record<string, { icon: any, color: string, bg: string, border: string, label: string }> = {
+        ACTIVE: { icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100', label: 'Healthy & Active' },
+        TRIAL: { icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100', label: 'Trial Period' },
+        SUSPENDED: { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100', label: 'Access Barred' },
+        ARCHIVED: { icon: Archive, color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200', label: 'Archived (Vaulted)' },
+        PROVISIONING: { icon: Loader2, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100', label: 'Deploying Cache/DB' },
+        PROVISIONING_FAILED: { icon: XCircle, color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', label: 'Deploy Failed' }
     };
 
-    const StatusIcon = statusConfig[client.status].icon;
+    const config = statusConfig[client.status] || statusConfig.TRIAL;
+    const StatusIcon = config.icon;
+
+    // Pricing mapping
+    const PLAN_PRICING: Record<string, number> = {
+        BASIC: 2999,
+        ADVANCE: 5999,
+        PREMIUM: 9999,
+        BUSINESS: 19999
+    };
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Back Button */}
             <Link
                 href="/hq/clients"
-                className="flex items-center gap-2 text-slate-500 hover:text-slate-800 text-sm font-medium transition-colors"
+                className="flex items-center gap-2 text-slate-500 hover:text-indigo-600 text-xs font-bold uppercase tracking-widest transition-all group"
             >
-                <ArrowLeft className="w-4 h-4" />
-                Back to Clients
+                <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+                Infrastructure Registry
             </Link>
 
             {/* Header Card */}
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                <div className="p-6 md:p-8">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="p-6 md:p-10">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
                         {/* Hotel Identity */}
-                        <div className="flex items-center gap-4">
-                            <div className="w-16 h-16 rounded-2xl bg-linear-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-200">
-                                <Hotel className="w-8 h-8 text-white" />
+                        <div className="flex items-center gap-6">
+                            <div className="w-20 h-20 rounded-4xl flex items-center justify-center shadow-2xl transition-all bg-indigo-600 text-white shadow-indigo-200">
+                                <Hotel className="w-10 h-10" />
                             </div>
                             <div>
-                                <h1 className="text-2xl font-bold text-slate-800">{client.name}</h1>
-                                <p className="text-slate-500 font-mono text-sm">{client.slug}.hotelpro.com</p>
-                                {client.domain && (
-                                    <p className="text-blue-600 text-sm mt-1">{client.domain}</p>
-                                )}
+                                <h1 className="text-3xl font-black text-slate-900 tracking-tight">{client.name}</h1>
+                                <div className="flex items-center gap-3 mt-1.5 font-mono text-xs">
+                                    <span className="text-slate-400">{client.slug}.hotelpro.com</span>
+                                    {client.domain && (
+                                        <>
+                                            <span className="text-slate-200">•</span>
+                                            <span className="text-indigo-600 font-bold">{client.domain}</span>
+                                        </>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2 mt-4">
+                                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-indigo-100 text-indigo-700`}>
+                                        UNIFIED MESH
+                                    </span>
+                                </div>
                             </div>
                         </div>
 
                         {/* Status Badge */}
-                        <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl ${statusConfig[client.status].bg} ${statusConfig[client.status].border} border`}>
-                            <StatusIcon className={`w-5 h-5 ${statusConfig[client.status].color}`} />
-                            <span className={`font-bold ${statusConfig[client.status].color}`}>
-                                {client.status}
-                            </span>
+                        <div className={`inline-flex flex-col items-center lg:items-end gap-2 p-6 rounded-3xl ${config.bg} ${config.border} border w-full lg:w-auto`}>
+                            <div className="flex items-center gap-3">
+                                <StatusIcon className={`w-6 h-6 ${config.color} ${client.status === 'PROVISIONING' ? 'animate-spin' : ''}`} />
+                                <span className={`text-xl font-black uppercase tracking-tighter ${config.color}`}>
+                                    {client.status}
+                                </span>
+                            </div>
+                            <p className={`text-[10px] font-bold uppercase tracking-[0.2em] ${config.color} opacity-70`}>{config.label}</p>
                         </div>
                     </div>
                 </div>
 
                 {/* Stats Bar */}
-                <div className="grid grid-cols-2 md:grid-cols-4 border-t border-slate-100">
-                    <div className="p-6 border-b md:border-b-0 md:border-r border-slate-100">
-                        <div className="flex items-center gap-3">
-                            <Users className="w-5 h-5 text-slate-400" />
+                <div className="grid grid-cols-2 md:grid-cols-4 border-t border-slate-100 bg-slate-50/30">
+                    <div className="p-8 border-b md:border-b-0 md:border-r border-slate-100 group">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-slate-400 group-hover:text-indigo-600 transition-colors shadow-xs">
+                                <Users className="w-5 h-5" />
+                            </div>
                             <div>
-                                <p className="text-2xl font-bold text-slate-800">{client._count.users}</p>
-                                <p className="text-xs text-slate-500 uppercase font-medium">Staff Users</p>
+                                <p className="text-2xl font-black text-slate-900 leading-none">{client._count.users}</p>
+                                <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest mt-1">Staff Density</p>
                             </div>
                         </div>
                     </div>
-                    <div className="p-6 border-b md:border-b-0 md:border-r border-slate-100">
-                        <div className="flex items-center gap-3">
-                            <ShoppingCart className="w-5 h-5 text-slate-400" />
+                    <div className="p-8 border-b md:border-b-0 md:border-r border-slate-100 group">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-slate-400 group-hover:text-amber-600 transition-colors shadow-xs">
+                                <ShoppingCart className="w-5 h-5" />
+                            </div>
                             <div>
-                                <p className="text-2xl font-bold text-slate-800">{client._count.orders}</p>
-                                <p className="text-xs text-slate-500 uppercase font-medium">Total Orders</p>
+                                <p className="text-2xl font-black text-slate-900 leading-none">{client._count.orders}</p>
+                                <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest mt-1">Order Volume</p>
                             </div>
                         </div>
                     </div>
-                    <div className="p-6 md:border-r border-slate-100">
-                        <div className="flex items-center gap-3">
-                            <CreditCard className="w-5 h-5 text-slate-400" />
-                            <div>
-                                <p className="text-xl font-bold text-slate-800">{client.plan}</p>
-                                <p className="text-xs text-slate-500">{formatCurrency(PLAN_PRICING[client.plan])}/mo</p>
+                    <div className="p-8 md:border-r border-slate-100 group">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-slate-400 group-hover:text-emerald-600 transition-colors shadow-xs">
+                                <CreditCard className="w-5 h-5" />
                             </div>
-                        </div>
-                    </div>
-                    <div className="p-6">
-                        <div className="flex items-center gap-3">
-                            <Calendar className="w-5 h-5 text-slate-400" />
                             <div>
-                                <p className="text-sm font-bold text-slate-800">
-                                    {client.subscription?.isTrialActive ? 'Trial Ends' : 'Next Billing'}
+                                <p className="text-xl font-black text-slate-900 leading-none">{client.plan}</p>
+                                <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest mt-1">
+                                    {formatCurrency(PLAN_PRICING[client.plan] || 0)} / MO
                                 </p>
-                                <p className="text-xs text-slate-500">
-                                    {client.subscription ? formatDate(client.subscription.nextBillingDate) : 'N/A'}
+                            </div>
+                        </div>
+                    </div>
+                    <div className="p-8 group">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-slate-400 group-hover:text-blue-600 transition-colors shadow-xs">
+                                <Calendar className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-black text-slate-900">
+                                    {client.subscription?.isTrialActive ? 'TRIAL END' : 'NEXT BILLING'}
+                                </p>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">
+                                    {client.subscription ? formatDate(client.subscription.nextBillingDate) : 'MANUAL'}
                                 </p>
                             </div>
                         </div>
@@ -147,64 +186,100 @@ export default async function ClientDetailPage({ params }: PageProps) {
             </div>
 
             {/* Action Cards Grid */}
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid lg:grid-cols-3 gap-8">
                 {/* Quick Actions Card */}
-                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-                    <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2 mb-6">
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 lg:col-span-2">
+                    <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-3 mb-8">
                         <Settings2 className="w-4 h-4" />
-                        Quick Actions
+                        Management Console
                     </h2>
 
                     <HQClientActions
                         clientId={client.id}
-                        currentStatus={client.status}
-                        currentPlan={client.plan}
+                        currentStatus={client.status as any}
+                        currentPlan={client.plan as any}
                     />
                 </div>
 
-                {/* Admin Users Card */}
-                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                {/* Infrastructure Architecture Card */}
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8">
+                    <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-3 mb-8">
+                        <Database className="w-4 h-4" />
+                        Infrastructure
+                    </h2>
+
+                    <div className="space-y-6">
+                        <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 group overflow-hidden relative">
+                            <div className="absolute right-0 top-0 p-4 opacity-5 group-hover:scale-110 transition-transform">
+                                <Zap className="w-12 h-12" />
+                            </div>
+                            <div className="relative">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Topology</p>
+                                <p className="font-black text-slate-800 text-lg">Shared Mesh</p>
+                                <p className="text-[10px] text-slate-500 mt-2 font-medium leading-relaxed">
+                                    Logical isolation via high-performance mesh hashing and secure clientId multi-tenancy.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Admin Access Panel */}
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 lg:col-span-3">
+                    <div className="flex items-center justify-between mb-8">
+                        <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-3">
                             <Shield className="w-4 h-4" />
-                            Admin Users
+                            Access Hierarchy
                         </h2>
-                        <button className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors">
-                            <UserPlus className="w-3 h-3" />
-                            Add Admin
+                        <button className="flex items-center gap-2 text-[10px] font-black text-indigo-600 hover:text-indigo-700 transition-colors uppercase tracking-widest bg-indigo-50 px-3 py-1.5 rounded-lg active:scale-95">
+                            <UserPlus className="w-3.5 h-3.5" />
+                            Provision Admin
                         </button>
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {(client as any).users?.length > 0 ? (
                             (client as any).users.map((user: any) => (
-                                <div key={user.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                                    <div>
-                                        <p className="font-medium text-slate-800">{user.name}</p>
-                                        <p className="text-xs text-slate-500 font-mono">@{user.username}</p>
+                                <div key={user.id} className="flex items-center justify-between p-4 bg-slate-50 hover:bg-white hover:shadow-md hover:border-slate-100 border border-transparent rounded-2xl transition-all">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-slate-400 shadow-xs uppercase font-black text-xs">
+                                            {user.name.slice(0, 1)}
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-slate-800 text-sm">{user.name}</p>
+                                            <p className="text-[10px] text-slate-400 font-mono">@{user.username}</p>
+                                        </div>
                                     </div>
-                                    <span className={`text-xs px-2 py-1 rounded-md font-medium ${user.isActive
+                                    <span className={`text-[8px] px-2 py-0.5 rounded font-black uppercase tracking-widest ${user.isActive
                                         ? 'bg-emerald-100 text-emerald-700'
                                         : 'bg-red-100 text-red-700'
                                         }`}>
-                                        {user.isActive ? 'Active' : 'Disabled'}
+                                        {user.isActive ? 'Active' : 'Locked'}
                                     </span>
                                 </div>
                             ))
                         ) : (
-                            <div className="text-center py-8 text-slate-400 text-sm">
-                                No admin users found
+                            <div className="col-span-full text-center py-10 text-slate-300 font-medium italic text-sm">
+                                No active access hierarchies found for this node.
                             </div>
                         )}
                     </div>
                 </div>
             </div>
 
-            {/* Metadata */}
-            <div className="text-xs text-slate-400 text-center">
-                Client ID: <span className="font-mono">{client.id}</span> •
-                Created: {formatDate(client.createdAt)}
+            {/* Platform Metadata */}
+            <div className="py-10 border-t border-slate-100">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="flex items-center gap-6 text-[9px] text-slate-400 font-black uppercase tracking-[0.4em]">
+                        <span>Node Index: {client.id}</span>
+                        <span className="text-slate-200">/</span>
+                        <span>Provisioned: {formatDate(client.createdAt)}</span>
+                        <span className="text-slate-200">/</span>
+                        <span>Pulse: Stable</span>
+                    </div>
+                    <p className="text-[8px] text-slate-300 uppercase font-bold tracking-[0.5em]">HotelPro Central Command • v2.0.4</p>
+                </div>
             </div>
-        </div>
+        </div >
     );
 }

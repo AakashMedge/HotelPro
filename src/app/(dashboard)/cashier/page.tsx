@@ -92,6 +92,7 @@ export default function CashierTerminal() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ method: paymentMethod, amount: order.total })
             });
+            const data = await res.json();
             if (res.ok) {
                 setSelectedOrderId(null);
                 setShowConfirm(false);
@@ -99,7 +100,12 @@ export default function CashierTerminal() {
                 setIsMobileDetailView(false);
                 setShowReceipt(true); // Show receipt after successful settlement
                 await fetchPendingOrders();
+            } else {
+                alert(`Payment Failed: ${data.error || 'Unknown error'}`);
             }
+        } catch (err) {
+            alert('Payment Network Error');
+            console.error(err);
         } finally { setCommitting(false); }
     };
 

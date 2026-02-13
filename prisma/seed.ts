@@ -51,6 +51,19 @@ async function main() {
         }
     });
 
+    // 2.1 Create the Real Super Admin (for HQ Login)
+    console.log('Creating HQ Super Admin (Email Login)...');
+    await prisma.superAdmin.upsert({
+        where: { email: "superadmin@hotelpro.com" },
+        update: { passwordHash: superAdminPassword },
+        create: {
+            email: "superadmin@hotelpro.com",
+            name: "Super Admin",
+            passwordHash: superAdminPassword,
+            isActive: true
+        }
+    });
+
     // 3. Create a Demo Tenant (Hotel Taj)
     console.log('Creating Demo Tenant: Taj Hotel...');
     const taj = await prisma.client.upsert({

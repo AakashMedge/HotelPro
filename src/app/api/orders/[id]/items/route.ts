@@ -9,6 +9,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addItemsToOrder, OrderError } from "@/lib/services/order";
 import { verifyToken } from "@/lib/auth";
+import { getTenantFromRequest } from "@/lib/tenant";
+import { getDb } from "@/lib/db";
 
 interface OrderItemResponse {
     id: string;
@@ -57,6 +59,15 @@ export async function POST(
 ): Promise<NextResponse<SuccessResponse | ErrorResponse>> {
     try {
         const { id: orderId } = await params;
+
+        // 1. Detect Tenant (Multi-Tenancy)
+        const tenant = await getTenantFromRequest();
+        if (!tenant) {
+            return NextResponse.json(
+                { success: false, error: "Authentication required", code: "AUTH_REQUIRED" },
+                { status: 401 }
+            );
+        }
 
         // Get actor ID from token
         let actorId: string | undefined;
@@ -107,8 +118,10 @@ export async function POST(
             }
         }
 
+        const db = getDb();
+
         // Add items to order
-        const order = await addItemsToOrder(orderId, items, actorId);
+        const order = await addItemsToOrder(orderId, items, tenant.id, actorId, db);
 
         // Calculate total
         const total = order.items.reduce((sum, item) => {

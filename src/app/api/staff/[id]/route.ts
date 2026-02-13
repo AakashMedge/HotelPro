@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { requireRole } from "@/lib/auth";
+import { prisma, getDb } from "@/lib/db";
+import { requireRole, hashPassword } from "@/lib/auth";
 
 /**
  * PATCH /api/staff/[id]
@@ -14,11 +14,12 @@ export async function PATCH(
     try {
         const user = await requireRole(["MANAGER", "ADMIN"]);
         const { id } = await params;
+        const { clientId } = user;
         const body = await request.json();
 
-        // Verify staff belongs to same client (tenant isolation)
-        const existingStaff = await prisma.user.findFirst({
-            where: { id, clientId: user.clientId }
+        // 1. Verify staff belongs to same client in Control Plane
+        const existingStaff = await (prisma.user as any).findFirst({
+            where: { id, clientId }
         });
 
         if (!existingStaff) {
@@ -28,7 +29,6 @@ export async function PATCH(
             );
         }
 
-        // Prevent modifying ADMIN users (security)
         if (existingStaff.role === 'ADMIN') {
             return NextResponse.json(
                 { success: false, error: "Cannot modify admin users" },
@@ -36,15 +36,25 @@ export async function PATCH(
             );
         }
 
-        // Update allowed fields
-        const updated = await prisma.user.update({
+        let passwordHash = undefined;
+        if (body.password) {
+            passwordHash = await hashPassword(body.password);
+        }
+
+        const updateData = {
+            isActive: body.isActive !== undefined ? body.isActive : existingStaff.isActive,
+            name: body.name !== undefined ? body.name : existingStaff.name,
+            role: body.role !== undefined ? body.role : existingStaff.role,
+            ...(passwordHash && { passwordHash })
+        };
+
+        // 2. Update in Control Plane
+        const updated = await (prisma.user as any).update({
             where: { id },
-            data: {
-                isActive: body.isActive !== undefined ? body.isActive : existingStaff.isActive,
-                name: body.name !== undefined ? body.name : existingStaff.name,
-            },
+            data: updateData,
             select: { id: true, name: true, isActive: true, role: true }
         });
+
 
         return NextResponse.json({ success: true, user: updated });
     } catch (error) {
@@ -67,10 +77,11 @@ export async function DELETE(
     try {
         const user = await requireRole(["MANAGER", "ADMIN"]);
         const { id } = await params;
+        const { clientId } = user;
 
-        // Verify staff belongs to same client (tenant isolation)
-        const existingStaff = await prisma.user.findFirst({
-            where: { id, clientId: user.clientId }
+        // 1. Verify staff belongs to same client in Control Plane
+        const existingStaff = await (prisma.user as any).findFirst({
+            where: { id, clientId }
         });
 
         if (!existingStaff) {
@@ -80,7 +91,6 @@ export async function DELETE(
             );
         }
 
-        // Prevent deleting ADMIN users (security)
         if (existingStaff.role === 'ADMIN') {
             return NextResponse.json(
                 { success: false, error: "Cannot delete admin users" },
@@ -88,9 +98,11 @@ export async function DELETE(
             );
         }
 
-        await prisma.user.delete({
+        // 2. Delete from Control Plane
+        await (prisma.user as any).delete({
             where: { id }
         });
+
 
         return NextResponse.json({ success: true });
     } catch (error) {

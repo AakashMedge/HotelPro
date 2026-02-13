@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, getDb } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { hashPassword } from "@/lib/auth";
 
@@ -10,13 +10,21 @@ import { hashPassword } from "@/lib/auth";
  */
 export async function GET(request: NextRequest) {
     try {
-        // Get authenticated user with clientId
-        const user = await requireRole(["MANAGER", "ADMIN"]);
-        const clientId = user.clientId;
+        console.log("[STAFF_API] 🚀 Fetching staff roster...");
 
-        // Only fetch staff for this tenant
-        const staff = await prisma.user.findMany({
-            where: { clientId },
+        // Get authenticated user with clientId and routing info
+        const user = await requireRole(["MANAGER", "ADMIN"]);
+        const { clientId } = user;
+
+        // Get the correct database client
+        const db = getDb();
+
+        // Fetch staff from the operational database - filtered for operational roles
+        const staff = await (db.user as any).findMany({
+            where: {
+                clientId,
+                role: { in: ['WAITER', 'CASHIER', 'KITCHEN', 'MANAGER', 'ADMIN'] }
+            },
             orderBy: { createdAt: 'desc' },
             select: {
                 id: true,
@@ -33,14 +41,15 @@ export async function GET(request: NextRequest) {
                         tableCode: true,
                         section: true,
                         status: true
-                    } as any
+                    }
                 }
-            } as any
+            }
         });
 
+        console.log(`[STAFF_API] ✅ Success. Found ${staff.length} staff.`);
         return NextResponse.json({ success: true, staff });
     } catch (error: any) {
-        console.error("[STAFF_GET_ERROR]", error);
+        console.error("[STAFF_API] 💥 CRITICAL ERROR:", error);
         if (error?.message === "Authentication required" || error?.message?.includes("Access denied")) {
             return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
         }
@@ -56,28 +65,31 @@ export async function POST(request: NextRequest) {
     try {
         // Get authenticated user with clientId
         const currentUser = await requireRole(["MANAGER", "ADMIN"]);
-        const clientId = currentUser.clientId;
+        const { clientId } = currentUser;
 
         const body = await request.json();
-
         const { name, username, password, role } = body;
 
         if (!name || !username || !password || !role) {
             return NextResponse.json({ success: false, error: "Missing fields" }, { status: 400 });
         }
 
-        // Check if username exists
-        const existing = await prisma.user.findUnique({ where: { username } });
+        if (currentUser.role === 'MANAGER' && (role === 'ADMIN' || role === 'MANAGER')) {
+            return NextResponse.json({ success: false, error: "Managers cannot create Admin or Manager accounts." }, { status: 403 });
+        }
+
+        // 1. Check if username exists globally (Control Plane)
+        const existing = await (prisma.user as any).findUnique({ where: { username } });
         if (existing) {
             return NextResponse.json({ success: false, error: "Username taken" }, { status: 409 });
         }
 
         const passwordHash = await hashPassword(password);
 
-        // Create staff member for THIS tenant
-        const newUser = await prisma.user.create({
+        // 2. Create in Control Plane (for global authentication)
+        const newUser = await (prisma.user as any).create({
             data: {
-                clientId, // Tenant isolation - staff belongs to this client
+                clientId,
                 name,
                 username,
                 passwordHash,
@@ -86,6 +98,7 @@ export async function POST(request: NextRequest) {
             },
             select: { id: true, name: true, role: true }
         });
+
 
         return NextResponse.json({ success: true, user: newUser });
 

@@ -1,14 +1,6 @@
-/**
- * Menu API
- * 
- * GET /api/menu - Get all available menu items
- * 
- * This is a public endpoint (no auth required) for customers
- * to browse the menu via QR scan.
- */
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, getDb } from "@/lib/db";
 import { getTenantFromRequest } from "@/lib/tenant";
 
 // Updated Interface to include new fields
@@ -36,7 +28,6 @@ interface MenuResponse {
  * 
  * Returns all available menu items.
  * Customers use this to view the menu before ordering.
- * NOW UPDATED: Respects Manager's "Active Collection" Toggles.
  */
 export async function GET(request: NextRequest): Promise<NextResponse<MenuResponse>> {
     try {
@@ -46,15 +37,16 @@ export async function GET(request: NextRequest): Promise<NextResponse<MenuRespon
             return NextResponse.json({ success: false, error: "Identifying tenant failed" }, { status: 400 });
         }
 
-        const menuItems = await prisma.menuItem.findMany({
+        const db = prisma;
+
+        const menuItems = await (db.menuItem as any).findMany({
             where: {
                 clientId: tenant.id,
                 deletedAt: null,
                 isAvailable: true,
-                // Feature: Only show items from Active Categories (Time-based menu)
                 OR: [
                     { category: { isActive: true } },
-                    { categoryId: null } // Show uncategorized items (fallback)
+                    { categoryId: null }
                 ]
             },
             include: {
@@ -82,18 +74,15 @@ export async function GET(request: NextRequest): Promise<NextResponse<MenuRespon
             category: item.category?.name || "General",
             description: item.description || undefined,
             price: Number(item.price),
-            // New fields
             specialPrice: item.specialPrice ? Number(item.specialPrice) : undefined,
             isSpecialPriceActive: item.isSpecialPriceActive,
             specialPriceStart: item.specialPriceStart,
             specialPriceEnd: item.specialPriceEnd,
             isChefSpecial: item.isChefSpecial,
             isGlutenFree: item.isGlutenFree,
-
             isAvailable: item.isAvailable,
             isVeg: Boolean(item.isVeg),
             imageUrl: item.imageUrl,
-            // Pass through the new complex data
             variants: item.variants.map((v: any) => ({
                 id: v.id,
                 name: v.name,

@@ -1,202 +1,382 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     CreditCard,
-    Zap,
-    Crown,
-    Building2,
-    ShieldCheck,
     Edit3,
     Plus,
-    LayoutGrid,
-    Sparkles,
     Settings2,
-    Check
+    Check,
+    Loader2,
+    RefreshCw,
+    Trash2,
+    X,
+    Save
 } from 'lucide-react';
 
-const PLANS = [
-    {
-        id: 'BASIC',
-        name: 'Basic Starter',
-        price: '₹2,499',
-        billing: 'per month',
-        tagline: 'Streamlined essentials for small cafes.',
-        icon: Building2,
-        features: ['10 Tables', '50 Menu Items', 'Base Analytics', 'Standard QR'],
-        gradient: 'from-blue-600 via-blue-500 to-cyan-400',
-        stats: '124 Hotels'
-    },
-    {
-        id: 'ADVANCE',
-        name: 'Pro Growth',
-        price: '₹5,999',
-        billing: 'per month',
-        tagline: 'Scale your hospitality operations.',
-        icon: Zap,
-        features: ['40 Tables', '150 Menu Items', 'Inventory Mgmt', 'Priority Support'],
-        gradient: 'from-emerald-600 via-emerald-500 to-teal-400',
-        stats: '85 Hotels'
-    },
-    {
-        id: 'PREMIUM',
-        name: 'Elite Experience',
-        price: '₹12,499',
-        billing: 'per month',
-        tagline: 'The pinnacle of AI-driven service.',
-        icon: Crown,
-        features: ['100 Tables', '500 Menu Items', 'AI Concierge', 'Performance Logs'],
-        gradient: 'from-amber-600 via-orange-500 to-yellow-400',
-        stats: '42 Hotels',
-        popular: true
-    },
-    {
-        id: 'BUSINESS',
-        name: 'Enterprise',
-        price: 'Custom',
-        billing: 'custom',
-        tagline: 'Unmatched power for hotel chains.',
-        icon: ShieldCheck,
-        features: ['Unlimited Scale', 'White Labeling', 'Enterprise API', 'Dedicated AM'],
-        gradient: 'from-fuchsia-600 via-purple-600 to-indigo-500',
-        stats: '12 Hotels'
-    }
-];
+// ============================================
+// Types
+// ============================================
+
+interface PlanData {
+    id: string;
+    name: string;
+    code: string;
+    price: number;
+    features: Record<string, boolean>;
+    limits: Record<string, number>;
+    isActive: boolean;
+    activeSubscriptions: number;
+    createdAt: string;
+    updatedAt: string;
+}
+
+// Feature display labels
+const FEATURE_LABELS: Record<string, string> = {
+    qr_menu: 'QR Menu Access',
+    basic_analytics: 'Basic Analytics',
+    ai_assistant: 'AI Menu Assistant',
+    inventory: 'Inventory Tracking',
+    ai_analysis: 'AI Performance Analysis',
+    custom_branding: 'Custom Branding',
+    isolated_database: 'Isolated Database',
+    multi_property: 'Multi-property Sync',
+    ai_automation: 'AI Automation & Ops',
+    dedicated_support: 'Dedicated Support',
+};
+
+// ============================================
+// Component
+// ============================================
 
 export default function SubscriptionsPage() {
-    return (
-        <div className="max-w-7xl mx-auto pb-12 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-            {/* HER0 SECTION */}
-            <div className="relative mb-16 pt-8">
-                <div className="absolute top-0 left-0 w-full h-px bg-linear-to-r from-transparent via-slate-200 to-transparent"></div>
-                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-                    <div className="space-y-2">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100/50 text-blue-600 text-[10px] font-bold uppercase tracking-widest">
-                            <Sparkles className="w-3 h-3" />
-                            Platform Revenue Settings
-                        </div>
-                        <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight leading-none">
-                            Revenue <span className="bg-linear-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Architecture</span>
-                        </h1>
-                        <p className="text-slate-500 text-lg font-medium max-w-xl">
-                            Configure global subscription tiers, pricing models, and system-wide feature availability.
-                        </p>
-                    </div>
+    const [plans, setPlans] = useState<PlanData[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [editingPlan, setEditingPlan] = useState<PlanData | null>(null);
+    const [saving, setSaving] = useState(false);
 
-                    <div className="flex items-center gap-3">
-                        <button className="h-11 px-5 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold text-sm shadow-xs hover:border-slate-300 hover:bg-slate-50 transition-all flex items-center gap-2">
-                            <Settings2 className="w-4 h-4" />
-                            Global Limits
-                        </button>
-                        <button className="h-11 px-6 rounded-xl bg-[#0F172A] text-white font-bold text-sm shadow-xl shadow-slate-200 hover:scale-105 active:scale-95 transition-all flex items-center gap-3">
-                            <Plus className="w-4 h-4" />
-                            New Tier
-                        </button>
-                    </div>
+    // ─── Fetch Plans ───
+    const fetchPlans = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await fetch('/api/hq/plans');
+            if (!res.ok) throw new Error('Failed to fetch plans');
+            const data = await res.json();
+            setPlans(data.plans || []);
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => { fetchPlans(); }, []);
+
+    // ─── Save Plan Edit ───
+    const handleSave = async () => {
+        if (!editingPlan) return;
+        setSaving(true);
+        try {
+            const res = await fetch(`/api/hq/plans/${editingPlan.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: editingPlan.name,
+                    price: editingPlan.price,
+                    features: editingPlan.features,
+                    limits: editingPlan.limits,
+                }),
+            });
+            if (!res.ok) throw new Error('Failed to save');
+            setEditingPlan(null);
+            fetchPlans();
+        } catch (err: any) {
+            alert('Save failed: ' + err.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // ─── Delete Plan ───
+    const handleDelete = async (planId: string, planName: string) => {
+        if (!confirm(`Deactivate plan "${planName}"? Active subscriptions will be preserved.`)) return;
+        try {
+            const res = await fetch(`/api/hq/plans/${planId}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Failed to delete');
+            fetchPlans();
+        } catch (err: any) {
+            alert('Delete failed: ' + err.message);
+        }
+    };
+
+    // ─── Computed Metrics ───
+    const totalSubscriptions = plans.reduce((sum, p) => sum + p.activeSubscriptions, 0);
+    const totalRevenue = plans.reduce((sum, p) => sum + (p.price * p.activeSubscriptions), 0);
+    const avgPlanValue = totalSubscriptions > 0 ? totalRevenue / totalSubscriptions : 0;
+
+    // ─── Render ───
+    return (
+        <div className="max-w-7xl mx-auto space-y-10 py-6 animate-in fade-in duration-500">
+            {/* Header Area */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-900">Subscription Plans</h1>
+                    <p className="text-slate-500 text-sm mt-1">Manage platform tiers, pricing, and feature availability.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={fetchPlans}
+                        className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-all flex items-center gap-2"
+                    >
+                        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                        Refresh
+                    </button>
+                    <button className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-all flex items-center gap-2">
+                        <Settings2 className="w-4 h-4" />
+                        Global Limits
+                    </button>
+                    <button className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-all shadow-sm flex items-center gap-2">
+                        <Plus className="w-4 h-4" />
+                        Create New Plan
+                    </button>
                 </div>
             </div>
 
-            {/* PERFORMANCE OVERVIEW */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-12">
+            {/* Quick Metrics Section — now computed from real data */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 {[
-                    { label: 'Active Revenue', val: '₹8.4L', sub: '+12%', color: 'blue' },
-                    { label: 'Total Tiers', val: '04', sub: 'Standard', color: 'slate' },
-                    { label: 'Market Share', val: '22%', sub: 'Growth', color: 'emerald' },
-                    { label: 'System Health', val: '100%', sub: 'Live', color: 'cyan' },
-                ].map((stat, i) => (
-                    <div key={i} className="bg-white border border-slate-200/60 p-5 rounded-2xl flex flex-col justify-between group hover:border-blue-200 transition-colors">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{stat.label}</span>
-                        <div className="flex items-baseline justify-between mt-2">
-                            <span className="text-2xl font-bold text-slate-900">{stat.val}</span>
-                            <span className={`text-[10px] font-bold ${stat.color === 'emerald' ? 'text-emerald-500' : 'text-blue-500'}`}>{stat.sub}</span>
+                    { label: 'Monthly Revenue', value: `₹${totalRevenue.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`, trend: 'Live' },
+                    { label: 'Active Subscriptions', value: String(totalSubscriptions), trend: 'Real-time' },
+                    { label: 'Average Plan Value', value: `₹${Math.round(avgPlanValue).toLocaleString()}`, trend: 'Computed' },
+                    { label: 'Active Plans', value: String(plans.filter(p => p.isActive).length), trend: `${plans.length} total` }
+                ].map((m, i) => (
+                    <div key={i} className="bg-white border border-slate-100 p-5 rounded-2xl shadow-sm">
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">{m.label}</p>
+                        <div className="flex items-end justify-between mt-2">
+                            <span className="text-2xl font-bold text-slate-950">{m.value}</span>
+                            <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">{m.trend}</span>
                         </div>
                     </div>
                 ))}
             </div>
 
-            {/* PLANS GRID */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                {PLANS.map((plan) => (
-                    <div
-                        key={plan.id}
-                        className={`group relative bg-white border border-slate-100 rounded-[32px] p-1 flex flex-col h-full shadow-2xl shadow-slate-200/50 hover:shadow-blue-500/10 transition-all duration-500 ${plan.popular ? 'border-blue-500 scale-105 z-10' : ''}`}
-                    >
-                        {plan.popular && (
-                            <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-black uppercase tracking-[0.2em] px-4 py-1.5 rounded-full shadow-lg shadow-blue-500/40 border-2 border-white">
-                                Most Popular
-                            </div>
-                        )}
+            {/* Loading / Error States */}
+            {loading && (
+                <div className="flex items-center justify-center py-20">
+                    <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                    <span className="ml-3 text-slate-500 font-medium">Loading plans from database...</span>
+                </div>
+            )}
 
-                        <div className="p-8 flex-1 flex flex-col">
-                            {/* Icon & Title */}
-                            <div className={`w-14 h-14 rounded-2xl bg-linear-to-br ${plan.gradient} flex items-center justify-center text-white mb-8 shadow-lg shadow-blue-500/20 group-hover:scale-110 transition-transform duration-500`}>
-                                <plan.icon className="w-7 h-7" />
-                            </div>
+            {error && (
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center">
+                    <p className="text-red-600 font-semibold">{error}</p>
+                    <button onClick={fetchPlans} className="mt-2 text-red-500 text-sm underline">Try again</button>
+                </div>
+            )}
 
-                            <div className="space-y-1 mb-6">
-                                <h3 className="text-2xl font-bold text-slate-900 tracking-tight">{plan.name}</h3>
-                                <p className="text-slate-400 text-sm font-medium leading-relaxed">{plan.tagline}</p>
-                            </div>
-
-                            <div className="flex items-baseline gap-1.5 mb-8">
-                                <span className="text-3xl font-black text-slate-900">{plan.price}</span>
-                                <span className="text-slate-400 text-sm font-bold uppercase tracking-widest">{plan.billing}</span>
-                            </div>
-
-                            <div className="space-y-4 mb-10 flex-1">
-                                {plan.features.map((f, i) => (
-                                    <div key={i} className="flex items-center gap-3">
-                                        <div className={`w-5 h-5 rounded-full flex items-center justify-center bg-linear-to-br ${plan.gradient} text-white p-1`}>
-                                            <Check className="w-3 h-3 stroke-[3px]" />
-                                        </div>
-                                        <span className="text-sm font-semibold text-slate-600">{f}</span>
+            {/* Plans List — from DB */}
+            {!loading && !error && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {plans.map((plan) => (
+                        <div
+                            key={plan.id}
+                            className={`bg-white border rounded-2xl overflow-hidden flex flex-col group hover:shadow-lg hover:shadow-indigo-500/5 transition-all ${plan.isActive
+                                ? 'border-slate-200 hover:border-indigo-200'
+                                : 'border-red-200 opacity-60'
+                                }`}
+                        >
+                            <div className="p-6 space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-600 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                                        {plan.code}
                                     </div>
-                                ))}
-                            </div>
-
-                            {/* Plan Foot */}
-                            <div className="pt-6 border-t border-slate-50 mt-auto">
-                                <div className="flex items-center justify-between mb-6">
-                                    <div className="flex items-center gap-2">
-                                        <div className="flex -space-x-2">
-                                            {[1, 2, 3].map(i => <div key={i} className="w-5 h-5 rounded-full border-2 border-white bg-slate-200 overflow-hidden"></div>)}
-                                        </div>
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{plan.stats}</span>
-                                    </div>
-                                    <Edit3 className="w-4 h-4 text-slate-300 group-hover:text-blue-500 transition-colors" />
+                                    <span className="text-slate-400 text-[10px] font-bold uppercase">
+                                        {plan.activeSubscriptions} Active
+                                    </span>
                                 </div>
-                                <button className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${plan.popular ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20 hover:bg-blue-700' : 'bg-slate-50 text-slate-900 hover:bg-slate-100 border border-slate-200'}`}>
-                                    Config Tiers
-                                    <LayoutGrid className="w-4 h-4" />
+
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-900">{plan.name}</h3>
+                                    <div className="flex items-baseline gap-1 mt-1">
+                                        <span className="text-2xl font-black text-slate-900">
+                                            ₹{plan.price.toLocaleString()}
+                                        </span>
+                                        <span className="text-slate-400 text-[10px] font-bold uppercase">/ month</span>
+                                    </div>
+                                </div>
+
+                                <div className="pt-4 space-y-3">
+                                    <div className="flex items-center justify-between text-xs py-2 border-b border-slate-50 italic text-slate-500">
+                                        <span>Tables</span>
+                                        <span className="font-bold text-slate-700">
+                                            {(plan.limits?.tables ?? 0) === 0 ? 'Unlimited' : plan.limits.tables}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-xs py-2 border-b border-slate-50 italic text-slate-500">
+                                        <span>Menu Items</span>
+                                        <span className="font-bold text-slate-700">
+                                            {(plan.limits?.menuItems ?? 0) === 0 ? 'Unlimited' : plan.limits.menuItems}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <ul className="space-y-2 pt-2">
+                                    {Object.entries(plan.features || {})
+                                        .filter(([, enabled]) => enabled)
+                                        .map(([key]) => (
+                                            <li key={key} className="flex items-center gap-2 text-[11px] font-medium text-slate-500">
+                                                <Check className="w-3 h-3 text-emerald-500" />
+                                                {FEATURE_LABELS[key] || key}
+                                            </li>
+                                        ))}
+                                </ul>
+
+                                {!plan.isActive && (
+                                    <div className="bg-red-50 text-red-600 text-[10px] font-bold uppercase text-center py-1.5 rounded-lg">
+                                        Deactivated
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center gap-2 mt-auto">
+                                <button
+                                    onClick={() => setEditingPlan({ ...plan })}
+                                    className="flex-1 bg-white border border-slate-200 text-slate-700 py-2 rounded-xl text-xs font-bold hover:bg-slate-100 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                    Edit
+                                </button>
+                                <button
+                                    onClick={() => handleDelete(plan.id, plan.name)}
+                                    className="w-10 h-10 bg-white border border-slate-200 text-slate-400 py-2 rounded-xl flex items-center justify-center hover:text-red-600 hover:border-red-100 transition-all"
+                                >
+                                    <Trash2 className="w-4 h-4" />
                                 </button>
                             </div>
                         </div>
-                    </div>
-                ))}
-            </div>
-
-            {/* BOTTOM CTA Area */}
-            <div className="mt-20 p-1 rounded-[40px] bg-linear-to-br from-slate-900 via-blue-950 to-indigo-950 shadow-2xl shadow-indigo-500/20 relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-500 rounded-full blur-[120px]"></div>
+                    ))}
                 </div>
+            )}
 
-                <div className="relative z-10 py-12 px-12 text-center">
-                    <div className="w-16 h-16 bg-white/10 rounded-3xl backdrop-blur-xl border border-white/20 flex items-center justify-center mx-auto mb-6 transform rotate-3">
-                        <CreditCard className="w-8 h-8 text-blue-400" />
+            {/* Edit Modal */}
+            {editingPlan && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between p-6 border-b border-slate-100">
+                            <h2 className="text-lg font-bold text-slate-900">Edit Plan: {editingPlan.code}</h2>
+                            <button onClick={() => setEditingPlan(null)} className="text-slate-400 hover:text-slate-600">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-5">
+                            {/* Name */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Plan Name</label>
+                                <input
+                                    type="text"
+                                    value={editingPlan.name}
+                                    onChange={(e) => setEditingPlan({ ...editingPlan, name: e.target.value })}
+                                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                />
+                            </div>
+                            {/* Price */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Price (₹/month)</label>
+                                <input
+                                    type="number"
+                                    value={editingPlan.price}
+                                    onChange={(e) => setEditingPlan({ ...editingPlan, price: parseFloat(e.target.value) || 0 })}
+                                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                />
+                            </div>
+                            {/* Limits */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Table Limit</label>
+                                    <input
+                                        type="number"
+                                        value={editingPlan.limits?.tables ?? 0}
+                                        onChange={(e) => setEditingPlan({
+                                            ...editingPlan,
+                                            limits: { ...editingPlan.limits, tables: parseInt(e.target.value) || 0 }
+                                        })}
+                                        className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                    />
+                                    <p className="text-[10px] text-slate-400 mt-1">0 = Unlimited</p>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Menu Item Limit</label>
+                                    <input
+                                        type="number"
+                                        value={editingPlan.limits?.menuItems ?? 0}
+                                        onChange={(e) => setEditingPlan({
+                                            ...editingPlan,
+                                            limits: { ...editingPlan.limits, menuItems: parseInt(e.target.value) || 0 }
+                                        })}
+                                        className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                    />
+                                    <p className="text-[10px] text-slate-400 mt-1">0 = Unlimited</p>
+                                </div>
+                            </div>
+                            {/* Features */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Feature Toggles</label>
+                                <div className="grid grid-cols-1 gap-2">
+                                    {Object.entries(FEATURE_LABELS).map(([key, label]) => (
+                                        <label key={key} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
+                                            <span className="text-xs font-medium text-slate-700">{label}</span>
+                                            <input
+                                                type="checkbox"
+                                                checked={editingPlan.features?.[key] ?? false}
+                                                onChange={(e) => setEditingPlan({
+                                                    ...editingPlan,
+                                                    features: { ...editingPlan.features, [key]: e.target.checked }
+                                                })}
+                                                className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 border-slate-300"
+                                            />
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3 p-6 border-t border-slate-100">
+                            <button
+                                onClick={() => setEditingPlan(null)}
+                                className="flex-1 bg-white border border-slate-200 text-slate-700 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-100 transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSave}
+                                disabled={saving}
+                                className="flex-1 bg-indigo-600 text-white py-2.5 rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                {saving ? 'Saving...' : 'Save Changes'}
+                            </button>
+                        </div>
                     </div>
-                    <h2 className="text-3xl font-bold text-white mb-4">Centralized Billing Engine</h2>
-                    <p className="text-blue-200/70 max-w-2xl mx-auto mb-10 leading-relaxed font-medium">
-                        The HotelPro subscription layer is built on an automated feature-gating engine. Changes to tiers here will propagate to all hotel clients instantly.
-                    </p>
-                    <div className="flex flex-wrap items-center justify-center gap-4">
-                        <button className="h-12 px-8 rounded-2xl bg-white text-[#0F172A] font-black text-xs uppercase tracking-widest shadow-xl hover:scale-105 transition-all">
-                            Review Logic
-                        </button>
-                        <button className="h-12 px-8 rounded-2xl bg-white/10 text-white font-black text-xs uppercase tracking-widest shadow-xl backdrop-blur-xl border border-white/10 hover:bg-white/20 transition-all">
-                            View API Docs
-                        </button>
+                </div>
+            )}
+
+            {/* Footer / Info */}
+            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center border border-slate-200 shadow-sm">
+                        <CreditCard className="w-6 h-6 text-slate-400" />
                     </div>
+                    <div>
+                        <h4 className="text-sm font-bold text-slate-900">Billing Logic & Feature Gating</h4>
+                        <p className="text-xs text-slate-500 mt-0.5">Plan changes propagate to tenant databases via the entitlement sync engine. Feature gates are enforced server-side.</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-3">
+                    <button className="text-slate-400 hover:text-slate-600 text-xs font-bold uppercase tracking-wider">Audit Logs</button>
+                    <div className="w-1 h-1 rounded-full bg-slate-300"></div>
+                    <button className="text-slate-400 hover:text-slate-600 text-xs font-bold uppercase tracking-wider">Sync Status</button>
                 </div>
             </div>
         </div>

@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Users } from 'lucide-react';
 
 type User = {
     id: string;
@@ -33,9 +34,15 @@ export default function AdminUsersPage() {
     return (
         <div className="h-full overflow-y-auto p-8 font-mono bg-[#F2F2F2]">
             <div className="max-w-6xl mx-auto space-y-8 pb-32">
-                <div className="flex justify-between items-end border-b-2 border-black pb-4">
-                    <h1 className="text-2xl font-black uppercase tracking-tighter">Global User Registry</h1>
-                    <span className="text-xs font-bold uppercase">{users.length} Records Found</span>
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b-4 border-black pb-8">
+                    <div>
+                        <div className="flex items-center gap-3 text-zinc-400 mb-2">
+                            <Users className="w-4 h-4" />
+                            <span className="text-[10px] font-black uppercase tracking-[0.3em]">Master Identity Database</span>
+                        </div>
+                        <h1 className="text-4xl font-black uppercase tracking-tighter italic">User_Registry</h1>
+                    </div>
+                    <span className="text-xs font-bold uppercase tracking-widest">{users.length} PROTOTYPES FOUND</span>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -56,7 +63,7 @@ export default function AdminUsersPage() {
                                     <td className="p-4 border-r border-zinc-200 font-bold">{user.name}</td>
                                     <td className="p-4 border-r border-zinc-200">
                                         <span className={`px-2 py-1 ${user.role === 'ADMIN' ? 'bg-black text-white' :
-                                                user.role === 'MANAGER' ? 'bg-zinc-200' : 'bg-white border border-zinc-300'
+                                            user.role === 'MANAGER' ? 'bg-zinc-200' : 'bg-white border border-zinc-300'
                                             }`}>
                                             {user.role}
                                         </span>

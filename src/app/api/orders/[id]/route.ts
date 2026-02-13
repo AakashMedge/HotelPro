@@ -1,17 +1,14 @@
-/**
- * Single Order API
- * 
- * GET /api/orders/[id] - Get order details
- * PATCH /api/orders/[id] - Update order status
- */
 
 import { NextRequest, NextResponse } from "next/server";
 import {
     getOrderById,
     updateOrderStatus,
+    cancelOrder,
     OrderError,
 } from "@/lib/services/order";
 import { verifyToken } from "@/lib/auth";
+import { getTenantFromRequest } from "@/lib/tenant";
+import { getDb } from "@/lib/db";
 import type { OrderStatus } from "@prisma/client";
 
 // ============================================
@@ -67,7 +64,17 @@ export async function GET(
     try {
         const { id } = await params;
 
-        const order = await getOrderById(id);
+        // 1. Detect Tenant (Multi-Tenancy)
+        const tenant = await getTenantFromRequest();
+        if (!tenant) {
+            return NextResponse.json(
+                { success: false, error: "Hotel not identified. Please enter your access code first.", code: "AUTH_REQUIRED" },
+                { status: 401 }
+            );
+        }
+
+        const db = getDb();
+        const order = await getOrderById(id, tenant.id, db);
 
         if (!order) {
             return NextResponse.json(
@@ -124,26 +131,23 @@ export async function GET(
 // PATCH /api/orders/[id] - Update Order Status
 // ============================================
 
-/**
- * Update order status.
- * 
- * Used by:
- * - Kitchen: NEW → PREPARING → READY
- * - Waiter: READY → SERVED
- * - Cashier: SERVED → CLOSED
- * 
- * Request Body:
- * {
- *   status: "PREPARING" | "READY" | "SERVED" | "CLOSED",
- *   version: number  // For optimistic locking
- * }
- */
 export async function PATCH(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<OrderSuccessResponse | OrderErrorResponse>> {
     try {
         const { id } = await params;
+
+        // 1. Detect Tenant (Multi-Tenancy)
+        const tenant = await getTenantFromRequest();
+        if (!tenant) {
+            return NextResponse.json(
+                { success: false, error: "Authentication required", code: "AUTH_REQUIRED" },
+                { status: 401 }
+            );
+        }
+
+        const db = getDb();
 
         // Get actor ID from token (optional - for audit)
         let actorId: string | undefined;
@@ -167,35 +171,42 @@ export async function PATCH(
             );
         }
 
-        const { status, version, customerName } = body as { status: OrderStatus; version: number; customerName?: string };
+        const {
+            status,
+            version,
+            customerName,
+            customerPhone,
+            subtotal,
+            discountAmount,
+            gstAmount,
+            serviceChargeAmount,
+            grandTotal,
+            appliedGstRate
+        } = body;
 
-        // Validate status
-        const validStatuses: OrderStatus[] = ["NEW", "PREPARING", "READY", "SERVED", "BILL_REQUESTED", "CLOSED"];
-        if (!status || !validStatuses.includes(status)) {
-            return NextResponse.json(
-                {
-                    success: false,
-                    error: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
-                    code: "INVALID_INPUT",
-                },
-                { status: 400 }
-            );
-        }
+        console.log(`[ORDER API] Payload for ${id}:`, { status, subtotal, gstAmount, grandTotal });
 
-        // Validate version
-        if (typeof version !== "number") {
-            return NextResponse.json(
-                {
-                    success: false,
-                    error: "version is required for optimistic locking",
-                    code: "INVALID_INPUT",
-                },
-                { status: 400 }
-            );
-        }
+        // ...
 
-        // Update order (now supports customerName for billing flow)
-        const order = await updateOrderStatus(id, status, version, actorId, customerName);
+        // Update order
+        const order = await updateOrderStatus(
+            id,
+            status,
+            version,
+            tenant.id,
+            actorId,
+            customerName,
+            customerPhone,
+            db,
+            {
+                subtotal,
+                discountAmount,
+                gstAmount,
+                serviceChargeAmount,
+                grandTotal,
+                appliedGstRate
+            }
+        );
 
         // Calculate total
         const total = order.items.reduce((sum, item) => {
@@ -252,6 +263,50 @@ export async function PATCH(
 
         return NextResponse.json(
             { success: false, error: "Failed to update order" },
+            { status: 500 }
+        );
+    }
+}
+
+// ============================================
+// DELETE /api/orders/[id] - Cancel Entire Order
+// ============================================
+
+export async function DELETE(
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+): Promise<NextResponse<OrderSuccessResponse | OrderErrorResponse>> {
+    try {
+        const { id } = await params;
+
+        // 1. Detect Tenant
+        const tenant = await getTenantFromRequest();
+        if (!tenant) {
+            return NextResponse.json(
+                { success: false, error: "Authentication required" },
+                { status: 401 }
+            );
+        }
+
+        const db = getDb();
+
+        // 2. Cancel Order
+        await cancelOrder(id, tenant.id, undefined, db);
+
+        return NextResponse.json({
+            success: true,
+            order: {} as any
+        });
+    } catch (error) {
+        if (error instanceof OrderError) {
+            return NextResponse.json(
+                { success: false, error: error.message, code: error.code },
+                { status: 400 }
+            );
+        }
+        console.error("[ORDER API] Error cancelling order:", error);
+        return NextResponse.json(
+            { success: false, error: "Failed to cancel order" },
             { status: 500 }
         );
     }

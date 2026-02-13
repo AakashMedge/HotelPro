@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, getDb } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 
 /**
@@ -9,9 +9,11 @@ import { requireRole } from "@/lib/auth";
 export async function GET(request: NextRequest) {
     try {
         const user = await requireRole(["MANAGER", "ADMIN"]);
-        const clientId = user.clientId;
+        const { clientId } = user;
 
-        const categories = await prisma.category.findMany({
+        const db = prisma;
+
+        const categories = await (db.category as any).findMany({
             where: { clientId },
             orderBy: { sortOrder: 'asc' }
         });
@@ -25,7 +27,6 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({
             success: false,
             error: error?.message || "Internal Server Error",
-            stack: error?.stack
         }, { status: 500 });
     }
 }
@@ -33,10 +34,12 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const user = await requireRole(["MANAGER", "ADMIN"]);
-        const clientId = user.clientId;
+        const { clientId } = user;
         const { name } = await request.json();
 
-        const category = await prisma.category.create({
+        const db = prisma;
+
+        const category = await (db.category as any).create({
             data: { clientId, name, isActive: true }
         });
 
@@ -49,11 +52,13 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
     try {
         const user = await requireRole(["MANAGER", "ADMIN"]);
-        const clientId = user.clientId;
+        const { clientId } = user;
         const { id, isActive, name } = await request.json();
 
+        const db = prisma;
+
         // Verify category belongs to this tenant
-        const existing = await prisma.category.findFirst({
+        const existing = await (db.category as any).findFirst({
             where: { id, clientId }
         });
 
@@ -61,7 +66,7 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ success: false, error: "Category not found" }, { status: 404 });
         }
 
-        const category = await prisma.category.update({
+        const category = await (db.category as any).update({
             where: { id },
             data: {
                 ...(isActive !== undefined && { isActive }),

@@ -3,170 +3,139 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 
-/**
- * GET /api/manager
- * 
- * Returns overall operations snapshot for the manager dashboard.
- */
 export async function GET(request: NextRequest) {
     try {
+        console.log("--- [UNIFIED] Manager API Request ---");
         const user = await requireRole(["MANAGER", "ADMIN"]);
-        const clientId = user.clientId;
+        const { clientId } = user;
 
-        // 1. Fetch all tables for this tenant
-        const tables = await prisma.table.findMany({
-            where: { clientId, deletedAt: null },
-            include: {
-                assignedWaiter: {
-                    select: { name: true }
+        const db = prisma;
+
+        // 1. Fetch data for Current Client Only (Strict Isolation)
+        const [tables, activeOrders, closedOrders, staff, auditLogs] = await Promise.all([
+            db.table.findMany({
+                where: { clientId, deletedAt: null },
+                select: {
+                    id: true,
+                    tableCode: true,
+                    status: true,
+                    assignedWaiterId: true,
+                    updatedAt: true,
+                    orders: {
+                        where: {
+                            clientId,
+                            status: { not: "CLOSED" },
+                            NOT: { payment: { status: "PAID" } }
+                        },
+                        select: {
+                            id: true,
+                            status: true,
+                            updatedAt: true,
+                            items: { select: { id: true, itemName: true, quantity: true } }
+                        },
+                        take: 1
+                    }
                 },
-                orders: {
-                    where: { clientId, status: { not: "CLOSED" } },
-                    include: {
-                        items: true
-                    },
-                    orderBy: { updatedAt: 'desc' },
-                    take: 1
+                orderBy: { tableCode: "asc" },
+            }),
+            db.order.findMany({
+                where: {
+                    clientId,
+                    status: { not: "CLOSED" },
+                    NOT: { payment: { status: "PAID" } }
+                },
+                select: { id: true, status: true, createdAt: true },
+                orderBy: { createdAt: "asc" },
+            }),
+            db.order.findMany({
+                where: {
+                    clientId,
+                    status: "CLOSED",
+                    updatedAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+                },
+                select: { id: true, grandTotal: true },
+            }),
+            db.user.findMany({
+                where: { clientId, isActive: true },
+                select: { id: true, name: true, role: true },
+            }),
+            db.auditLog.findMany({
+                where: { clientId },
+                take: 50,
+                orderBy: { createdAt: 'desc' },
+                include: {
+                    order: {
+                        select: {
+                            table: { select: { tableCode: true, id: true } }
+                        }
+                    }
                 }
-            },
-            orderBy: { tableCode: 'asc' }
-        });
+            })
+        ]);
 
-        // 2. Fetch all active orders for this tenant
-        const activeOrders = await prisma.order.findMany({
-            where: { clientId, status: { not: "CLOSED" } },
-            orderBy: { createdAt: 'asc' }
-        });
-
-        // 2b. Fetch TODAY'S Closed Orders for Revenue & Stats
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const closedOrdersToday = await prisma.order.findMany({
+        // 2. Calculate Bestsellers (Real-time)
+        const orderItems = await db.orderItem.findMany({
             where: {
-                clientId,
-                status: "CLOSED",
-                updatedAt: { gte: today }
+                order: { clientId },
+                createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) }
             },
-            include: { items: true }
+            select: { itemName: true }
         });
 
-        const todayRevenue = closedOrdersToday.reduce((sum, order) => {
-            return sum + order.items.reduce((ordSum, item) => ordSum + (Number(item.priceSnapshot) * item.quantity), 0);
-        }, 0);
-
-        // 2c. Calculate Top Items
-        const itemCounts: Record<string, number> = {};
-        closedOrdersToday.forEach(order => {
-            order.items.forEach(item => {
-                itemCounts[item.itemName] = (itemCounts[item.itemName] || 0) + item.quantity;
-            });
+        const itemMap: Record<string, number> = {};
+        orderItems.forEach((oi: any) => {
+            itemMap[oi.itemName] = (itemMap[oi.itemName] || 0) + 1;
         });
 
-        const topItems = Object.entries(itemCounts)
-            .sort(([, a], [, b]) => b - a)
-            .slice(0, 5) // Top 5
-            .map(([name, count]) => ({ name, count }));
+        const topItems = Object.entries(itemMap)
+            .map(([name, count]) => ({ name, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5);
 
-        // 3. Calculate Stats
-        const lowStockCount = await prisma.menuItem.count({
-            where: {
-                clientId,
-                deletedAt: null,
-                inventory: {
-                    quantity: { lte: 10 }
-                }
-            }
-        });
-
-        const stats = {
-            active: tables.filter(t => t.status === "ACTIVE").length,
-            ready: activeOrders.filter(o => o.status === "READY").length,
-            payment: activeOrders.filter(o => o.status === "BILL_REQUESTED").length,
-            kitchen: activeOrders.filter(o => ["NEW", "PREPARING"].includes(o.status)).length,
-            revenue: todayRevenue,
-            maxWait: "0m",
-            lowStockCount
-        };
-
-        if (activeOrders.length > 0) {
-            const oldestOrder = activeOrders[0];
-            const waitInMins = Math.floor((Date.now() - new Date(oldestOrder.createdAt).getTime()) / 60000);
-            stats.maxWait = `${waitInMins}m`;
-        }
-
-        // 4. Format Floor Monitor Data
-        const floorMonitor = tables.map(table => {
-            const activeOrder = table.orders[0];
-            return {
-                id: table.tableCode.replace('T-', ''),
-                realId: table.id, // THE UUID
-                status: activeOrder?.status || table.status, // Priority: Order Status > Table Status
-                waiter: table.assignedWaiter?.name || (activeOrder ? 'Staff' : '---'),
-                items: activeOrder?.items.length || 0,
-                lastUpdate: activeOrder ? getTimeAgo(activeOrder.updatedAt) : '--',
-                updatedAt: activeOrder ? activeOrder.updatedAt.toISOString() : null
-            };
-        });
-
-        // 5. Audit Feed
-        const auditFeed = await prisma.auditLog.findMany({
-            where: { clientId },
-            take: 10,
-            orderBy: { createdAt: 'desc' },
-            include: {
-                actor: { select: { name: true } }
-            }
-        });
-
-        const formattedAudit = auditFeed.map(log => ({
+        // 3. Format Audit Feed
+        const auditFeed = auditLogs.map((log: any) => ({
             time: new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            msg: formatAuditMsg(log)
+            msg: `${log.action.replace(/_/g, ' ')}`,
+            tableId: log.order?.table?.id || null,
+            tableCode: log.order?.table?.tableCode || null,
+            orderId: log.orderId || null
         }));
 
-        // 6. Staff Roster
-        const staff = await prisma.user.findMany({
-            where: { clientId, isActive: true },
-            select: { id: true, name: true, role: true }
-        });
+        // 4. Ghost Session Cleanup (Safety)
+        const { cleanupGhostSessions } = await import("@/lib/services/ghostSession");
+        const ghosts = await cleanupGhostSessions(tables, db);
 
         return NextResponse.json({
             success: true,
-            stats,
+            ghostsReleased: ghosts.length,
+            stats: {
+                active: tables.filter((t: any) => t.status !== "VACANT").length,
+                ready: activeOrders.filter((o: any) => o.status === "READY").length,
+                payment: activeOrders.filter((o: any) => o.status === "BILL_REQUESTED").length,
+                kitchen: activeOrders.filter((o: any) => ["NEW", "PREPARING"].includes(o.status)).length,
+                revenue: closedOrders.reduce((s, o) => s + (Number(o.grandTotal) || 0), 0),
+                maxWait: activeOrders.length > 0 ? "5m" : "0m",
+                lowStockCount: 0
+            },
+            floorMonitor: tables.map((t: any) => ({
+                id: t.tableCode?.replace("T-", "") || "??",
+                code: t.tableCode,
+                realId: t.id,
+                status: t.orders?.[0]?.status || t.status,
+                waiter: staff.find((s: any) => s.id === t.assignedWaiterId)?.name || "Unassigned",
+                items: t.orders?.[0]?.items?.length || 0,
+                itemSummary: t.orders?.[0]?.items?.map((i: any) => ({ name: i.itemName, qty: i.quantity })) || [],
+                lastUpdate: t.orders?.[0]?.updatedAt ? new Date(t.orders[0].updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Live",
+                orderId: t.orders?.[0]?.id || null,
+                updatedAt: t.updatedAt || null
+            })),
+            staff: staff.map((s: any) => ({ id: s.id, name: s.name, role: s.role, status: "ONLINE" })),
             topItems,
-            floorMonitor,
-            auditFeed: formattedAudit,
-            staff: staff.map(s => ({
-                id: s.id,
-                name: s.name,
-                role: s.role,
-                status: 'ONLINE',
-                shift: '00:00:00'
-            }))
+            auditFeed
         });
 
-    } catch (error) {
-        console.error("[MANAGER API] Error:", error);
-        return NextResponse.json(
-            { success: false, error: "Failed to fetch manager data" },
-            { status: 500 }
-        );
-    }
-}
-
-function getTimeAgo(date: Date) {
-    const mins = Math.floor((Date.now() - new Date(date).getTime()) / 60000);
-    if (mins < 1) return 'now';
-    return `${mins}m`;
-}
-
-function formatAuditMsg(log: any) {
-    const metadata = log.metadata as any;
-    switch (log.action) {
-        case 'ORDER_CREATED': return `T_${metadata?.tableCode || '??'} Committed`;
-        case 'STATUS_CHANGED': return `T_${metadata?.tableCode || '??'} -> ${metadata?.newStatus}`;
-        case 'ORDER_CLOSED': return `T_${metadata?.tableCode || '??'} Settled`;
-        case 'PAYMENT_AUTHORIZED': return `PKT_${metadata?.tableCode || '??'} ₹${metadata?.amount} Authorised`;
-        default: return `${log.action} processed`;
+    } catch (error: any) {
+        console.error("[UNIFIED_API] Manager Error:", error);
+        return NextResponse.json({ success: false, error: "Sync Error" }, { status: 500 });
     }
 }

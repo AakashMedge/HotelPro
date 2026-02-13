@@ -1,52 +1,71 @@
-import { NextResponse } from 'next/server';
+/**
+ * AI Voice API — Text-to-Speech Fallback
+ * 
+ * POST /api/ai/voice
+ * 
+ * Primary TTS is handled by the browser's SpeechSynthesis API (₹0 cost).
+ * This API is a server-side fallback using ElevenLabs if configured.
+ * 
+ * In practice, the widget handles TTS in-browser. This endpoint
+ * exists for future use (e.g., generating audio files for download).
+ */
 
 export async function POST(req: Request) {
     try {
-        const { text } = await req.json();
+        const { text, language = 'en' } = await req.json();
+
+        if (!text || typeof text !== 'string') {
+            return Response.json({ error: 'Text is required' }, { status: 400 });
+        }
+
         const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 
+        // Voice ID mapping
+        const voiceMap: Record<string, string> = {
+            en: 'pNInz6obpgDQGcFmaJgB',    // Adam - Warm male English
+            hi: 'onwK4e9ZLuTAKqWW03F9',    // Daniel - Deep multilingual
+            mr: 'onwK4e9ZLuTAKqWW03F9',    // Fallback to Daniel
+        };
+
         if (!ELEVENLABS_API_KEY) {
-            return NextResponse.json({ error: 'API Key missing' }, { status: 500 });
+            // Return instruction for browser-based TTS
+            return Response.json({
+                useBrowserTTS: true,
+                text,
+                language,
+                message: 'No ElevenLabs API key configured. Use browser SpeechSynthesis.',
+            });
         }
 
-        // DYNAMIC VOICE SELECTION (Bulletproof)
-        // 1. Fetch available voices to ensure we use a valid ID
-        const voicesResponse = await fetch('https://api.elevenlabs.io/v1/voices', {
-            headers: { 'xi-api-key': ELEVENLABS_API_KEY }
-        });
+        const voiceId = voiceMap[language] || voiceMap['en'];
 
-        let selectedVoiceId = 'JBFqnCBsd6RMkjVDRZzb'; // Default George
-
-        if (voicesResponse.ok) {
-            const data = await voicesResponse.json();
-            if (data.voices && data.voices.length > 0) {
-                // Use the first available voice to guarantee success
-                selectedVoiceId = data.voices[0].voice_id;
-                console.log("Using Dynamic Voice ID:", selectedVoiceId);
-            }
-        }
-
-        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${selectedVoiceId}/stream`, {
+        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
             method: 'POST',
             headers: {
-                'accept': 'audio/mpeg',
                 'Content-Type': 'application/json',
                 'xi-api-key': ELEVENLABS_API_KEY,
             },
             body: JSON.stringify({
-                text: text,
-                model_id: 'eleven_turbo_v2_5', // Use Turbo 2.5
+                text,
+                model_id: 'eleven_multilingual_v2',
                 voice_settings: {
-                    stability: 0.75,
-                    similarity_boost: 0.8,
-                }
+                    stability: 0.6,
+                    similarity_boost: 0.75,
+                    style: 0.3,
+                    use_speaker_boost: true,
+                },
             }),
         });
 
         if (!response.ok) {
-            const errorBody = await response.text();
-            console.error("ElevenLabs Error Detail:", errorBody);
-            throw new Error(`ElevenLabs API failed: ${errorBody}`);
+            const errorText = await response.text();
+            console.error('[Voice API] ElevenLabs error:', errorText);
+            return Response.json({
+                useBrowserTTS: true,
+                text,
+                language,
+                error: 'ElevenLabs API failed, falling back to browser TTS',
+            });
         }
 
         const audioBuffer = await response.arrayBuffer();
@@ -54,10 +73,14 @@ export async function POST(req: Request) {
         return new Response(audioBuffer, {
             headers: {
                 'Content-Type': 'audio/mpeg',
+                'Cache-Control': 'public, max-age=3600',
             },
         });
-    } catch (error) {
-        console.error('Voice Processing Error:', error);
-        return NextResponse.json({ error: 'Failed to generate voice' }, { status: 500 });
+    } catch (error: any) {
+        console.error('[Voice API] Error:', error);
+        return Response.json({
+            useBrowserTTS: true,
+            error: error.message,
+        }, { status: 500 });
     }
 }

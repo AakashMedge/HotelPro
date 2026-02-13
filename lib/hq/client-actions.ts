@@ -40,10 +40,10 @@ export async function getClientsWithStats(): Promise<ClientWithStats[]> {
     });
 
     // Add dummy subscription data for each client
-    return clients.map(client => ({
+    return clients.map((client: any) => ({
         ...client,
         subscription: generateDummySubscription(client.plan, client.createdAt)
-    }));
+    })) as ClientWithStats[];
 }
 
 /**
@@ -62,7 +62,8 @@ export async function getClientById(clientId: string): Promise<ClientWithStats |
                 }
             },
             users: {
-                where: { role: 'ADMIN' },
+                // where: { role: 'ADMIN' }, // Allow fetching all staff for audit
+                orderBy: { role: 'asc' }, // Admins first usually
                 select: {
                     id: true,
                     username: true,
@@ -76,9 +77,10 @@ export async function getClientById(clientId: string): Promise<ClientWithStats |
 
     if (!client) return null;
 
+    const tenant = client as any;
     return {
-        ...client,
-        subscription: generateDummySubscription(client.plan, client.createdAt)
+        ...tenant,
+        subscription: generateDummySubscription(tenant.plan, tenant.createdAt)
     } as ClientWithStats;
 }
 
@@ -116,7 +118,7 @@ export async function createNewClient(input: CreateClientInput): Promise<{ succe
                     slug: input.slug.toLowerCase().trim(),
                     domain: input.domain?.trim() || null,
                     plan: input.plan,
-                    status: ClientStatus.TRIAL  // Always start with trial
+                    status: 'TRIAL' as any,
                 }
             });
 
@@ -184,11 +186,11 @@ export async function updateClient(
         // Track what changed for audit
         const changes: Record<string, { from: string; to: string }> = {};
 
-        if (input.plan && input.plan !== existingClient.plan) {
-            changes.plan = { from: existingClient.plan, to: input.plan };
+        if (input.plan && input.plan !== (existingClient as any).plan) {
+            changes.plan = { from: (existingClient as any).plan, to: input.plan };
         }
-        if (input.status && input.status !== existingClient.status) {
-            changes.status = { from: existingClient.status, to: input.status };
+        if (input.status && input.status !== (existingClient as any).status) {
+            changes.status = { from: (existingClient as any).status, to: input.status };
         }
 
         await prisma.$transaction(async (tx) => {
@@ -199,7 +201,7 @@ export async function updateClient(
                     name: input.name?.trim(),
                     plan: input.plan,
                     status: input.status,
-                    domain: input.domain?.trim()
+                    domain: input.domain?.trim(),
                 }
             });
 
@@ -219,7 +221,7 @@ export async function updateClient(
                 await tx.auditLog.create({
                     data: {
                         clientId: clientId,
-                        action: AuditAction.SETTING_CHANGED,
+                        action: 'SETTING_CHANGED' as any,
                         metadata: {
                             type: 'status_change',
                             from: changes.status.from,
@@ -246,13 +248,13 @@ export async function suspendClient(clientId: string, reason: string): Promise<{
         await prisma.$transaction(async (tx) => {
             await tx.client.update({
                 where: { id: clientId },
-                data: { status: ClientStatus.SUSPENDED }
+                data: { status: 'SUSPENDED' as any }
             });
 
             await tx.auditLog.create({
                 data: {
                     clientId: clientId,
-                    action: AuditAction.SETTING_CHANGED,
+                    action: 'SETTING_CHANGED' as any,
                     metadata: { type: 'client_suspended', reason }
                 }
             });
@@ -273,13 +275,13 @@ export async function activateClient(clientId: string): Promise<{ success: boole
         await prisma.$transaction(async (tx) => {
             await tx.client.update({
                 where: { id: clientId },
-                data: { status: ClientStatus.ACTIVE }
+                data: { status: 'ACTIVE' as any }
             });
 
             await tx.auditLog.create({
                 data: {
                     clientId: clientId,
-                    action: AuditAction.SETTING_CHANGED,
+                    action: 'SETTING_CHANGED' as any,
                     metadata: { type: 'client_activated' }
                 }
             });
@@ -292,6 +294,81 @@ export async function activateClient(clientId: string): Promise<{ success: boole
     }
 }
 
+/**
+ * Archive a client (Soft Delete)
+ */
+export async function archiveClient(clientId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        await prisma.$transaction(async (tx) => {
+            // 1. Update client status and set deletedAt
+            await tx.client.update({
+                where: { id: clientId },
+                data: {
+                    status: 'ARCHIVED' as any,
+                    deletedAt: new Date()
+                }
+            });
+
+            // 2. Deactivate all users of this client
+            await tx.user.updateMany({
+                where: { clientId },
+                data: { isActive: false }
+            });
+
+            // 3. Log the archiving
+            await tx.auditLog.create({
+                data: {
+                    clientId: clientId,
+                    action: 'CLIENT_ARCHIVED' as any,
+                    metadata: { type: 'client_archived', timestamp: new Date() }
+                }
+            });
+        });
+
+        return { success: true };
+    } catch (error) {
+        console.error("[HQ] Archive client error:", error);
+        return { success: false, error: "Failed to archive client." };
+    }
+}
+
+/**
+ * Restore an archived client
+ */
+export async function restoreClient(clientId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        await prisma.$transaction(async (tx) => {
+            await tx.client.update({
+                where: { id: clientId },
+                data: {
+                    status: 'ACTIVE' as any,
+                    deletedAt: null
+                }
+            });
+
+            // Re-activate specific users (maybe just admins?)
+            // For simplicity, we'll reactivate all for now
+            await tx.user.updateMany({
+                where: { clientId },
+                data: { isActive: true }
+            });
+
+            await tx.auditLog.create({
+                data: {
+                    clientId: clientId,
+                    action: 'SETTING_CHANGED' as any,
+                    metadata: { type: 'client_restored' }
+                }
+            });
+        });
+
+        return { success: true };
+    } catch (error) {
+        console.error("[HQ] Restore client error:", error);
+        return { success: false, error: "Failed to restore client." };
+    }
+}
+
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
@@ -300,7 +377,7 @@ export async function activateClient(clientId: string): Promise<{ success: boole
  * Generate dummy subscription data based on plan
  * This will be replaced with real billing integration later
  */
-function generateDummySubscription(plan: ClientPlan, createdAt: Date): ClientSubscription {
+function generateDummySubscription(plan: any, createdAt: Date): ClientSubscription {
     const now = new Date();
     const trialEnd = new Date(createdAt);
     trialEnd.setDate(trialEnd.getDate() + TRIAL_PERIOD_DAYS);
@@ -319,7 +396,7 @@ function generateDummySubscription(plan: ClientPlan, createdAt: Date): ClientSub
         trialEndsAt: trialEnd,
         isTrialActive: isTrialActive,
         nextBillingDate: nextBilling,
-        monthlyPrice: PLAN_PRICING[plan]
+        monthlyPrice: PLAN_PRICING[plan as keyof typeof PLAN_PRICING] || 0
     };
 }
 

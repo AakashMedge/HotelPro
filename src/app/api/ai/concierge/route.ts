@@ -1,90 +1,220 @@
+/**
+ * AI Concierge API — The Brain (Production)
+ * 
+ * POST /api/ai/concierge
+ * 
+ * Receives customer messages, processes through LLM with tool calling,
+ * and returns structured responses with UI commands.
+ * 
+ * Now includes: Real-time order tracking, menu intelligence, and upsell flow.
+ * Supports: Ollama (dev) / Groq (production) — auto-detected.
+ * Cost: ₹0
+ */
+
 import { prisma } from '@/lib/db';
 import { getTenantFromRequest } from '@/lib/tenant';
-import { isFeatureEnabled, Feature } from '@/lib/subscription';
+import { generateCompletion, getAiHealth } from '@/lib/ai/provider';
+import {
+    buildSystemPrompt,
+    parseAiResponse,
+    executeActions,
+    type SessionState,
+    type MenuItem,
+    type CartItem,
+    type ActiveOrderInfo,
+} from '@/lib/ai/tools';
 
 export async function POST(req: Request) {
+    const startTime = Date.now();
+
     try {
-        // 1. Detect Tenant & Verify Feature Access
+        // 1. Detect Tenant
         const tenant = await getTenantFromRequest();
         if (!tenant) {
-            return new Response(JSON.stringify({ error: "Hotel identity required" }), { status: 400 });
+            return Response.json({
+                success: false,
+                error: 'Hotel identity required',
+            }, { status: 400 });
         }
 
-        if (!isFeatureEnabled(tenant.plan as any, Feature.AI_CONCIERGE)) {
-            return new Response(JSON.stringify({
-                error: "Tier Upgrade Required",
-                message: "The AI Concierge is available only on Premium plans."
-            }), { status: 403 });
+        // 2. Parse Request
+        const body = await req.json();
+        const {
+            message,
+            guestName = 'Guest',
+            tableCode = 'Unknown',
+            tableId = '',
+            cart = [],
+            conversationHistory = [],
+            language = 'en',
+            activeOrderId,
+        } = body;
+
+        if (!message || typeof message !== 'string') {
+            return Response.json({
+                success: false,
+                error: 'Message is required',
+            }, { status: 400 });
         }
 
-        const { messages, guestName, tableCode } = await req.json();
-        const apiKey = process.env.GROQ_API_KEY;
-
-        if (!apiKey) {
-            return new Response(JSON.stringify({ error: "Configuration Error: Missing GROQ_API_KEY" }), { status: 500 });
-        }
-
-        // 2. Context Injection: Fetch Menu (Tenant Isolated)
-        const menuItems = await prisma.menuItem.findMany({
+        // 3. Fetch Menu (Tenant Isolated)
+        const rawMenuItems = await (prisma.menuItem as any).findMany({
             where: {
                 clientId: tenant.id,
-                isAvailable: true
+                deletedAt: null,
             },
-            select: { id: true, name: true, category: { select: { name: true } }, description: true, price: true }
+            include: {
+                category: true,
+            },
         });
 
-        // 3. Construct Prompt
-        const lastUserMessage = messages[messages.length - 1].content;
+        const menuItems: MenuItem[] = rawMenuItems.map((item: any) => ({
+            id: item.id,
+            name: item.name,
+            category: item.category?.name || 'General',
+            description: item.description || undefined,
+            price: Number(item.price),
+            isVeg: Boolean(item.isVeg),
+            isAvailable: Boolean(item.isAvailable),
+            isChefSpecial: Boolean(item.isChefSpecial),
+            isGlutenFree: Boolean(item.isGlutenFree),
+            specialPrice: item.specialPrice ? Number(item.specialPrice) : undefined,
+            isSpecialPriceActive: Boolean(item.isSpecialPriceActive),
+        }));
 
-        const systemPrompt = `
-You are the "Master Waiter" of HotelPro. Persona: Elite 5-star English Butler.
-User: ${guestName || 'Guest'}. Table: ${tableCode || 'Unknown'}.
+        // 4. Fetch Active Order Status (Real-time from DB)
+        let activeOrder: ActiveOrderInfo | null = null;
+        if (activeOrderId) {
+            try {
+                const order = await prisma.order.findFirst({
+                    where: {
+                        id: activeOrderId,
+                        clientId: tenant.id,
+                    },
+                    include: {
+                        items: {
+                            include: {
+                                menuItem: { select: { name: true } }
+                            }
+                        },
+                    },
+                });
 
-MENU:
-${menuItems.map(i => `- ${i.name} (${i.price} INR)`).join('\n')}
-
-RULES:
-1. Be helpful, elegant, and concise.
-2. If suggesting an item, end with: [UI:ITEM_CARD:item_id]
-3. If checking status, end with: [UI:STATUS_TRACKER]
-4. If finalizing order, end with: [UI:ORDER_SUMMARY]
-
-User said: "${lastUserMessage}"
-Respond as the waiter. Do not use JSON. Just speak.
-`;
-
-        // 3. Direct Call to Groq API (Ultra Fast)
-        console.log("Sending request to Groq...");
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: "llama-3.3-70b-versatile", // The "Ferrari" Model
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: lastUserMessage }
-                ],
-                temperature: 0.7,
-                max_tokens: 256
-            })
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error("GROQ API FAILURE:", errorText);
-            throw new Error(`Groq API Error: ${errorText}`);
+                if (order && order.status !== 'CLOSED' && order.status !== 'CANCELLED') {
+                    activeOrder = {
+                        id: order.id,
+                        status: order.status,
+                        createdAt: order.createdAt.toISOString(),
+                        items: order.items.map((i: any) => ({
+                            id: i.id,
+                            itemName: i.itemName || i.menuItem?.name || 'Unknown Item',
+                            quantity: i.quantity,
+                            status: i.status,
+                            price: Number(i.priceSnapshot || 0),
+                        })),
+                        subtotal: Number(order.subtotal || 0),
+                        grandTotal: Number(order.grandTotal || 0),
+                    };
+                }
+            } catch (e) {
+                console.error('[AI Concierge] Failed to fetch active order:', e);
+            }
         }
 
-        const data = await response.json();
-        const aiText = data.choices[0].message.content;
+        // 5. Build Session State
+        const session: SessionState = {
+            tableId,
+            tableCode,
+            guestName,
+            language,
+            cart: cart as CartItem[],
+            activeOrderId,
+            activeOrder,
+            menuItems,
+            hotelName: tenant.name,
+        };
 
-        return new Response(aiText);
+        // 6. Build System Prompt with Full Context
+        const systemPrompt = buildSystemPrompt(session);
+
+        // 7. Build Conversation Messages (keep last 10 for context)
+        const recentHistory = (conversationHistory as any[]).slice(-10);
+        const messages = [
+            { role: 'system' as const, content: systemPrompt },
+            ...recentHistory.map((msg: any) => ({
+                role: msg.role as 'user' | 'assistant',
+                content: msg.content,
+            })),
+            { role: 'user' as const, content: message },
+        ];
+
+        // 8. Call LLM (auto-selects Ollama/Groq)
+        console.log(`[AI Concierge] Processing: "${message.substring(0, 50)}..." for ${tenant.name} | Menu: ${menuItems.length} items | Order: ${activeOrder?.status || 'none'}`);
+
+        const aiResponse = await generateCompletion({
+            messages,
+            temperature: 0.7,
+            maxTokens: 512,
+            jsonMode: true,
+        });
+
+        console.log(`[AI Concierge] Response from ${aiResponse.provider}/${aiResponse.model} in ${aiResponse.latencyMs}ms`);
+
+        // 9. Parse AI Response to extract actions
+        const parsed = parseAiResponse(aiResponse.text);
+
+        // 10. Execute Actions (tool calling)
+        const executionResult = executeActions(parsed.actions, session);
+
+        // 11. Return structured response
+        return Response.json({
+            success: true,
+            message: parsed.message,
+            actions: parsed.actions,
+            updatedCart: executionResult.updatedCart,
+            uiCommands: executionResult.uiCommands,
+            activeOrder: activeOrder,
+            meta: {
+                provider: aiResponse.provider,
+                model: aiResponse.model,
+                latencyMs: aiResponse.latencyMs,
+                totalMs: Date.now() - startTime,
+                menuItemsCount: menuItems.length,
+                hasActiveOrder: !!activeOrder,
+            },
+        });
 
     } catch (error: any) {
-        console.error("Concierge Brain Error:", error);
-        return new Response("I apologize sir, my thoughts are a bit scattered. Please verify my new Groq API key.", { status: 200 });
+        console.error('[AI Concierge] Error:', error);
+
+        return Response.json({
+            success: true,
+            message: "I apologize, I'm having a moment. Could you please try again? 🙏",
+            actions: [{ type: 'NONE' }],
+            updatedCart: [],
+            uiCommands: [],
+            meta: {
+                error: error.message,
+                totalMs: Date.now() - startTime,
+            },
+        });
+    }
+}
+
+/**
+ * GET /api/ai/concierge — Health check
+ */
+export async function GET() {
+    try {
+        const health = await getAiHealth();
+        return Response.json({
+            success: true,
+            ...health,
+        });
+    } catch (error: any) {
+        return Response.json({
+            success: false,
+            error: error.message,
+        }, { status: 500 });
     }
 }

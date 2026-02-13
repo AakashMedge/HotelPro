@@ -22,6 +22,7 @@ export default function WaiterLayout({
         { label: 'Floor', path: '/waiter', icon: 'M4 6h16M4 12h16M4 18h7' },
         { label: 'Alerts', path: '/waiter/notifications', icon: 'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9', badge: true },
         { label: 'History', path: '/waiter/history', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+        { label: 'HUB', path: '/waiter/hub', icon: 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z' },
     ];
 
     if (!mounted) return null;
@@ -68,26 +69,17 @@ export default function WaiterLayout({
             {/* 2. MAIN OPERATIONS AREA */}
             <div className="grow flex flex-col min-w-0 h-full overflow-hidden relative">
 
-                {/* CLEAN MINIMALIST HEADER */}
-                <header className="h-16 bg-white border-b border-zinc-100 flex items-center justify-between px-6 md:px-8 shrink-0 z-40">
-                    <div className="flex flex-col">
-                        <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest leading-none mb-1">Operational View</span>
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold tracking-tight text-[#111111]">Officer_01</span>
-                            <div className="w-1 h-1 rounded-full bg-green-500" />
+                {/* SLIM HEADER BAR */}
+                <header className="hidden md:flex h-10 bg-white border-b border-zinc-100 items-center justify-between px-6 shrink-0 z-40">
+                    <div className="flex items-center gap-2">
+                        <div className="w-5 h-5 bg-[#111] rounded flex items-center justify-center">
+                            <span className="text-[7px] font-black text-white">HP</span>
                         </div>
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Waiter Terminal</span>
                     </div>
-
-                    <div className="flex items-center gap-6">
-                        <div className="hidden sm:flex items-center gap-3">
-                            <span className="text-[10px] font-bold text-[#111111]">HotelPro</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <div className="flex flex-col items-end">
-                                <span className="text-[10px] font-bold text-[#111111]">Rohit S.</span>
-                                <span className="text-[8px] font-medium text-zinc-400 uppercase tracking-widest leading-none">Status: Active</span>
-                            </div>
-                        </div>
+                    <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                        <span className="text-[10px] font-bold text-zinc-500">Online</span>
                     </div>
                 </header>
 
@@ -96,7 +88,7 @@ export default function WaiterLayout({
                 </main>
 
                 {/* 3. MINIMALIST MOBILE BOTTOM NAVIGATION */}
-                <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-sm h-14 bg-white border border-zinc-100 rounded-2xl flex items-center justify-around px-2 z-100 shadow-sm">
+                <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-zinc-100 flex items-center justify-around px-2 z-100">
                     {navItems.map((item) => {
                         const isActive = pathname === item.path;
                         return (

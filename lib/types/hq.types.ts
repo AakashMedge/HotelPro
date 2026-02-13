@@ -4,7 +4,10 @@
  * All types related to Super Admin operations and client management.
  */
 
-import { ClientPlan, ClientStatus } from "@prisma/client";
+// We use string literals here instead of importing from @prisma/client 
+// to avoid build breakages when the generated client is out of sync.
+export type ClientPlan = 'BASIC' | 'ADVANCE' | 'PREMIUM' | 'BUSINESS';
+export type ClientStatus = 'ACTIVE' | 'SUSPENDED' | 'TRIAL' | 'ARCHIVED' | 'PROVISIONING' | 'PROVISIONING_FAILED';
 
 // ============================================
 // CLIENT MANAGEMENT TYPES
@@ -65,11 +68,11 @@ export interface ClientSubscription {
 }
 
 // Dummy pricing for plans
-export const PLAN_PRICING: Record<ClientPlan, number> = {
-    BASIC: 2999,      // ₹2,999/month
-    ADVANCE: 5999,    // ₹5,999/month
-    PREMIUM: 9999,    // ₹9,999/month
-    BUSINESS: 19999,  // ₹19,999/month
+export const PLAN_PRICING: Record<string, number> = {
+    BASIC: 1999,      // ₹1,999/month - Starter
+    ADVANCE: 4999,    // ₹4,999/month - Growth
+    PREMIUM: 9999,    // ₹9,999/month - Enterprise Core
+    BUSINESS: 19999,  // ₹19,999/month - Platform Elite
 };
 
 // Trial period in days

@@ -10,15 +10,19 @@ import { requireRole } from "@/lib/auth";
 export async function GET(request: NextRequest) {
     try {
         const user = await requireRole(["MANAGER", "ADMIN"]);
-        const clientId = user.clientId;
+        const { clientId } = user;
+
+        console.log(`[MENU_API] Fetching for Client: ${clientId}`);
 
         const { searchParams } = new URL(request.url);
         const includeDeleted = searchParams.get('includeDeleted') === 'true';
 
+        const db = prisma;
+
         const [items, categories, modifierGroups] = await Promise.all([
-            prisma.menuItem.findMany({
+            (db.menuItem as any).findMany({
                 where: {
-                    clientId, // Tenant isolation
+                    clientId,
                     ...(includeDeleted ? {} : { deletedAt: null })
                 },
                 include: {
@@ -35,12 +39,12 @@ export async function GET(request: NextRequest) {
                 },
                 orderBy: { name: 'asc' }
             }),
-            prisma.category.findMany({
-                where: { clientId }, // Tenant isolation
+            (db.category as any).findMany({
+                where: { clientId },
                 orderBy: { sortOrder: 'asc' }
             }),
-            prisma.modifierGroup.findMany({
-                where: { clientId }, // Tenant isolation
+            (db.modifierGroup as any).findMany({
+                where: { clientId },
                 include: { options: true },
                 orderBy: { name: 'asc' }
             })
@@ -55,7 +59,6 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({
             success: false,
             error: error?.message || "Internal Server Error",
-            stack: error?.stack
         }, { status: 500 });
     }
 }
@@ -66,7 +69,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const user = await requireRole(["MANAGER", "ADMIN"]);
-        const clientId = user.clientId;
+        const { clientId } = user;
         const body = await request.json();
 
         const {
@@ -86,11 +89,13 @@ export async function POST(request: NextRequest) {
             imageUrl = null
         } = body;
 
-        const newItem = await prisma.menuItem.create({
+        const db = prisma;
+
+        const newItem = await (db.menuItem as any).create({
             data: {
-                client: { connect: { id: clientId } }, // Use relation instead of scalar to allow 'category' connect
+                clientId,
                 name,
-                category: categoryId ? { connect: { id: categoryId } } : undefined,
+                categoryId: categoryId || null,
                 description,
                 price: Number(price),
                 isVeg: Boolean(isVeg),
@@ -127,7 +132,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
             success: false,
             error: error?.message || "Failed to create item",
-            stack: error?.stack
         }, { status: 500 });
     }
 }
@@ -138,9 +142,8 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
     try {
         const user = await requireRole(["MANAGER", "ADMIN"]);
-        const clientId = user.clientId;
+        const { clientId } = user;
         const body = await request.json();
-        console.log("[MENU_PATCH_PAYLOAD]", JSON.stringify(body, null, 2));
 
         const {
             id,
@@ -162,8 +165,10 @@ export async function PATCH(request: NextRequest) {
             restore
         } = body;
 
+        const db = prisma;
+
         // Verify item belongs to this tenant
-        const existing = await prisma.menuItem.findFirst({
+        const existing = await (db.menuItem as any).findFirst({
             where: { id, clientId }
         });
 
@@ -171,7 +176,7 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ success: false, error: "Item not found" }, { status: 404 });
         }
 
-        const updated = await prisma.menuItem.update({
+        const updated = await (db.menuItem as any).update({
             where: { id },
             data: {
                 ...(restore === true && { deletedAt: null }),
@@ -186,13 +191,8 @@ export async function PATCH(request: NextRequest) {
                 ...(specialPriceStart !== undefined && { specialPriceStart }),
                 ...(specialPriceEnd !== undefined && { specialPriceEnd }),
                 ...(typeof isAvailable === 'boolean' && { isAvailable }),
-                ...(categoryId !== undefined && {
-                    category: categoryId ? { connect: { id: categoryId } } : { disconnect: true }
-                }),
+                ...(categoryId !== undefined && { categoryId: categoryId || null }),
                 ...(imageUrl !== undefined && { imageUrl }),
-
-                // For simplicity in this demo, Re-create variants and modifier links
-                // A production app might diff/patch these specifically
                 ...(variants !== undefined && {
                     variants: {
                         deleteMany: {},
@@ -211,7 +211,7 @@ export async function PATCH(request: NextRequest) {
                         })) : []
                     }
                 })
-            } as any
+            }
         });
 
         return NextResponse.json({ success: true, item: updated });
@@ -220,7 +220,6 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({
             success: false,
             error: error?.message || "Update failed",
-            stack: error?.stack
         }, { status: 500 });
     }
 }
@@ -231,14 +230,16 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
     try {
         const user = await requireRole(["MANAGER", "ADMIN"]);
-        const clientId = user.clientId;
+        const { clientId } = user;
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
 
         if (!id) return NextResponse.json({ success: false, error: "ID required" }, { status: 400 });
 
+        const db = prisma;
+
         // Verify item belongs to this tenant
-        const existing = await prisma.menuItem.findFirst({
+        const existing = await (db.menuItem as any).findFirst({
             where: { id, clientId }
         });
 
@@ -246,7 +247,7 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ success: false, error: "Item not found" }, { status: 404 });
         }
 
-        await prisma.menuItem.update({
+        await (db.menuItem as any).update({
             where: { id },
             data: { deletedAt: new Date() }
         });
@@ -256,4 +257,3 @@ export async function DELETE(request: NextRequest) {
         return NextResponse.json({ success: false, error: "Delete failed" }, { status: 500 });
     }
 }
-

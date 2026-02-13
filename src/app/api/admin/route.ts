@@ -1,84 +1,104 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireRole } from "@/lib/auth";
+import { requireRole, getAuthFailure } from "@/lib/auth";
 
 /**
  * GET /api/admin
- * Returns tenant-scoped dashboard statistics for the logged-in admin's restaurant
+ * Returns tenant-scoped dashboard statistics for the logged-in admin's restaurant.
  */
 export async function GET(request: NextRequest) {
     try {
-        // Get current user (includes clientId for tenant scoping)
         const user = await requireRole(["ADMIN", "MANAGER"]);
-        const clientId = user.clientId;
+        const { clientId } = user;
 
-        // Get client info
+        const db = prisma;
+
         const client = await prisma.client.findUnique({
             where: { id: clientId },
             select: {
                 name: true,
                 slug: true,
                 plan: true,
-                status: true
-            }
+                status: true,
+            },
         });
 
-        // Count only THIS client's data (tenant isolation)
-        const [userCount, tableCount, menuCount, orderCount, todayOrders, todayRevenue] = await Promise.all([
-            prisma.user.count({ where: { clientId } }),
-            prisma.table.count({ where: { clientId } }),
-            prisma.menuItem.count({ where: { clientId } }),
-            prisma.order.count({ where: { clientId } }),
-            prisma.order.count({
-                where: {
-                    clientId,
-                    createdAt: {
-                        gte: new Date(new Date().setHours(0, 0, 0, 0))
-                    }
-                }
-            }),
-            prisma.order.aggregate({
-                where: {
-                    clientId,
-                    status: 'CLOSED',
-                    createdAt: {
-                        gte: new Date(new Date().setHours(0, 0, 0, 0))
-                    }
-                },
-                _sum: {
-                    grandTotal: true
-                }
-            })
-        ]);
+        const statsFromDb = await loadAdminStatsFromDb(db, clientId);
 
         const stats = {
-            // Restaurant info
-            restaurantName: client?.name || 'Unknown',
-            plan: client?.plan || 'BASIC',
-            status: client?.status || 'TRIAL',
+            restaurantName: client?.name || "Unknown",
+            plan: client?.plan || "BASIC",
+            status: client?.status || "TRIAL",
 
-            // Counts
-            users: userCount,
-            tables: tableCount,
-            items: menuCount,
-            orders: orderCount,
+            users: statsFromDb.userCount,
+            tables: statsFromDb.tableCount,
+            items: statsFromDb.menuCount,
+            orders: statsFromDb.orderCount,
 
-            // Today's stats
-            todayOrders,
-            todayRevenue: Number(todayRevenue._sum.grandTotal || 0),
+            todayOrders: statsFromDb.todayOrders,
+            todayRevenue: Number((statsFromDb.todayRevenue as any)._sum.grandTotal || 0),
 
-            // System info
             uptime: formatUptime(process.uptime()),
-            dbStatus: 'HEALTHY',
-            version: 'v2.4.0-stable'
+            dbStatus: "HEALTHY",
+            version: "v3.0.0-unified",
+            degraded: false,
+            degradeCode: null,
         };
 
-        return NextResponse.json({ success: true, stats });
-    } catch (error) {
-        console.error("[ADMIN_API]", error);
-        return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+        return NextResponse.json({ success: true, stats, degraded: false, degradeCode: null });
+    } catch (error: any) {
+        const authFailure = getAuthFailure(error);
+        if (authFailure) {
+            return NextResponse.json(
+                { success: false, error: authFailure.message, code: authFailure.code },
+                { status: authFailure.status }
+            );
+        }
+
+        console.error("[ADMIN_API_ERROR]", error);
+        return NextResponse.json(
+            { success: false, error: error?.message || "Failed to fetch admin dashboard", code: "ADMIN_DASHBOARD_FAILED" },
+            { status: 500 }
+        );
     }
+}
+
+async function loadAdminStatsFromDb(db: any, clientId: string) {
+    const [userCount, tableCount, menuCount, orderCount, todayOrders, todayRevenue] = await Promise.all([
+        (db.user as any).count({ where: { clientId } }),
+        (db.table as any).count({ where: { clientId } }),
+        (db.menuItem as any).count({ where: { clientId } }),
+        (db.order as any).count({ where: { clientId } }),
+        (db.order as any).count({
+            where: {
+                clientId,
+                createdAt: {
+                    gte: new Date(new Date().setHours(0, 0, 0, 0)),
+                },
+            },
+        }),
+        (db.order as any).aggregate({
+            where: {
+                clientId,
+                status: "CLOSED",
+                createdAt: {
+                    gte: new Date(new Date().setHours(0, 0, 0, 0)),
+                },
+            },
+            _sum: {
+                grandTotal: true,
+            },
+        }),
+    ]);
+    return {
+        userCount,
+        tableCount,
+        menuCount,
+        orderCount,
+        todayOrders,
+        todayRevenue,
+    };
 }
 
 function formatUptime(seconds: number) {

@@ -18,7 +18,12 @@ import {
     Loader2,
     ArrowLeft,
     Check,
-    AlertCircle
+    AlertCircle,
+    Database,
+    Shield,
+    Zap,
+    Server,
+    Link as LinkIcon
 } from 'lucide-react';
 import { ClientPlan } from '@prisma/client';
 import { PLAN_PRICING } from '@/lib/types/hq.types';
@@ -35,10 +40,10 @@ interface ClientFormProps {
 }
 
 const PLAN_OPTIONS: { value: ClientPlan; label: string; description: string }[] = [
-    { value: 'BASIC', label: 'Basic', description: '10 tables, 50 menu items' },
-    { value: 'ADVANCE', label: 'Advance', description: '40 tables, 150 items, Inventory' },
-    { value: 'PREMIUM', label: 'Premium', description: '100 tables, AI Concierge, Analytics' },
-    { value: 'BUSINESS', label: 'Business', description: 'Unlimited, Custom domain, API' },
+    { value: 'BASIC', label: 'Starter', description: '30 tables, 300 menu items. Perfect for Cafes.' },
+    { value: 'ADVANCE', label: 'Growth', description: '100 tables, Inventory, AI Menu Assistant.' },
+    { value: 'PREMIUM', label: 'Enterprise', description: 'Unlimited tables, Full AI Analysis.' },
+    { value: 'BUSINESS', label: 'Platform Elite', description: 'Multi-property, Full AI Automation & Ops.' },
 ];
 
 export default function HQClientForm({ mode, initialData }: ClientFormProps) {
@@ -146,7 +151,7 @@ export default function HQClientForm({ mode, initialData }: ClientFormProps) {
                     body: JSON.stringify({
                         name: formData.name,
                         domain: formData.domain || undefined,
-                        plan: formData.plan
+                        plan: formData.plan,
                     })
                 });
 
@@ -171,131 +176,139 @@ export default function HQClientForm({ mode, initialData }: ClientFormProps) {
     };
 
     return (
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-3xl mx-auto px-4 py-8">
             {/* Back Button */}
             <button
                 onClick={() => router.back()}
-                className="flex items-center gap-2 text-slate-500 hover:text-slate-800 text-sm font-medium mb-6 transition-colors"
+                className="flex items-center gap-2 text-slate-400 hover:text-indigo-600 text-[10px] font-black uppercase tracking-[0.2em] mb-10 transition-all group"
             >
-                <ArrowLeft className="w-4 h-4" />
-                Back to Clients
+                <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+                Registry Index
             </button>
 
             {/* Form Card */}
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl shadow-slate-200/50 overflow-hidden">
                 {/* Header */}
-                <div className="px-8 py-6 border-b border-slate-100 bg-linear-to-r from-blue-50 to-indigo-50">
-                    <h1 className="text-xl font-bold text-slate-800 flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
-                            <Hotel className="w-5 h-5 text-white" />
+                <div className="px-10 py-10 border-b border-slate-50 bg-slate-50/30">
+                    <div className="flex items-center gap-6">
+                        <div className="w-16 h-16 rounded-3xl bg-indigo-600 flex items-center justify-center shadow-xl shadow-indigo-100 transition-transform hover:scale-105">
+                            <Hotel className="w-8 h-8 text-white" />
                         </div>
-                        {mode === 'create' ? 'Onboard New Hotel' : 'Edit Hotel Details'}
-                    </h1>
-                    <p className="text-slate-500 text-sm mt-1 ml-13">
-                        {mode === 'create'
-                            ? 'Register a new hotel on the HotelPro platform'
-                            : 'Update hotel configuration and subscription'
-                        }
-                    </p>
+                        <div>
+                            <h1 className="text-3xl font-black text-slate-900 tracking-tight">
+                                {mode === 'create' ? 'Node Provision' : 'Registry Update'}
+                            </h1>
+                            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">
+                                {mode === 'create'
+                                    ? 'Deploying new hotel infrastructure'
+                                    : 'Recalibrating hotel parameters'
+                                }
+                            </p>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Form */}
-                <form onSubmit={handleSubmit} className="p-8 space-y-8">
+                <form onSubmit={handleSubmit} className="p-10 space-y-12">
                     {/* Error/Success Messages */}
                     {error && (
-                        <div className="p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-700">
-                            <AlertCircle className="w-5 h-5 shrink-0" />
-                            <p className="text-sm font-medium">{error}</p>
+                        <div className="p-5 bg-red-50 border border-red-100 rounded-3xl flex items-center gap-4 text-red-700 animate-in shake duration-500">
+                            <div className="w-10 h-10 rounded-2xl bg-white flex items-center justify-center shrink-0 shadow-sm">
+                                <AlertCircle className="w-5 h-5" />
+                            </div>
+                            <p className="text-xs font-black uppercase tracking-wider">{error}</p>
                         </div>
                     )}
 
                     {success && (
-                        <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center gap-3 text-emerald-700">
-                            <Check className="w-5 h-5 shrink-0" />
-                            <p className="text-sm font-medium">
-                                {mode === 'create' ? 'Hotel created successfully!' : 'Hotel updated successfully!'}
+                        <div className="p-5 bg-emerald-50 border border-emerald-100 rounded-3xl flex items-center gap-4 text-emerald-700 animate-in zoom-in-95 duration-500">
+                            <div className="w-10 h-10 rounded-2xl bg-white flex items-center justify-center shrink-0 shadow-sm">
+                                <Check className="w-5 h-5" />
+                            </div>
+                            <p className="text-xs font-black uppercase tracking-wider">
+                                {mode === 'create' ? 'Node successfully provisioned!' : 'Registry records synchronized!'}
                             </p>
                         </div>
                     )}
 
                     {/* Section: Hotel Identity */}
-                    <div className="space-y-4">
-                        <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                            <Hotel className="w-4 h-4" />
-                            Hotel Identity
-                        </h2>
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-3 text-slate-400">
+                            <Shield className="w-4 h-4" />
+                            <h2 className="text-[10px] font-black uppercase tracking-[0.3em]">Identity Core</h2>
+                        </div>
 
-                        <div className="grid gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">
-                                    Hotel Name *
+                        <div className="grid md:grid-cols-2 gap-8">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                    Hotel Designation
                                 </label>
-                                <input
-                                    type="text"
-                                    name="name"
-                                    value={formData.name}
-                                    onChange={handleChange}
-                                    placeholder="e.g. Taj Palace Mumbai"
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                />
+                                <div className="relative group">
+                                    <input
+                                        type="text"
+                                        name="name"
+                                        value={formData.name}
+                                        onChange={handleChange}
+                                        placeholder="e.g. Royal Emperor Palace"
+                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-slate-900 font-bold placeholder:text-slate-300 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 transition-all group-hover:bg-white"
+                                    />
+                                </div>
                             </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">
-                                    Unique Slug *
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                    Network Slug
                                 </label>
-                                <div className="flex items-center">
+                                <div className="flex items-center group">
                                     <input
                                         type="text"
                                         name="slug"
                                         value={formData.slug}
                                         onChange={handleChange}
-                                        placeholder="taj-palace"
+                                        placeholder="royal-emperor"
                                         disabled={mode === 'edit'}
-                                        className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-l-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:bg-slate-100 disabled:text-slate-500"
+                                        className="flex-1 px-5 py-4 bg-slate-50 border border-slate-100 rounded-l-2xl text-slate-900 font-bold placeholder:text-slate-300 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 transition-all disabled:opacity-50 group-hover:bg-white disabled:hover:bg-slate-50"
                                     />
-                                    <span className="px-4 py-3 bg-slate-100 border border-l-0 border-slate-200 rounded-r-xl text-slate-500 text-sm font-mono">
-                                        .hotelpro.com
-                                    </span>
+                                    <div className="px-5 py-4 bg-slate-100 border border-l-0 border-slate-100 rounded-r-2xl text-slate-400 text-[10px] font-black uppercase tracking-widest">
+                                        .hotelpro.co
+                                    </div>
                                 </div>
-                                <p className="text-xs text-slate-400 mt-1.5">
-                                    Only lowercase letters, numbers, and hyphens
-                                </p>
                             </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">
-                                    Custom Domain (Optional)
+                            <div className="col-span-full space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                    Enterprise Domain (CNAME)
                                 </label>
-                                <div className="relative">
-                                    <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                <div className="relative group">
+                                    <Globe className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-indigo-500 transition-colors" />
                                     <input
                                         type="text"
                                         name="domain"
                                         value={formData.domain}
                                         onChange={handleChange}
-                                        placeholder="pos.tajhotels.com"
-                                        className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                        placeholder="pos.yourhotel.com"
+                                        className="w-full pl-13 pr-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-slate-900 font-bold placeholder:text-slate-300 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 transition-all group-hover:bg-white"
                                     />
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Section: Subscription Plan */}
-                    <div className="space-y-4">
-                        <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                            <CreditCard className="w-4 h-4" />
-                            Subscription Plan
-                        </h2>
 
-                        <div className="grid grid-cols-2 gap-3">
+                    {/* Section: Subscription Plan */}
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-3 text-slate-400">
+                            <CreditCard className="w-4 h-4" />
+                            <h2 className="text-[10px] font-black uppercase tracking-[0.3em]">Subscription Blueprint</h2>
+                        </div>
+
+                        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
                             {PLAN_OPTIONS.map((plan) => (
                                 <label
                                     key={plan.value}
-                                    className={`relative p-4 rounded-xl border-2 cursor-pointer transition-all ${formData.plan === plan.value
-                                        ? 'border-blue-500 bg-blue-50'
-                                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                                    className={`relative p-5 rounded-3xl border-2 cursor-pointer transition-all group overflow-hidden ${formData.plan === plan.value
+                                        ? 'border-indigo-600 bg-white ring-8 ring-indigo-50 leading-none'
+                                        : 'border-slate-100 hover:border-slate-200 bg-slate-50/30'
                                         }`}
                                 >
                                     <input
@@ -306,19 +319,25 @@ export default function HQClientForm({ mode, initialData }: ClientFormProps) {
                                         onChange={handleChange}
                                         className="sr-only"
                                     />
-                                    <div className="flex items-center justify-between mb-1">
-                                        <span className={`font-bold ${formData.plan === plan.value ? 'text-blue-700' : 'text-slate-700'
-                                            }`}>
-                                            {plan.label}
-                                        </span>
-                                        {formData.plan === plan.value && (
-                                            <Check className="w-4 h-4 text-blue-600" />
-                                        )}
+                                    <div className="flex flex-col h-full justify-between">
+                                        <div>
+                                            <div className="flex items-center justify-between mb-3">
+                                                <span className={`text-[10px] font-black uppercase tracking-widest ${formData.plan === plan.value ? 'text-indigo-600' : 'text-slate-400'}`}>
+                                                    {plan.label}
+                                                </span>
+                                            </div>
+                                            <p className="text-[9px] text-slate-500 font-bold leading-tight mb-4">{plan.description}</p>
+                                        </div>
+                                        <p className={`text-lg font-black tracking-tight ${formData.plan === plan.value ? 'text-slate-900' : 'text-slate-400'}`}>
+                                            ₹{PLAN_PRICING[plan.value].toLocaleString()}
+                                            <span className="text-[9px] uppercase tracking-widest ml-1 text-slate-300">/mo</span>
+                                        </p>
                                     </div>
-                                    <p className="text-xs text-slate-500">{plan.description}</p>
-                                    <p className="text-sm font-bold text-slate-800 mt-2">
-                                        ₹{PLAN_PRICING[plan.value].toLocaleString()}/mo
-                                    </p>
+                                    {formData.plan === plan.value && (
+                                        <div className="absolute -right-1 -bottom-1 w-8 h-8 bg-indigo-600 flex items-center justify-center rounded-tl-xl text-white">
+                                            <Check className="w-4 h-4" />
+                                        </div>
+                                    )}
                                 </label>
                             ))}
                         </div>
@@ -326,98 +345,97 @@ export default function HQClientForm({ mode, initialData }: ClientFormProps) {
 
                     {/* Section: Admin User (Create mode only) */}
                     {mode === 'create' && (
-                        <div className="space-y-4">
-                            <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-3 text-slate-400">
                                 <User className="w-4 h-4" />
-                                Primary Admin Account
-                            </h2>
-                            <p className="text-xs text-slate-500 -mt-2">
-                                This will be the hotel owner&apos;s login credentials
-                            </p>
+                                <h2 className="text-[10px] font-black uppercase tracking-[0.3em]">Administrative Root</h2>
+                            </div>
 
-                            <div className="grid gap-4">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                                            Admin Name *
-                                        </label>
-                                        <input
-                                            type="text"
-                                            name="adminName"
-                                            value={formData.adminName}
-                                            onChange={handleChange}
-                                            placeholder="John Doe"
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                                            Username *
-                                        </label>
-                                        <input
-                                            type="text"
-                                            name="adminUsername"
-                                            value={formData.adminUsername}
-                                            onChange={handleChange}
-                                            placeholder="john.taj"
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                        />
-                                    </div>
+                            <div className="grid md:grid-cols-2 gap-6 bg-slate-50/50 p-8 rounded-4xl border border-slate-100">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                        Legal Full Name
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="adminName"
+                                        value={formData.adminName}
+                                        onChange={handleChange}
+                                        placeholder="Admin Full Name"
+                                        className="w-full px-5 py-3.5 bg-white border border-slate-100 rounded-2xl text-slate-800 font-bold placeholder:text-slate-300 focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 transition-all outline-none"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                        Account Alias (Username)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="adminUsername"
+                                        value={formData.adminUsername}
+                                        onChange={handleChange}
+                                        placeholder="admin_alias"
+                                        className="w-full px-5 py-3.5 bg-white border border-slate-100 rounded-2xl text-slate-800 font-bold placeholder:text-slate-300 focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 transition-all outline-none"
+                                    />
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                                            <Key className="w-3 h-3 inline mr-1" />
-                                            Password *
-                                        </label>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                        Security Phrase (Password)
+                                    </label>
+                                    <div className="relative">
+                                        <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-300" />
                                         <input
                                             type="password"
                                             name="adminPassword"
                                             value={formData.adminPassword}
                                             onChange={handleChange}
-                                            placeholder="Min 8 characters"
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                            placeholder="••••••••"
+                                            className="w-full pl-11 pr-5 py-3.5 bg-white border border-slate-100 rounded-2xl text-slate-800 font-bold focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 transition-all outline-none"
                                         />
                                     </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                                            Confirm Password *
-                                        </label>
-                                        <input
-                                            type="password"
-                                            name="adminPasswordConfirm"
-                                            value={formData.adminPasswordConfirm}
-                                            onChange={handleChange}
-                                            placeholder="Repeat password"
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                        />
-                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                        Confirm Security Phrase
+                                    </label>
+                                    <input
+                                        type="password"
+                                        name="adminPasswordConfirm"
+                                        value={formData.adminPasswordConfirm}
+                                        onChange={handleChange}
+                                        placeholder="••••••••"
+                                        className="w-full px-5 py-3.5 bg-white border border-slate-100 rounded-2xl text-slate-800 font-bold focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 transition-all outline-none"
+                                    />
                                 </div>
                             </div>
                         </div>
                     )}
 
                     {/* Submit Button */}
-                    <div className="pt-4 border-t border-slate-100">
+                    <div className="pt-8">
                         <button
                             type="submit"
                             disabled={isSubmitting || success}
-                            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-6 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-sm shadow-blue-200 active:scale-[0.98]"
+                            className={`w-full h-20 rounded-[1.75rem] font-black text-lg uppercase tracking-[0.2em] flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-2xl bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200 text-white disabled:opacity-70 disabled:grayscale`}
                         >
                             {isSubmitting ? (
                                 <>
-                                    <Loader2 className="w-5 h-5 animate-spin" />
-                                    {mode === 'create' ? 'Creating Hotel...' : 'Updating...'}
+                                    <Loader2 className="w-6 h-6 animate-spin" />
+                                    Synchronizing Hub...
                                 </>
                             ) : success ? (
                                 <>
-                                    <Check className="w-5 h-5" />
-                                    Success!
+                                    <Check className="w-6 h-6" />
+                                    Node Registered
                                 </>
                             ) : (
                                 <>
-                                    {mode === 'create' ? 'Create Hotel & Admin Account' : 'Update Hotel'}
+                                    {mode === 'create' ? (
+                                        <><Server className="w-6 h-6" /> Deploy Infrastructure</>
+                                    ) : (
+                                        <><LinkIcon className="w-6 h-6" /> Commit Updates</>
+                                    )}
                                 </>
                             )}
                         </button>

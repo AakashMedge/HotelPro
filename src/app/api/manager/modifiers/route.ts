@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, getDb } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 
 /**
@@ -10,9 +10,11 @@ import { requireRole } from "@/lib/auth";
 export async function GET(request: NextRequest) {
     try {
         const user = await requireRole(["MANAGER", "ADMIN"]);
-        const clientId = user.clientId;
+        const { clientId } = user;
 
-        const groups = await prisma.modifierGroup.findMany({
+        const db = getDb();
+
+        const groups = await (db.modifierGroup as any).findMany({
             where: { clientId },
             include: { options: true },
             orderBy: { name: 'asc' }
@@ -30,12 +32,14 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const user = await requireRole(["MANAGER", "ADMIN"]);
-        const clientId = user.clientId;
+        const { clientId } = user;
         const { name, minSelection, maxSelection, options } = await request.json();
 
-        const group = await prisma.modifierGroup.create({
+        const db = getDb();
+
+        const group = await (db.modifierGroup as any).create({
             data: {
-                clientId, // Tenant isolation
+                clientId,
                 name,
                 minSelection: Number(minSelection),
                 maxSelection: maxSelection ? Number(maxSelection) : null,
@@ -62,14 +66,16 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
     try {
         const user = await requireRole(["MANAGER", "ADMIN"]);
-        const clientId = user.clientId;
+        const { clientId } = user;
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
 
         if (!id) return NextResponse.json({ success: false, error: "ID required" }, { status: 400 });
 
+        const db = getDb();
+
         // Verify modifier group belongs to this tenant
-        const existing = await prisma.modifierGroup.findFirst({
+        const existing = await (db.modifierGroup as any).findFirst({
             where: { id, clientId }
         });
 
@@ -77,7 +83,7 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ success: false, error: "Modifier group not found" }, { status: 404 });
         }
 
-        await prisma.modifierGroup.delete({
+        await (db.modifierGroup as any).delete({
             where: { id }
         });
 

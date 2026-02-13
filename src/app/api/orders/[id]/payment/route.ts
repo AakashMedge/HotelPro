@@ -7,9 +7,10 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, getDb } from "@/lib/db";
 import { getOrderById, OrderError } from "@/lib/services/order";
 import { verifyToken } from "@/lib/auth";
+import { getTenantFromRequest } from "@/lib/tenant";
 import type { PaymentMethod } from "@prisma/client";
 
 interface PaymentResponse {
@@ -51,6 +52,15 @@ export async function POST(
     try {
         const { id: orderId } = await params;
 
+        // 1. Detect Tenant (Multi-Tenancy)
+        const tenant = await getTenantFromRequest();
+        if (!tenant) {
+            return NextResponse.json(
+                { success: false, error: "Authentication required", code: "AUTH_REQUIRED" },
+                { status: 401 }
+            );
+        }
+
         // Get actor ID from token
         let actorId: string | undefined;
         const token = request.cookies.get("auth-token")?.value;
@@ -67,6 +77,7 @@ export async function POST(
         const body = await request.json().catch(() => null);
 
         if (!body) {
+            console.warn(`[PAYMENT API] Order ${orderId}: Invalid request body`);
             return NextResponse.json(
                 { success: false, error: "Invalid request body" },
                 { status: 400 }
@@ -81,6 +92,7 @@ export async function POST(
         // Validate payment method
         const validMethods: PaymentMethod[] = ["CASH", "CARD", "UPI"];
         if (!method || !validMethods.includes(method)) {
+            console.warn(`[PAYMENT API] Order ${orderId}: Invalid method '${method}'`);
             return NextResponse.json(
                 {
                     success: false,
@@ -91,22 +103,26 @@ export async function POST(
             );
         }
 
-        // Get order
-        const order = await getOrderById(orderId);
+        const db = getDb();
+
+        // Get order (Strictly isolated by clientId)
+        const order = await getOrderById(orderId, tenant.id, db);
 
         if (!order) {
+            console.warn(`[PAYMENT API] Order ${orderId} not found`);
             return NextResponse.json(
                 { success: false, error: "Order not found", code: "ORDER_NOT_FOUND" },
                 { status: 404 }
             );
         }
 
-        // Check order is in SERVED or BILL_REQUESTED state
-        if (order.status !== "SERVED" && order.status !== "BILL_REQUESTED") {
+        // Check order is in READY, SERVED or BILL_REQUESTED state
+        if (order.status !== "READY" && order.status !== "SERVED" && order.status !== "BILL_REQUESTED") {
+            console.warn(`[PAYMENT API] Blocked payment for order ${orderId}: Invalid status ${order.status}`);
             return NextResponse.json(
                 {
                     success: false,
-                    error: `Cannot process payment. Order status is ${order.status}, expected SERVED or BILL_REQUESTED`,
+                    error: `Cannot process payment. Order status is ${order.status}, expected READY, SERVED or BILL_REQUESTED`,
                     code: "INVALID_STATE",
                 },
                 { status: 400 }
@@ -114,11 +130,12 @@ export async function POST(
         }
 
         // Check if already paid
-        const existingPayment = await prisma.payment.findUnique({
+        const existingPayment = await (db.payment as any).findUnique({
             where: { orderId },
         });
 
         if (existingPayment) {
+            console.warn(`[PAYMENT API] Order ${orderId} already paid`);
             return NextResponse.json(
                 {
                     success: false,
@@ -129,16 +146,15 @@ export async function POST(
             );
         }
 
-        // Calculate order total
-        const orderTotal = order.items.reduce((sum, item) => {
-            return sum + Number(item.priceSnapshot) * item.quantity;
-        }, 0);
+        // Use the comprehensive grandTotal from the database which includes taxes, service charges, AND discounts
+        const orderTotal = Number(order.grandTotal || 0);
 
         // Use provided amount or order total
         const paymentAmount = providedAmount ?? orderTotal;
 
         // Validate amount
         if (paymentAmount < orderTotal) {
+            console.warn(`[PAYMENT API] Order ${orderId}: Insufficient amount ${paymentAmount} < ${orderTotal}`);
             return NextResponse.json(
                 {
                     success: false,
@@ -150,10 +166,11 @@ export async function POST(
         }
 
         // Create payment and close order in transaction
-        const result = await prisma.$transaction(async (tx) => {
+        const result = await (db as any).$transaction(async (tx: any) => {
             // Create payment
             const payment = await tx.payment.create({
                 data: {
+                    clientId: order.clientId,
                     orderId,
                     method,
                     amount: paymentAmount,

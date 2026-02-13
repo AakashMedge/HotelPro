@@ -22,6 +22,7 @@ export default function CashierLayout({
         { label: 'Terminal', path: '/cashier', icon: 'M9 7h6M9 12h6M9 17h6M5 7h.01M5 12h.01M5 17h.01' },
         { label: 'Ledger', path: '/cashier/history', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
         { label: 'Vault', path: '/cashier/vault', icon: 'M3 10h18M7 15h1m4 0h1m4 0h1M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z' },
+        { label: 'HUB', path: '/cashier/hub', icon: 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z' },
     ];
 
     if (!mounted) return null;

@@ -52,7 +52,7 @@ export default function SuperAdminLogin() {
                 {/* Login Card */}
                 <div className="bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-2xl overflow-hidden relative group">
                     {/* Decorative Gradient */}
-                    <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 opacity-50 group-hover:opacity-100 transition-opacity"></div>
+                    <div className="absolute top-0 inset-x-0 h-1 bg-linear-to-r from-blue-600 via-indigo-600 to-blue-600 opacity-50 group-hover:opacity-100 transition-opacity"></div>
 
                     <form onSubmit={handleSubmit} className="space-y-6">
                         {error && (

@@ -1,10 +1,11 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth/server";
 
 /**
  * GET /api/settings
- * Publicly fetch basic settings like GST rates for the frontend
+ * Fetch basic settings including accessCode from Client model
  */
 export async function GET() {
     try {
@@ -27,12 +28,19 @@ export async function GET() {
             }
         });
 
+        // ─── Fetch Access Code from Client model ───
+        const client = await (prisma.client as any).findUnique({
+            where: { id: session.clientId },
+            select: { accessCode: true }
+        });
+
         return NextResponse.json({
             success: true,
             settings: {
                 ...settings,
                 gstRate: Number(settings.gstRate),
-                serviceChargeRate: Number(settings.serviceChargeRate)
+                serviceChargeRate: Number(settings.serviceChargeRate),
+                accessCode: client?.accessCode || ""
             }
         });
     } catch (error) {
@@ -43,7 +51,7 @@ export async function GET() {
 
 /**
  * PATCH /api/settings
- * Admin/Manager only: Update restaurant settings
+ * Admin/Manager only: Update restaurant settings and access code
  */
 export async function PATCH(request: NextRequest) {
     try {
@@ -53,8 +61,9 @@ export async function PATCH(request: NextRequest) {
         }
 
         const body = await request.json();
-        const { businessName, gstin, gstRate, serviceChargeRate, currency, currencySymbol } = body;
+        const { businessName, gstin, gstRate, serviceChargeRate, currency, currencySymbol, accessCode } = body;
 
+        // 1. Update Restaurant Settings
         const updated = await prisma.restaurantSettings.update({
             where: { clientId: session.clientId },
             data: {
@@ -67,12 +76,42 @@ export async function PATCH(request: NextRequest) {
             }
         });
 
+        // 2. Update Access Code on Client (if provided)
+        let finalAccessCode = "";
+        if (accessCode !== undefined) {
+            const normalizedCode = accessCode.trim().toUpperCase();
+
+            // Check for uniqueness (if changed)
+            if (normalizedCode) {
+                const existing = await (prisma.client as any).findFirst({
+                    where: {
+                        accessCode: normalizedCode,
+                        id: { not: session.clientId }
+                    }
+                });
+
+                if (existing) {
+                    return NextResponse.json({ success: false, error: "Access code is already taken by another hotel." }, { status: 409 });
+                }
+            }
+
+            const updatedClient = await (prisma.client as any).update({
+                where: { id: session.clientId },
+                data: {
+                    accessCode: normalizedCode || null,
+                    accessCodeUpdatedAt: new Date()
+                }
+            });
+            finalAccessCode = updatedClient.accessCode || "";
+        }
+
         return NextResponse.json({
             success: true,
             settings: {
                 ...updated,
                 gstRate: Number(updated.gstRate),
-                serviceChargeRate: Number(updated.serviceChargeRate)
+                serviceChargeRate: Number(updated.serviceChargeRate),
+                accessCode: finalAccessCode
             }
         });
     } catch (error) {

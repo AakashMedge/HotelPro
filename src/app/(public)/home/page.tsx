@@ -121,7 +121,7 @@ export default function HomePage() {
 
             {/* HERO SECTION - ROUNDED WITH PADDING */}
             <section className="p-2 sm:p-4 md:p-6 lg:p-8 min-h-screen">
-                <div className="relative w-full h-[calc(100vh-1rem)] sm:h-[calc(100vh-2rem)] md:h-[calc(100vh-3rem)] lg:h-[calc(100vh-4rem)] rounded-[1.5rem] sm:rounded-[2rem] md:rounded-[3rem] overflow-hidden">
+                <div className="relative w-full h-[calc(100vh-1rem)] sm:h-[calc(100vh-2rem)] md:h-[calc(100vh-3rem)] lg:h-[calc(100vh-4rem)] rounded-3xl sm:rounded-4xl md:rounded-[3rem] overflow-hidden">
                     {/* Background Video */}
                     <video
                         ref={heroVideoRef}
@@ -134,7 +134,7 @@ export default function HomePage() {
                         <source src="https://cdn.prod.website-files.com/684fc56fc7e02f3dad4a6138%2F6852764f5adbef713a1a18ef_PbE-Hero-Video-B-transcode.mp4" type="video/mp4" />
                     </video>
                     {/* Dark Gradient Overlay for Navbar Visibility */}
-                    <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/20 to-transparent z-[5] pointer-events-none" />
+                    <div className="absolute inset-0 bg-linear-to-b from-black/60 via-black/20 to-transparent z-5 pointer-events-none" />
 
                     {/* Top Navbar - Inside the rounded container */}
                     <div className="absolute top-0 left-0 right-0 z-20 px-4 sm:px-6 md:px-10 py-4 sm:py-6 flex justify-between items-center">
@@ -276,7 +276,7 @@ export default function HomePage() {
 
             {/* FULL SCREEN MENU OVERLAY */}
             {menuOpen && (
-                <div className="fixed inset-0 bg-[#EFE7D9] z-[200] animate-in fade-in duration-300 text-black">
+                <div className="fixed inset-0 bg-[#EFE7D9] z-200 animate-in fade-in duration-300 text-black">
                     <div className="h-full overflow-y-auto p-6 md:p-12">
                         <div className="flex justify-between items-center mb-16">
                             <button
@@ -372,7 +372,7 @@ export default function HomePage() {
             {/* VIDEO SECTION */}
             <section className="px-4 sm:px-6 md:px-12 lg:px-24 pb-16 sm:pb-24 bg-[#EFE7D9]">
                 <div className="max-w-5xl mx-auto">
-                    <div className="rounded-[1.5rem] sm:rounded-[2rem] md:rounded-[3rem] overflow-hidden shadow-2xl">
+                    <div className="rounded-3xl sm:rounded-4xl md:rounded-[3rem] overflow-hidden shadow-2xl">
                         <video
                             ref={secondaryVideoRef}
                             autoPlay
@@ -411,9 +411,9 @@ export default function HomePage() {
                     >
                         <div className="relative w-36 h-48 sm:w-44 sm:h-60 md:w-52 md:h-72 perspective-1000">
                             {/* Book Cover */}
-                            <div className="absolute inset-0 bg-gradient-to-br from-[#EFE7D9] via-[#D4C8B8] to-[#C4B8A8] rounded-r-lg rounded-l-sm shadow-2xl border border-[#8B7355]/30 transform group-hover:rotate-y-[-10deg] group-hover:scale-105 transition-all duration-500">
+                            <div className="absolute inset-0 bg-linear-to-br from-[#EFE7D9] via-[#D4C8B8] to-[#C4B8A8] rounded-r-lg rounded-l-sm shadow-2xl border border-[#8B7355]/30 transform group-hover:rotate-y-[-10deg] group-hover:scale-105 transition-all duration-500">
                                 {/* Book Spine */}
-                                <div className="absolute left-0 top-0 bottom-0 w-4 sm:w-5 bg-gradient-to-r from-[#8B7355] to-[#A08060] rounded-l-sm" />
+                                <div className="absolute left-0 top-0 bottom-0 w-4 sm:w-5 bg-linear-to-r from-[#8B7355] to-[#A08060] rounded-l-sm" />
                                 {/* Gold Embossed Frame */}
                                 <div className="absolute inset-4 sm:inset-5 border-2 border-[#C9A227]/60 rounded-sm" />
                                 <div className="absolute inset-5 sm:inset-6 border border-[#C9A227]/40 rounded-sm" />
@@ -446,9 +446,9 @@ export default function HomePage() {
                     >
                         <div className="relative w-36 h-48 sm:w-44 sm:h-60 md:w-52 md:h-72 perspective-1000">
                             {/* Book Cover */}
-                            <div className="absolute inset-0 bg-gradient-to-br from-[#4A2C32] via-[#3D2329] to-[#2A181B] rounded-r-lg rounded-l-sm shadow-2xl border border-[#D43425]/30 transform group-hover:rotate-y-[-10deg] group-hover:scale-105 transition-all duration-500">
+                            <div className="absolute inset-0 bg-linear-to-br from-[#4A2C32] via-[#3D2329] to-[#2A181B] rounded-r-lg rounded-l-sm shadow-2xl border border-[#D43425]/30 transform group-hover:rotate-y-[-10deg] group-hover:scale-105 transition-all duration-500">
                                 {/* Book Spine */}
-                                <div className="absolute left-0 top-0 bottom-0 w-4 sm:w-5 bg-gradient-to-r from-[#2A181B] to-[#3D2329] rounded-l-sm" />
+                                <div className="absolute left-0 top-0 bottom-0 w-4 sm:w-5 bg-linear-to-r from-[#2A181B] to-[#3D2329] rounded-l-sm" />
                                 {/* Gold Embossed Frame */}
                                 <div className="absolute inset-4 sm:inset-5 border-2 border-[#C9A227]/50 rounded-sm" />
                                 <div className="absolute inset-5 sm:inset-6 border border-[#C9A227]/30 rounded-sm" />
@@ -475,7 +475,7 @@ export default function HomePage() {
 
             {/* PREMIUM BOOK SPLASH SCREEN TRANSITION */}
             {isTransitioning && (
-                <div className="fixed inset-0 z-[500] bg-[#3D2329] flex items-center justify-center overflow-hidden animate-in fade-in duration-500">
+                <div className="fixed inset-0 z-500 bg-[#3D2329] flex items-center justify-center overflow-hidden animate-in fade-in duration-500">
                     <div className="relative perspective-2000 w-64 h-80 sm:w-80 sm:h-96">
                         {/* 3D Book Animation Container */}
                         <div className="w-full h-full relative preserve-3d">
@@ -497,7 +497,7 @@ export default function HomePage() {
                             {/* Front Cover (Animates) */}
                             <div className="absolute inset-0 preserve-3d origin-left animate-book-open">
                                 {/* Outside Content */}
-                                <div className="absolute inset-0 bg-gradient-to-br from-[#4A2C32] via-[#3D2329] to-[#2A181B] rounded-r-lg rounded-l-sm shadow-2xl backface-hidden flex flex-col items-center justify-center border border-[#D43425]/30">
+                                <div className="absolute inset-0 bg-linear-to-br from-[#4A2C32] via-[#3D2329] to-[#2A181B] rounded-r-lg rounded-l-sm shadow-2xl backface-hidden flex flex-col items-center justify-center border border-[#D43425]/30">
                                     <div className="absolute inset-4 border border-[#C9A227]/30 rounded-sm" />
                                     <span className="text-[#C9A227] font-playfair italic text-3xl">H&P</span>
                                     <div className="mt-4 w-8 h-px bg-[#C9A227]/50" />
@@ -513,7 +513,7 @@ export default function HomePage() {
                     </div>
 
                     {/* Overall Page Exit Glow */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-transparent via-[#C9A227]/5 to-[#C9A227]/10 pointer-events-none" />
+                    <div className="absolute inset-0 bg-linear-to-t from-transparent via-[#C9A227]/5 to-[#C9A227]/10 pointer-events-none" />
                 </div>
             )}
 
@@ -526,7 +526,7 @@ export default function HomePage() {
                         { title: 'Savor the culinary arts.', img: '/images/homepage/culinary.png' },
                         { title: 'Indulge in wellness.', img: '/images/homepage/spa.png' },
                     ].map((card) => (
-                        <Link key={card.title} href="/customer" className="group relative aspect-[4/3] rounded-[1.5rem] sm:rounded-[2rem] overflow-hidden">
+                        <Link key={card.title} href="/customer" className="group relative aspect-4/3 rounded-3xl sm:rounded-4xl overflow-hidden">
                             <Image
                                 src={card.img}
                                 alt={card.title}
@@ -534,7 +534,7 @@ export default function HomePage() {
                                 sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, 33vw"
                                 className="object-cover group-hover:scale-105 transition-transform duration-700"
                             />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                            <div className="absolute inset-0 bg-linear-to-t from-black/50 to-transparent" />
                             <div className="absolute bottom-6 sm:bottom-8 left-6 sm:left-8 right-6 sm:right-8">
                                 <p className="text-white font-playfair text-xl sm:text-2xl md:text-3xl italic">{card.title}</p>
                             </div>

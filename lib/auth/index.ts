@@ -26,5 +26,5 @@ export {
 } from "./session";
 
 // Server-side utilities (for Server Components and API routes)
-export { getCurrentUser, requireAuth, requireRole } from "./server";
+export { getCurrentUser, requireAuth, requireRole, AuthError, isAuthError, getAuthFailure } from "./server";
 export type { CurrentUser } from "./server";

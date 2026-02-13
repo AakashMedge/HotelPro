@@ -1,5 +1,6 @@
+
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, getDb } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 
 /**
@@ -9,15 +10,17 @@ import { requireRole } from "@/lib/auth";
 export async function PATCH(request: NextRequest) {
     try {
         const user = await requireRole(["MANAGER", "ADMIN"]);
-        const clientId = user.clientId;
+        const { clientId } = user;
         const { id, status } = await request.json();
 
         if (!id || !status) {
             return NextResponse.json({ success: false, error: "Missing ID or Status" }, { status: 400 });
         }
 
+        const db = getDb();
+
         // Verify table belongs to this tenant
-        const existing = await prisma.table.findFirst({
+        const existing = await (db.table as any).findFirst({
             where: { id, clientId }
         });
 
@@ -25,8 +28,8 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ success: false, error: "Table not found" }, { status: 404 });
         }
 
-        const updated = await prisma.table.update({
-            where: { id }, // We already verified ownership above
+        const updated = await (db.table as any).update({
+            where: { id },
             data: { status }
         });
 
@@ -43,14 +46,16 @@ export async function PATCH(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const user = await requireRole(["MANAGER", "ADMIN"]);
-        const clientId = user.clientId;
+        const { clientId } = user;
         const { id } = await request.json();
 
         if (!id) {
             return NextResponse.json({ success: false, error: "Table ID required" }, { status: 400 });
         }
 
-        const result = await prisma.$transaction(async (tx) => {
+        const db = getDb();
+
+        const result = await (db as any).$transaction(async (tx: any) => {
             // 1. Get the table and verify it belongs to this tenant
             const table = await tx.table.findFirst({
                 where: { id, clientId },
@@ -63,7 +68,7 @@ export async function POST(request: NextRequest) {
             await tx.order.updateMany({
                 where: {
                     tableId: id,
-                    clientId, // Extra safety: only cancel this tenant's orders
+                    clientId,
                     status: { notIn: ["CLOSED", "CANCELLED"] }
                 },
                 data: {
@@ -74,15 +79,15 @@ export async function POST(request: NextRequest) {
 
             // 3. Reset the table status
             const updated = await tx.table.update({
-                where: { id }, // We already verified ownership above
+                where: { id },
                 data: { status: "VACANT" }
             });
 
             // 4. Record the specific Reset audit log
             await tx.auditLog.create({
                 data: {
-                    clientId, // Tenant isolation
-                    action: "STATUS_CHANGED", // Re-using for now or could add "FORCE_RESET"
+                    clientId,
+                    action: "STATUS_CHANGED",
                     actorId: user.id,
                     metadata: {
                         tableCode: table.tableCode,

@@ -1,5 +1,5 @@
 /**
- * Orders API
+ * Orders API — Real-time POS Core
  * 
  * POST /api/orders - Create a new order (customer)
  * GET /api/orders - Get orders (staff)
@@ -15,7 +15,7 @@ import {
     OrderError,
     type CreateOrderInput,
 } from "@/lib/services/order";
-import { prisma } from "@/lib/db";
+import { prisma, getDb } from "@/lib/db";
 import { getTenantFromRequest } from "@/lib/tenant";
 import type { OrderStatus } from "@prisma/client";
 
@@ -42,6 +42,7 @@ interface OrderResponse {
     status: string;
     version: number;
     customerName: string | null;
+    customerPhone?: string | null;
     items: OrderItemResponse[];
     total: number;
     subtotal: number;
@@ -49,6 +50,7 @@ interface OrderResponse {
     serviceChargeAmount: number;
     grandTotal: number;
     createdAt: string;
+    closedAt?: string;
 }
 
 interface CreateOrderSuccessResponse {
@@ -99,58 +101,24 @@ export async function POST(
 
         const { tableId, tableCode, items, customerName, sessionId } = body as any;
 
-        // 1. Detect Tenant (Multi-Tenancy)
-        let tenant = await getTenantFromRequest();
-
-        // ULTIMATE FALLBACK: If tenant detection failed (e.g. no cookie on localhost)
-        // search for the hotel based on the tableId or tableCode provided.
-        if (!tenant) {
-            console.log("[ORDERS API] Tenant not detected, entering Global Discovery mode...");
-            if (tableId) {
-                const table = await prisma.table.findUnique({
-                    where: { id: tableId },
-                    include: { client: true }
-                });
-                if (table?.client) {
-                    tenant = {
-                        id: table.client.id,
-                        name: table.client.name,
-                        slug: table.client.slug,
-                        plan: table.client.plan
-                    };
-                }
-            } else if (tableCode) {
-                const table = await prisma.table.findFirst({
-                    where: {
-                        deletedAt: null,
-                        OR: [
-                            { tableCode: String(tableCode) },
-                            { tableCode: `T-${String(tableCode).padStart(2, '0')}` }
-                        ]
-                    },
-                    include: { client: true }
-                });
-                if (table?.client) {
-                    tenant = {
-                        id: table.client.id,
-                        name: table.client.name,
-                        slug: table.client.slug,
-                        plan: table.client.plan
-                    };
-                }
-            }
-        }
+        // 1. Detect Tenant (Multi-Tenancy) — Strict Resolution, No Fallbacks
+        const tenant = await getTenantFromRequest();
 
         if (!tenant) {
-            return NextResponse.json({ success: false, error: "Identifying hotel failed. Please scan QR or pick a hotel first." }, { status: 400 });
+            return NextResponse.json(
+                { success: false, error: "Hotel not identified. Please enter your hotel access code first." },
+                { status: 401 }
+            );
         }
+
+        const db = prisma;
 
         let resolvedTableId = tableId;
 
         // Auto-resolve tableId from tableCode if missing (Magic Demo Mode)
         if (!resolvedTableId && tableCode) {
             console.log(`[ORDERS API] Attempting to resolve tableCode: ${tableCode} for client ${tenant.slug}`);
-            const table = await prisma.table.findFirst({
+            const table = await db.table.findFirst({
                 where: {
                     clientId: tenant.id,
                     OR: [
@@ -163,7 +131,7 @@ export async function POST(
             if (table) {
                 resolvedTableId = table.id;
             } else {
-                const newTable = await prisma.table.create({
+                const newTable = await db.table.create({
                     data: {
                         clientId: tenant.id,
                         tableCode: String(tableCode).startsWith('T-') ? tableCode : `T-${String(tableCode).padStart(2, '0')}`,
@@ -208,7 +176,8 @@ export async function POST(
             items,
             customerName,
             sessionId,
-            clientId: tenant.id
+            clientId: tenant.id,
+            db // Pass the routed DB
         });
 
         const total = order.items.reduce((sum, item) => {
@@ -294,7 +263,8 @@ export async function GET(
         const limitParam = searchParams.get("limit");
         const limit = limitParam ? parseInt(limitParam, 10) : 50;
 
-        const orders = await getOrdersByStatus(statuses, { limit, clientId: tenant.id });
+        const db = prisma;
+        const orders = await getOrdersByStatus(statuses, { limit, clientId: tenant.id, db });
 
         const formattedOrders: OrderResponse[] = orders.map((o) => {
             const total = o.items.reduce((sum, item) => {
@@ -324,7 +294,9 @@ export async function GET(
                 gstAmount: Number((o as any).gstAmount || 0),
                 serviceChargeAmount: Number((o as any).serviceChargeAmount || 0),
                 grandTotal: Number((o as any).grandTotal || total),
-                createdAt: o.createdAt.toISOString()
+                createdAt: o.createdAt.toISOString(),
+                closedAt: o.closedAt?.toISOString(),
+                customerPhone: (o as any).customerPhone || null,
             };
             return mapped;
         });
