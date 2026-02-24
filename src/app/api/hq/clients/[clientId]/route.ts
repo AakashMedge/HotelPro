@@ -110,6 +110,7 @@ export async function PATCH(
             name: body.name,
             plan: body.plan,
             status: body.status,
+            billingCycle: body.billingCycle,
             domain: body.domain
         };
 

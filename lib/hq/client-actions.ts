@@ -151,8 +151,20 @@ export async function createNewClient(input: CreateClientInput): Promise<{ succe
                         name: newClient.name,
                         slug: newClient.slug,
                         plan: newClient.plan,
+                        billingCycle: input.billingCycle || 'MONTHLY',
                         adminUsername: input.adminUsername
                     }
+                }
+            });
+
+            // Create Subscription Record
+            await tx.subscription.create({
+                data: {
+                    clientId: newClient.id,
+                    planId: (await tx.plan.findFirst({ where: { code: input.plan as any } }))?.id || '',
+                    status: 'ACTIVE' as any,
+                    billingCycle: input.billingCycle || 'MONTHLY',
+                    currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
                 }
             });
 
@@ -199,11 +211,23 @@ export async function updateClient(
                 where: { id: clientId },
                 data: {
                     name: input.name?.trim(),
-                    plan: input.plan,
-                    status: input.status,
+                    plan: input.plan as any,
+                    status: input.status as any,
                     domain: input.domain?.trim(),
                 }
             });
+
+            // Update Subscription if plan or cycle changed
+            if (input.plan || input.billingCycle) {
+                const plan = await tx.plan.findFirst({ where: { code: input.plan as any } });
+                await tx.subscription.update({
+                    where: { clientId },
+                    data: {
+                        ...(plan ? { planId: plan.id } : {}),
+                        ...(input.billingCycle ? { billingCycle: input.billingCycle } : {})
+                    }
+                });
+            }
 
             // Log plan change if applicable
             if (changes.plan) {
@@ -396,6 +420,7 @@ function generateDummySubscription(plan: any, createdAt: Date): ClientSubscripti
         trialEndsAt: trialEnd,
         isTrialActive: isTrialActive,
         nextBillingDate: nextBilling,
+        billingCycle: 'MONTHLY', // Default for dummy
         monthlyPrice: PLAN_PRICING[plan as keyof typeof PLAN_PRICING] || 0
     };
 }

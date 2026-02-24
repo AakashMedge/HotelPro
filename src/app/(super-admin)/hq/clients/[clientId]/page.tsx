@@ -29,6 +29,8 @@ import {
 } from 'lucide-react';
 import { getClientById } from '@/lib/hq/client-actions';
 import HQClientActions from './HQClientActions';
+import HQConciergeTrigger from './HQConciergeTrigger';
+import { Suspense } from 'react';
 
 interface PageProps {
     params: Promise<{ clientId: string }>;
@@ -72,10 +74,9 @@ export default async function ClientDetailPage({ params }: PageProps) {
 
     // Pricing mapping
     const PLAN_PRICING: Record<string, number> = {
-        BASIC: 2999,
-        ADVANCE: 5999,
-        PREMIUM: 9999,
-        BUSINESS: 19999
+        STARTER: 1999,
+        GROWTH: 4999,
+        ELITE: 19999
     };
 
     return (
@@ -117,15 +118,24 @@ export default async function ClientDetailPage({ params }: PageProps) {
                             </div>
                         </div>
 
-                        {/* Status Badge */}
-                        <div className={`inline-flex flex-col items-center lg:items-end gap-2 p-6 rounded-3xl ${config.bg} ${config.border} border w-full lg:w-auto`}>
-                            <div className="flex items-center gap-3">
-                                <StatusIcon className={`w-6 h-6 ${config.color} ${client.status === 'PROVISIONING' ? 'animate-spin' : ''}`} />
-                                <span className={`text-xl font-black uppercase tracking-tighter ${config.color}`}>
-                                    {client.status}
-                                </span>
+                        {/* Status Badge & Chat Trigger */}
+                        <div className="flex flex-col lg:items-end gap-3 w-full lg:w-auto">
+                            <div className={`inline-flex items-center lg:items-end gap-2 p-6 rounded-3xl ${config.bg} ${config.border} border w-full lg:w-auto`}>
+                                <div className="flex items-center gap-3">
+                                    <StatusIcon className={`w-6 h-6 ${config.color} ${client.status === 'PROVISIONING' ? 'animate-spin' : ''}`} />
+                                    <span className={`text-xl font-black uppercase tracking-tighter ${config.color}`}>
+                                        {client.status}
+                                    </span>
+                                </div>
+                                <p className={`text-[10px] font-bold uppercase tracking-[0.2em] ${config.color} opacity-70`}>{config.label}</p>
                             </div>
-                            <p className={`text-[10px] font-bold uppercase tracking-[0.2em] ${config.color} opacity-70`}>{config.label}</p>
+
+                            <Suspense>
+                                <HQConciergeTrigger
+                                    clientId={client.id}
+                                    hotelName={client.name}
+                                />
+                            </Suspense>
                         </div>
                     </div>
                 </div>

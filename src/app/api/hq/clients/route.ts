@@ -74,10 +74,10 @@ export async function POST(request: NextRequest) {
         }
 
         // 5. Validate plan
-        const validPlans: ClientPlan[] = ['BASIC', 'ADVANCE', 'PREMIUM', 'BUSINESS'];
+        const validPlans: any[] = ['STARTER', 'GROWTH', 'ELITE'];
         if (!validPlans.includes(body.plan)) {
             return NextResponse.json<HQApiResponse>(
-                { success: false, error: "Invalid plan. Choose from: BASIC, ADVANCE, PREMIUM, BUSINESS" },
+                { success: false, error: "Invalid plan. Choose from: STARTER, GROWTH, ELITE" },
                 { status: 400 }
             );
         }
@@ -94,7 +94,8 @@ export async function POST(request: NextRequest) {
         const input: CreateClientInput = {
             name: body.name,
             slug: body.slug,
-            plan: body.plan as ClientPlan,
+            plan: body.plan as any,
+            billingCycle: body.billingCycle,
             adminUsername: body.adminUsername,
             adminName: body.adminName,
             adminEmail: body.adminEmail || '',

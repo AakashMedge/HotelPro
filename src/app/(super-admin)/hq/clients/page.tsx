@@ -123,13 +123,14 @@ export default async function ClientsManagementPage() {
                                     </td>
                                     <td className="px-6 py-5">
                                         <div>
-                                            <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-wider ${client.plan === 'PREMIUM' ? 'bg-indigo-100 text-indigo-700' :
-                                                client.plan === 'BUSINESS' ? 'bg-emerald-100 text-emerald-700' :
-                                                    client.plan === 'ADVANCE' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
+                                            <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-wider ${client.plan === 'ELITE' ? 'bg-indigo-100 text-indigo-700' :
+                                                client.plan === 'GROWTH' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
                                                 }`}>
                                                 {client.plan}
                                             </span>
-                                            <p className="text-[10px] text-zinc-400 mt-1 font-bold">Renewal Active</p>
+                                            <p className="text-[9px] text-slate-400 mt-1 font-black uppercase tracking-widest">
+                                                {client.subscription?.billingCycle || 'MONTHLY'} Renewal
+                                            </p>
                                         </div>
                                     </td>
                                     <td className="px-6 py-5">

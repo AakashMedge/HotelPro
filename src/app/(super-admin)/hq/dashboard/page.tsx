@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import {
     Building2, ShoppingCart, DollarSign, Users,
     ArrowUpRight, Shield, Globe, ArrowRight,
-    Loader2, Activity, Zap
+    Loader2, Activity, Zap, CreditCard
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -14,6 +14,9 @@ interface PlatformStats {
     totalRevenue: number;
     activeUsers: number;
     plansDistribution: { plan: string; count: number }[];
+    mrr: number;
+    activeSubscriptions: number;
+    growthRate: number;
 }
 
 export default function HQDashboard() {
@@ -99,28 +102,28 @@ export default function HQDashboard() {
                     border="border-indigo-100"
                 />
                 <StatMetric
-                    label="Active Sessions"
-                    value={stats?.totalOrders || 0}
+                    label="Active Subscriptions"
+                    value={stats?.activeSubscriptions || 0}
+                    icon={<CreditCard className="w-4 h-4" />}
+                    color="text-emerald-600"
+                    bg="bg-emerald-50"
+                    border="border-emerald-100"
+                />
+                <StatMetric
+                    label="Monthly Recurring Revenue"
+                    value={`₹${(stats?.mrr || 0).toLocaleString('en-IN')}`}
+                    icon={<DollarSign className="w-4 h-4" />}
+                    color="text-blue-600"
+                    bg="bg-blue-50"
+                    border="border-blue-100"
+                />
+                <StatMetric
+                    label="Growth Velocity"
+                    value={`${stats?.growthRate}%`}
                     icon={<Zap className="w-4 h-4" />}
                     color="text-amber-600"
                     bg="bg-amber-50"
                     border="border-amber-100"
-                />
-                <StatMetric
-                    label="Staff Nodes"
-                    value={stats?.activeUsers || 0}
-                    icon={<Users className="w-4 h-4" />}
-                    color="text-indigo-600"
-                    bg="bg-indigo-50"
-                    border="border-indigo-100"
-                />
-                <StatMetric
-                    label="System Health"
-                    value="99.9%"
-                    icon={<Globe className="w-4 h-4" />}
-                    color="text-emerald-600"
-                    bg="bg-emerald-50"
-                    border="border-emerald-100"
                 />
             </div>
 

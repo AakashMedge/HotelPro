@@ -29,37 +29,37 @@ async function main() {
         throw new Error('No plans found. Please run npx tsx prisma/seed-plans.ts first.');
     }
 
-    const businessPlan = plans.find((p: any) => p.code === 'BUSINESS');
-    const premiumPlan = plans.find((p: any) => p.code === 'PREMIUM');
+    const elitePlan = plans.find((p: any) => p.code === 'ELITE');
+    const growthPlan = plans.find((p: any) => p.code === 'GROWTH');
 
     // 2. Get clients
     const hq = await prisma.client.findUnique({ where: { slug: 'hq' } });
     const taj = await prisma.client.findUnique({ where: { slug: 'taj' } });
 
-    if (hq && businessPlan) {
+    if (hq && elitePlan) {
         await (prisma.subscription as any).upsert({
             where: { clientId: hq.id },
-            update: { planId: businessPlan.id },
+            update: { planId: elitePlan.id },
             create: {
                 clientId: hq.id,
-                planId: businessPlan.id,
+                planId: elitePlan.id,
                 status: 'ACTIVE',
             },
         });
-        console.log('  ✅ HQ linked to BUSINESS plan');
+        console.log('  ✅ HQ linked to ELITE plan');
     }
 
-    if (taj && premiumPlan) {
+    if (taj && growthPlan) {
         await (prisma.subscription as any).upsert({
             where: { clientId: taj.id },
-            update: { planId: premiumPlan.id },
+            update: { planId: growthPlan.id },
             create: {
                 clientId: taj.id,
-                planId: premiumPlan.id,
+                planId: growthPlan.id,
                 status: 'ACTIVE',
             },
         });
-        console.log('  ✅ Taj linked to PREMIUM plan');
+        console.log('  ✅ Taj linked to GROWTH plan');
     }
 
     console.log('\n🎉 Subscriptions linked successfully!');

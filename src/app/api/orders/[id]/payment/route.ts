@@ -178,12 +178,13 @@ export async function POST(
                 },
             });
 
-            // Update order to CLOSED
+            // Update order to CLOSED and set payment method
             await tx.order.update({
                 where: { id: orderId },
                 data: {
                     status: "CLOSED",
                     closedAt: new Date(),
+                    paymentMethod: method, // Sync for Ledger visibility
                     version: { increment: 1 },
                 },
             });

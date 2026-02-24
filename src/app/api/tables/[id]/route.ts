@@ -57,6 +57,16 @@ export async function PATCH(
 
     } catch (error: any) {
         const elapsed = Date.now() - startTime;
+
+        // Handle AuthError with proper status codes
+        if (error?.name === 'AuthError' || error?.code === 'AUTH_REQUIRED' || error?.code === 'ROLE_FORBIDDEN' || error?.code === 'TENANT_INACTIVE') {
+            console.warn(`[TABLE_UPDATE] ✗ Auth error after ${elapsed}ms:`, error.message);
+            return NextResponse.json(
+                { success: false, error: error.message, code: error.code },
+                { status: error.status || 401 }
+            );
+        }
+
         console.error(`[TABLE_UPDATE] ✗ Error after ${elapsed}ms:`, error.message);
         return NextResponse.json(
             { success: false, error: "Failed to update table" },

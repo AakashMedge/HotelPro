@@ -34,6 +34,7 @@ interface AccessCodeSuccessResponse {
         id: string;
         name: string;
         slug: string;
+        plan: string;
     };
 }
 
@@ -115,6 +116,7 @@ export async function POST(
                 name: true,
                 slug: true,
                 status: true,
+                plan: true,
             },
         });
 
@@ -149,6 +151,7 @@ export async function POST(
                 id: client.id,
                 name: client.name,
                 slug: client.slug,
+                plan: client.plan,
             },
         });
 

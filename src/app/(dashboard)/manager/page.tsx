@@ -55,6 +55,9 @@ export default function ManagerDashboard() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+    const [feedbackStats, setFeedbackStats] = useState({ averageRating: 0, totalFeedbacks: 0 });
+    const [complaintAlerts, setComplaintAlerts] = useState<{ id: string; tableCode: string; type: string; guestName: string; timestamp: number }[]>([]);
+
 
     const fetchManagerData = useCallback(async () => {
         try {
@@ -70,6 +73,12 @@ export default function ManagerDashboard() {
 
             setData(result);
             setError(null);
+
+            // Fetch Feedback stats too
+            const fbRes = await fetch('/api/customer/feedback');
+            const fbData = await fbRes.json();
+            if (fbData.success) setFeedbackStats(fbData.stats);
+
         } catch (err) {
             console.error(err);
             setError('Connection failure.');
@@ -78,11 +87,40 @@ export default function ManagerDashboard() {
         }
     }, [router]);
 
+
     useEffect(() => {
         fetchManagerData();
         const interval = setInterval(fetchManagerData, 5000);
-        return () => clearInterval(interval);
+
+        // Real-time Complaint Alerts for Manager
+        const es = new EventSource('/api/events');
+        es.onmessage = (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                if (data.event === 'COMPLAINT_RAISED') {
+                    const newAlert = {
+                        id: Date.now().toString(),
+                        tableCode: data.payload.tableCode,
+                        type: data.payload.type,
+                        guestName: data.payload.guestName || 'Guest',
+                        timestamp: Date.now()
+                    };
+                    setComplaintAlerts(prev => [newAlert, ...prev]);
+
+                    // Auto-remove alert after 10 seconds
+                    setTimeout(() => {
+                        setComplaintAlerts(prev => prev.filter(a => a.id !== newAlert.id));
+                    }, 10000);
+                }
+            } catch (err) { /* ignore */ }
+        };
+
+        return () => {
+            clearInterval(interval);
+            es.close();
+        };
     }, [fetchManagerData]);
+
 
     const selectedTable = useMemo(() =>
         data?.floorMonitor.find(t => t.realId === selectedTableId),
@@ -152,10 +190,26 @@ export default function ManagerDashboard() {
                 {/* 2. ELEGANT KPI TILES */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
                     <MetricTile label="Active Floor" value={stats.active} sub="Current Occupancy" color="bg-zinc-900" icon={<><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /></>} />
-                    <MetricTile label="Kitchen Load" value={stats.kitchen} sub="Items in Prep" color="bg-white" icon={<path d="M12 2v20M2 12h20M7 2v20" />} />
+                    <MetricTile
+                        label="Guest Pulse"
+                        value={`${feedbackStats.averageRating}⭐`}
+                        sub={`${feedbackStats.totalFeedbacks} Reviews`}
+                        color="bg-white"
+                        onClick={() => router.push('/manager/hub')}
+                        icon={<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />}
+                    />
                     <MetricTile label="Pending Bills" value={stats.payment} sub="Awaiting Settlement" color="bg-white" icon={<><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></>} />
-                    <MetricTile label="Max Latency" value={stats.maxWait} sub="Longest Pending" color="bg-white" alert={parseInt(stats.maxWait) > 15} icon={<><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></>} />
+                    <MetricTile
+                        label="Active Issues"
+                        value={complaintAlerts.length}
+                        sub="Raised via Hub"
+                        color="bg-white"
+                        alert={complaintAlerts.length > 0}
+                        onClick={() => router.push('/manager/hub')}
+                        icon={<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01" />}
+                    />
                 </div>
+
 
                 {/* 3. CORE MANAGEMENT INTERFACE */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 pt-8">
@@ -338,13 +392,49 @@ export default function ManagerDashboard() {
                 </div>
 
             </div>
+
+            <AnimatePresence>
+                {complaintAlerts.length > 0 && (
+                    <div className="fixed top-24 right-8 z-100 space-y-3 max-w-sm">
+                        {complaintAlerts.map(alert => (
+                            <motion.div
+                                key={alert.id}
+                                initial={{ opacity: 0, x: 50, scale: 0.9 }}
+                                animate={{ opacity: 1, x: 0, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.9 }}
+                                onClick={() => router.push('/manager/hub')}
+                                className="bg-white border-2 border-red-500 rounded-2xl p-4 shadow-2xl cursor-pointer flex items-start gap-4"
+                            >
+                                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                                    <span className="text-xl">🚨</span>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] font-black text-red-600 uppercase tracking-widest leading-none mb-1">Live Alert: Table {alert.tableCode}</p>
+                                    <h4 className="text-sm font-bold text-zinc-900">{alert.type.replace('_', ' ')}</h4>
+                                    <p className="text-[11px] text-zinc-500 mt-1">Reported by {alert.guestName} · Click to resolve</p>
+                                </div>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setComplaintAlerts(prev => prev.filter(a => a.id !== alert.id)); }}
+                                    className="ml-auto text-zinc-300 hover:text-zinc-500"
+                                >
+                                    ✕
+                                </button>
+                            </motion.div>
+                        ))}
+                    </div>
+                )}
+            </AnimatePresence>
+
         </div>
     );
 }
 
-function MetricTile({ label, value, sub, color, icon, alert }: any) {
+function MetricTile({ label, value, sub, color, icon, alert, onClick }: any) {
     return (
-        <div className={`p-8 rounded-4xl border transition-all h-40 flex flex-col justify-between shadow-sm hover:shadow-lg ${alert ? 'bg-red-50 border-red-100' : 'bg-white border-zinc-100'}`}>
+        <div
+            onClick={onClick}
+            className={`p-8 rounded-4xl border transition-all h-40 flex flex-col justify-between shadow-sm hover:shadow-lg ${alert ? 'bg-red-50 border-red-100' : 'bg-white border-zinc-100'} ${onClick ? 'cursor-pointer active:scale-95' : ''}`}
+        >
             <div className="flex justify-between items-start">
                 <div className={`p-2.5 rounded-xl ${color === 'bg-zinc-900' ? 'bg-zinc-900 text-white shadow-md shadow-zinc-200' : 'bg-zinc-50 text-zinc-400'}`}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">{icon}</svg>
@@ -352,7 +442,7 @@ function MetricTile({ label, value, sub, color, icon, alert }: any) {
                 {alert && <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />}
             </div>
             <div>
-                <div className={`text-4xl font-bold tracking-tight mb-2 ${alert ? 'text-red-600' : 'text-zinc-900'}`}>{value}</div>
+                <div className={`text-3xl md:text-4xl font-bold tracking-tight mb-2 ${alert ? 'text-red-600' : 'text-zinc-900'}`}>{value}</div>
                 <div className="flex flex-col">
                     <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{label}</span>
                     <span className="text-[8px] font-medium text-zinc-300 italic uppercase tracking-tighter mt-1">{sub}</span>

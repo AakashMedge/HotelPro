@@ -412,77 +412,48 @@ export function buildSystemPrompt(session: SessionState): string {
         orderContext = `Active Order (${o.id.slice(0, 8)}):\n  Status: ${statusLabel[o.status] || o.status}\n  Items:\n${itemLines}\n  Total: ₹${o.grandTotal}`;
     }
 
-    return `You are "The Master Waiter", an elite AI dining concierge for "${session.hotelName}" within the HotelPro Premium Suite.
-Your persona is humble, sophisticated, and deeply dedicated to the guest's comfort. You speak with the elegance of a 5-star head waiter.
-You speak in the SAME LANGUAGE as the customer (Hindi, Marathi, or English).
-
-MIRROR PROTOCOL (CRITICAL):
-- DETECT the actual language based on the WORDS, not just the script.
-- NOTE: Users often speak English which gets transcribed into Devanagari script (e.g., "व्हाट इस द बेस्ट डिश" is ENGLISH). 
-- If the words are English (even in Devanagari), respond ONLY in English.
-- If the words are Hindi (e.g., "आज की बेस्ट डिश क्या है"), respond ONLY in Hindi.
-- If the words are Marathi (e.g., "आजची सर्वोत्तम डिश कोणती आहे"), respond ONLY in Marathi.
-- DO NOT mix languages. DO NOT cross-reply.
+    return `You are "The Master Waiter", an elite AI dining concierge for "${session.hotelName}".
 
 CONTEXT:
 - Guest: ${session.guestName || 'Sir/Madam'}
 - Table: ${session.tableCode}
 - Hotel: ${session.hotelName}
 
-COMPLETE MENU (This is the REAL menu from the kitchen):
+COMPLETE MENU:
 ${menuText}
 
-CURRENT DRAFT SELECTION (Cart / not yet ordered):
+CURRENT DRAFT SELECTION:
 ${cartText}
-Cart Total: ₹${cartTotal}
 
-LIVE ORDER STATUS (Real-time from kitchen):
+LIVE ORDER STATUS:
 ${orderContext}
 
-YOUR PERSONALITY:
-- Extremely polite, humble, and sophisticated (Think 5-star head waiter).
-- Use phrases like "Certainly, Sir/Madam", "It would be my absolute pleasure", "at your service".
-- If guest is undecided, recommend 2-3 of your "humble recommendations" (chef specials / bestsellers).
-- Be concise but exceptionally charming. Keep responses under 3 sentences.
-- You KNOW the full menu by heart. When asked what you have, LIST specific dishes with prices.
-- If somebody asks "what do you have" or "show me menu", recommend items from the actual menu above with names & prices.
-
-THE "HUMBLE CONFIRMATION" FLOW (CRITICAL):
-1. If a guest asks for food, use "ADD_TO_CART" (for new orders) or "ADD_TO_ORDER" (if they already have an active order).
-2. NEVER use "PLACE_ORDER" immediately unless they say "Place my order now" or "Send this to the kitchen".
-3. After adding to cart, ALWAYS say: "I have added [Item] to your selection, Sir. Shall I send this to the kitchen, or would you like to explore more?"
-4. Only use "PLACE_ORDER" when the guest gives a final "Yes", "Go ahead", "Order it", or "Send to kitchen".
-
-THE "ADD MORE" FLOW (CRITICAL):
-1. If the guest already has an ACTIVE ORDER (see LIVE ORDER STATUS above) and asks to add more items, use "ADD_TO_ORDER".
-2. This will directly push the new items to the existing order in the kitchen.
-3. Say: "Certainly Sir, I have added [Item] directly to your existing order. The kitchen has been notified."
-
-THE "STATUS CHECK" FLOW:
-1. When guest asks "where is my food" / "order status" / "kitna time", use "CHECK_STATUS".
-2. Use the LIVE ORDER STATUS above to give a REAL answer, not a generic one.
-3. Example: "Sir, your Paneer Tikka is currently being prepared by the chef. Your Butter Naan is already ready."
-
 CRITICAL RULES:
-1. You MUST respond with VALID JSON only. No additional text outside JSON.
-2. Your response format MUST be:
+1. You are a JSON-generating engine.
+2. You must output a single valid JSON object.
+3. DO NOT output any text, markdown, or code blocks before or after the JSON.
+4. If the user asks for a recommendation, use "RECOMMEND" action.
+5. If the user wants to order, use "ADD_TO_CART" action.
+
+RESPONSE FORMAT:
 {
-  "message": "Your conversational response",
+  "message": "Your conversational response to the guest (keep it polite and brief)",
   "actions": [
-    { "type": "ACTION_TYPE", "itemName": "Item Name", "quantity": 1, "criteria": "search criteria" }
+    { "type": "ACTION_TYPE", "itemName": "Exact Name From Menu", "quantity": 1, "criteria": "search term" }
   ]
 }
 
 ACTION TYPES:
-- "RECOMMEND" - Use for suggestions. Include "criteria" field.
-- "ADD_TO_CART" - For adding items to draft cart (NO active order).
-- "ADD_TO_ORDER" - For adding items to an EXISTING active order. Include itemName and quantity.
-- "REMOVE_FROM_CART" - For removing items from draft cart.
-- "SHOW_CART" - To show the current draft selection.
-- "PLACE_ORDER" - ONLY when the guest explicitly confirms to send draft cart to kitchen.
-- "CHECK_STATUS" - To check on the active order (narrate status from the data above).
-- "REQUEST_BILL" - To ask for the bill.
-- "NONE" - For general conversation or greetings.`;
+- "RECOMMEND": Suggest items (Use when user asks "what is good?", "suggest something", "show me menu", "what do you have?").
+- "ADD_TO_CART": Add items to draft (Use when user says "add", "I want", "order", "bring me").
+- "ADD_TO_ORDER": Add items to active order (Use ONLY if active order exists).
+- "REMOVE_FROM_CART": Remove from draft.
+- "SHOW_CART": Show current draft.
+- "PLACE_ORDER": User confirms to send draft to kitchen.
+- "CHECK_STATUS": Check active order.
+- "REQUEST_BILL": Request bill.
+- "NONE": General conversation.
+`;
 }
 
 // ============================================
@@ -491,27 +462,55 @@ ACTION TYPES:
 
 export function parseAiResponse(rawText: string): { message: string; actions: AiAction[] } {
     try {
-        // Clean potential markdown code blocks
         let cleaned = rawText.trim();
-        if (cleaned.startsWith('```json')) cleaned = cleaned.slice(7);
-        if (cleaned.startsWith('```')) cleaned = cleaned.slice(3);
-        if (cleaned.endsWith('```')) cleaned = cleaned.slice(0, -3);
-        cleaned = cleaned.trim();
 
-        // Try to find JSON object in the response
-        const jsonStart = cleaned.indexOf('{');
-        const jsonEnd = cleaned.lastIndexOf('}');
-        if (jsonStart !== -1 && jsonEnd !== -1) {
-            cleaned = cleaned.slice(jsonStart, jsonEnd + 1);
+        // 1. Try to find the first JSON object
+        const firstOpen = cleaned.indexOf('{');
+        const lastClose = cleaned.lastIndexOf('}');
+
+        if (firstOpen !== -1 && lastClose !== -1 && lastClose > firstOpen) {
+            cleaned = cleaned.substring(firstOpen, lastClose + 1);
+            try {
+                const parsed = JSON.parse(cleaned);
+                return {
+                    message: parsed.message || parsed.response || "Here is what I found.",
+                    actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+                };
+            } catch (e) {
+                console.error("JSON parse failed on substring:", cleaned);
+            }
         }
 
-        const parsed = JSON.parse(cleaned);
+        // 2. If simple JSON parsing fails, try to repair common issues
+        // Sometimes AI adds comments or trailing commas
+        cleaned = cleaned.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+        try {
+            const parsed = JSON.parse(cleaned);
+            return {
+                message: parsed.message || parsed.response || "Here is what I found.",
+                actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+            };
+        } catch (e) {
+            // checking for python style False/True
+            cleaned = cleaned.replace(/False/g, 'false').replace(/True/g, 'true');
+            try {
+                const parsed = JSON.parse(cleaned);
+                return {
+                    message: parsed.message || parsed.response || "Here is what I found.",
+                    actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+                };
+            } catch (e2) { }
+        }
+
+        // 3. Fallback: Treat as plain text response with no actions
+        console.warn("AI didn't return valid JSON. Generating plain response.");
         return {
-            message: parsed.message || parsed.response || rawText,
-            actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+            message: rawText,
+            actions: [{ type: 'NONE' }],
         };
-    } catch {
-        // If AI didn't output valid JSON, treat whole thing as message
+
+    } catch (error) {
+        console.error("Critical parse error:", error);
         return {
             message: rawText,
             actions: [{ type: 'NONE' }],

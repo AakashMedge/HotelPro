@@ -31,7 +31,7 @@ async function main() {
         create: {
             name: "HotelPro HQ",
             slug: "hq",
-            plan: "BUSINESS",
+            plan: "ELITE",
             status: "ACTIVE"
         }
     });
@@ -72,7 +72,7 @@ async function main() {
         create: {
             name: "The Taj Residency",
             slug: "taj",
-            plan: "PREMIUM",
+            plan: "GROWTH",
             status: "ACTIVE"
         }
     });

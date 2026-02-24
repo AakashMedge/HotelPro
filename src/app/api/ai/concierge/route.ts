@@ -158,18 +158,25 @@ export async function POST(req: Request) {
             jsonMode: true,
         });
 
-        console.log(`[AI Concierge] Response from ${aiResponse.provider}/${aiResponse.model} in ${aiResponse.latencyMs}ms`);
+        console.log(`[AI Concierge] Raw Response (${aiResponse.provider}):`, aiResponse.text);
 
         // 9. Parse AI Response to extract actions
         const parsed = parseAiResponse(aiResponse.text);
+        console.log(`[AI Concierge] Parsed Actions:`, JSON.stringify(parsed.actions));
 
         // 10. Execute Actions (tool calling)
         const executionResult = executeActions(parsed.actions, session);
 
         // 11. Return structured response
+        // PRIORITIZE Tool Results over AI Chatter
+        let finalMessage = parsed.message;
+        if (executionResult.actionResults.length > 0) {
+            finalMessage = executionResult.actionResults.join('\n');
+        }
+
         return Response.json({
             success: true,
-            message: parsed.message,
+            message: finalMessage,
             actions: parsed.actions,
             updatedCart: executionResult.updatedCart,
             uiCommands: executionResult.uiCommands,

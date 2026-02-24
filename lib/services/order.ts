@@ -357,9 +357,15 @@ export async function addItemsToOrder(orderId: string, items: CreateOrderItemInp
 
         await tx.orderItem.createMany({ data: orderItemsData });
 
+        // If new items are added to a SERVED or BILL_REQUESTED order,
+        // revert status to NEW so the new items go through the kitchen workflow
+        const shouldRevertStatus = ['SERVED', 'BILL_REQUESTED', 'READY'].includes(order.status);
+
         // Recalculate totals for the entire order
         const allItems = await tx.orderItem.findMany({ where: { orderId } });
-        const newSubtotal = allItems.reduce((acc: number, item: any) => acc + (Number(item.priceSnapshot) * item.quantity), 0);
+        const newSubtotal = allItems
+            .filter((item: any) => item.status !== 'CANCELLED')
+            .reduce((acc: number, item: any) => acc + (Number(item.priceSnapshot) * item.quantity), 0);
 
         const settings = await tx.restaurantSettings.findUnique({ where: { clientId: order.clientId } });
         const gstRate = settings?.gstRate ? Number(settings.gstRate) : 5.0;
@@ -378,9 +384,19 @@ export async function addItemsToOrder(orderId: string, items: CreateOrderItemInp
                 serviceChargeAmount,
                 grandTotal,
                 appliedGstRate: gstRate,
-                appliedServiceRate: serviceRate
+                appliedServiceRate: serviceRate,
+                // Revert status if order was already served/billed so new items get processed
+                ...(shouldRevertStatus && { status: 'NEW' as OrderStatus }),
             }
         });
+
+        // Revert table status to ACTIVE if order was reverted
+        if (shouldRevertStatus) {
+            await tx.table.update({
+                where: { id: order.tableId },
+                data: { status: 'ACTIVE' }
+            });
+        }
 
         // Audit Log
         if (actorId) {

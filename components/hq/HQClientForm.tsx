@@ -40,10 +40,9 @@ interface ClientFormProps {
 }
 
 const PLAN_OPTIONS: { value: ClientPlan; label: string; description: string }[] = [
-    { value: 'BASIC', label: 'Starter', description: '30 tables, 300 menu items. Perfect for Cafes.' },
-    { value: 'ADVANCE', label: 'Growth', description: '100 tables, Inventory, AI Menu Assistant.' },
-    { value: 'PREMIUM', label: 'Enterprise', description: 'Unlimited tables, Full AI Analysis.' },
-    { value: 'BUSINESS', label: 'Platform Elite', description: 'Multi-property, Full AI Automation & Ops.' },
+    { value: 'STARTER', label: 'Starter', description: '100 tables, 300 menu items. QR Menu, Orders, Basic KOT & Billing.' },
+    { value: 'GROWTH', label: 'Growth', description: '250 tables, Inventory, AI Menu Assistant, Customer Order Flow.' },
+    { value: 'ELITE', label: 'Elite', description: 'Unlimited tables, Full AI Automation, Multi-property & Dedicated Support.' },
 ];
 
 export default function HQClientForm({ mode, initialData }: ClientFormProps) {
@@ -58,7 +57,7 @@ export default function HQClientForm({ mode, initialData }: ClientFormProps) {
         name: initialData?.name || '',
         slug: initialData?.slug || '',
         domain: initialData?.domain || '',
-        plan: initialData?.plan || 'BASIC' as ClientPlan,
+        plan: initialData?.plan || 'STARTER' as ClientPlan,
 
         // Admin User (only for create mode)
         adminName: '',

@@ -7,24 +7,30 @@ export async function GET(req: Request) {
         const user = await getCurrentUser();
         if (!user) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
 
+        // ADMIN_ONLY channels are restricted to ADMIN and MANAGER roles only
+        const isPrivilegedRole = ['ADMIN', 'MANAGER'].includes(user.role);
+
         const channels = await (prisma as any).chatChannel.findMany({
-            where: { clientId: user.clientId },
+            where: {
+                clientId: user.clientId,
+                // Waiter, Kitchen, Cashier cannot see ADMIN_ONLY channels
+                ...(isPrivilegedRole ? {} : { type: { not: 'ADMIN_ONLY' } })
+            },
             orderBy: { createdAt: 'asc' }
         });
 
-        // Initialize default channels if none exist
-        if (channels.length === 0) {
-            const defaults = [
-                { name: 'general-ops', type: 'GENERAL', clientId: user.clientId },
-                { name: 'kitchen-sync', type: 'SERVICE', clientId: user.clientId },
-                { name: 'admin-mod-only', type: 'ADMIN_ONLY', clientId: user.clientId }
-            ];
-            await (prisma as any).chatChannel.createMany({ data: defaults });
-            const freshChannels = await (prisma as any).chatChannel.findMany({
+        // Ensure guest-feedback channel exists
+        const feedbackChannel = channels.find((c: any) => c.type === 'CUSTOMER_FEEDBACK');
+        if (!feedbackChannel) {
+            await (prisma as any).chatChannel.create({
+                data: { name: 'guest-feedback', type: 'CUSTOMER_FEEDBACK', clientId: user.clientId }
+            });
+            // Refresh channels list
+            const updatedChannels = await (prisma as any).chatChannel.findMany({
                 where: { clientId: user.clientId },
                 orderBy: { createdAt: 'asc' }
             });
-            return NextResponse.json({ success: true, channels: freshChannels });
+            return NextResponse.json({ success: true, channels: updatedChannels });
         }
 
         return NextResponse.json({ success: true, channels });

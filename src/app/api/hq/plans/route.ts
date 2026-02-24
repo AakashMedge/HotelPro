@@ -29,7 +29,7 @@ export async function GET() {
     }
 
     try {
-        const plans = await (prisma.plan as any).findMany({
+        const plans = await prisma.plan.findMany({
             orderBy: { price: 'asc' },
             include: {
                 _count: {
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const validCodes = ['BASIC', 'ADVANCE', 'PREMIUM', 'BUSINESS'];
+        const validCodes = ['STARTER', 'GROWTH', 'ELITE'];
         if (!validCodes.includes(code)) {
             return NextResponse.json(
                 { error: `Invalid plan code. Must be one of: ${validCodes.join(', ')}` },
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Check for duplicate
-        const existing = await (prisma.plan as any).findFirst({
+        const existing = await prisma.plan.findFirst({
             where: { OR: [{ name }, { code }] },
         });
         if (existing) {
@@ -97,10 +97,10 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const plan = await (prisma.plan as any).create({
+        const plan = await prisma.plan.create({
             data: {
                 name,
-                code,
+                code: code as any, // Cast if enum type is still being fussy in some contexts, though tsc says it's fine
                 price: parseFloat(price),
                 features: features || {},
                 limits: limits || {},

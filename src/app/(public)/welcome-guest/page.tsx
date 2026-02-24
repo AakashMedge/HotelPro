@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import MobileNav from '@/components/public/MobileNav';
+import { Clock, AlertTriangle, CheckCircle2, QrCode, PlusCircle, UserPlus, Users, RotateCcw } from 'lucide-react';
 
 function WelcomeGuestContent() {
     const searchParams = useSearchParams();
@@ -14,7 +15,8 @@ function WelcomeGuestContent() {
     // Step 0: Namaste, 1: Access Code Entry, 2: Hotel Confirmed + Choice, 3: Table Resolution
     const [step, setStep] = useState(0);
     const [accessCode, setAccessCode] = useState('');
-    const [hotelData, setHotelData] = useState<{ id: string; name: string; slug: string } | null>(null);
+    const [hotelData, setHotelData] = useState<{ id: string; name: string; slug: string; plan: string } | null>(null);
+    const [isStarter, setIsStarter] = useState(false);
     const [verifyingCode, setVerifyingCode] = useState(false);
     const [codeError, setCodeError] = useState('');
 
@@ -38,6 +40,7 @@ function WelcomeGuestContent() {
 
     // ─── Step 0: Indian Welcome Animation ───
     useEffect(() => {
+        setIsStarter(localStorage.getItem('hp_hotel_plan') === 'STARTER');
         if (step === 0) {
             const timer = setTimeout(() => {
                 setStep(1);
@@ -67,7 +70,15 @@ function WelcomeGuestContent() {
 
             if (data.success) {
                 setHotelData(data.hotel);
-                setStep(2);
+                // Save plan for UI filtering across pages
+                localStorage.setItem('hp_hotel_plan', data.hotel.plan);
+
+                if (queryTable) {
+                    setEntryType('SCAN');
+                    setStep(3);
+                } else {
+                    setStep(2);
+                }
             } else {
                 setCodeError(data.error || 'Invalid access code.');
             }
@@ -156,6 +167,7 @@ function WelcomeGuestContent() {
                 if (hotelData) {
                     localStorage.setItem('hp_hotel_id', hotelData.id);
                     localStorage.setItem('hp_hotel_name', hotelData.name);
+                    localStorage.setItem('hp_hotel_plan', hotelData.plan);
                 }
                 localStorage.removeItem('hp_guest_name');
                 router.push(`/order-status?id=${tableStatus.activeOrder.id}`);
@@ -185,6 +197,7 @@ function WelcomeGuestContent() {
                 if (hotelData) {
                     localStorage.setItem('hp_hotel_id', hotelData.id);
                     localStorage.setItem('hp_hotel_name', hotelData.name);
+                    localStorage.setItem('hp_hotel_plan', hotelData.plan);
                 }
                 localStorage.removeItem('hp_guest_name');
                 localStorage.removeItem('hp_active_order_id');
@@ -233,9 +246,9 @@ function WelcomeGuestContent() {
 
             {/* Expired Session Warning */}
             {isExpiredSession && step === 1 && (
-                <div className="fixed top-0 left-0 right-0 bg-amber-500 text-white px-4 py-3 text-center z-50">
-                    <p className="text-xs font-bold">⏱️ Your table was released due to inactivity</p>
-                    <p className="text-[10px] text-white/70 mt-0.5">Please scan your QR code or select a table again</p>
+                <div className="fixed top-0 left-0 right-0 bg-zinc-900 text-white px-4 py-3 text-center z-50 flex items-center justify-center gap-2">
+                    <Clock size={14} className="text-amber-400" />
+                    <p className="text-[10px] font-black uppercase tracking-widest">Session Expired</p>
                 </div>
             )}
 
@@ -299,10 +312,8 @@ function WelcomeGuestContent() {
                         <div className="absolute inset-0 bg-[#D43425]/5 rounded-full blur-3xl -z-10" />
 
                         {/* Success Badge */}
-                        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-6 border-2 border-green-200">
-                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5">
-                                <polyline points="20 6 9 17 4 12" />
-                            </svg>
+                        <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mb-6 border border-green-100 text-green-500">
+                            <CheckCircle2 size={32} />
                         </div>
 
                         <p className="text-[#D43425] text-[10px] md:text-[12px] font-black tracking-[0.5em] uppercase mb-4">Access Granted</p>
@@ -315,21 +326,14 @@ function WelcomeGuestContent() {
                             onClick={() => { setEntryType('SCAN'); setStep(3); }}
                             className="bg-white border-2 border-[#D43425]/10 rounded-[3rem] p-8 aspect-square flex flex-col items-center justify-center gap-6 group hover:border-[#D43425] transition-all shadow-sm hover:shadow-xl"
                         >
-                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#D43425" strokeWidth="1.5">
-                                <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" />
-                                <rect x="7" y="7" width="10" height="10" rx="1" />
-                            </svg>
+                            <QrCode size={40} />
                             <div className="text-[9px] font-black uppercase tracking-[0.2em] text-ink group-hover:text-[#D43425]">Scan the QR</div>
                         </button>
                         <button
                             onClick={() => { setEntryType('BOOK'); setStep(3); }}
                             className="bg-[#D43425] rounded-[3rem] p-8 aspect-square flex flex-col items-center justify-center gap-6 group hover:bg-black transition-all shadow-2xl"
                         >
-                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
-                                <circle cx="12" cy="12" r="10" />
-                                <line x1="12" y1="8" x2="12" y2="16" />
-                                <line x1="8" y1="12" x2="16" y2="12" />
-                            </svg>
+                            <PlusCircle size={40} />
                             <div className="text-[9px] font-black uppercase tracking-[0.2em] text-white">Book a Table</div>
                         </button>
                     </div>
@@ -353,9 +357,7 @@ function WelcomeGuestContent() {
                                 <>
                                     <div className="flex flex-col items-center text-center space-y-4">
                                         <div className="w-20 h-20 bg-vellum rounded-full flex items-center justify-center border border-[#D43425]/20 shadow-inner">
-                                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#D43425" strokeWidth="1.5">
-                                                <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />
-                                            </svg>
+                                            <QrCode size={32} className="text-[#D43425]" />
                                         </div>
                                         <div className="space-y-1">
                                             <h3 className="text-2xl font-playfair font-black text-ink">
@@ -414,8 +416,12 @@ function WelcomeGuestContent() {
                                                         <div className="w-8 h-8 rounded-full bg-[#D43425] flex items-center justify-center text-[10px] font-black border border-white/20 animate-pulse shadow-[0_0_15px_#D43425]">LIVE</div>
                                                     </div>
                                                     <div className="grid grid-cols-1 gap-3">
-                                                        <button onClick={() => claimTable(tableStatus.tableCode, 'JOIN')} className="w-full py-4 bg-[#D43425] rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-white hover:text-[#D43425] transition-all">Join This Party</button>
-                                                        <button onClick={() => claimTable(tableStatus.tableCode, 'NEW')} className="w-full py-4 bg-white/10 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-white/20 transition-all shadow-inner">Start New Session</button>
+                                                        <button onClick={() => claimTable(tableStatus.tableCode, 'JOIN')} className="w-full py-4 bg-[#D43425] rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-white hover:text-[#D43425] transition-all flex items-center justify-center gap-2">
+                                                            <UserPlus size={14} /> Join This Party
+                                                        </button>
+                                                        <button onClick={() => claimTable(tableStatus.tableCode, 'NEW')} className="w-full py-4 bg-white/10 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-white/20 transition-all shadow-inner flex items-center justify-center gap-2">
+                                                            <PlusCircle size={14} /> Start New Session
+                                                        </button>
                                                     </div>
                                                 </div>
                                             ) : (
@@ -438,7 +444,10 @@ function WelcomeGuestContent() {
                                                             >+</button>
                                                         </div>
                                                         {tableStatus?.capacity && partySize > (tableStatus.capacity || 4) && (
-                                                            <p className="text-[9px] text-amber-600 font-bold text-center mt-3">⚠️ This table seats {tableStatus.capacity}. Consider a larger table.</p>
+                                                            <div className="flex items-center justify-center gap-2 mt-4 text-amber-600">
+                                                                <AlertTriangle size={12} />
+                                                                <p className="text-[9px] font-bold uppercase tracking-tight">Large Party Warning: Table seats {tableStatus.capacity}</p>
+                                                            </div>
                                                         )}
                                                     </div>
                                                     <button
@@ -464,9 +473,7 @@ function WelcomeGuestContent() {
                                 <div className="space-y-8">
                                     <div className="flex flex-col items-center text-center space-y-4">
                                         <div className="w-20 h-20 bg-vellum rounded-full flex items-center justify-center border border-[#D43425]/20 shadow-inner">
-                                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#D43425" strokeWidth="1.5">
-                                                <path d="M3 11V9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2M5 11l-2 6v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2l-2-6M5 11h14" />
-                                            </svg>
+                                            <Users size={32} className="text-[#D43425]" />
                                         </div>
                                         <h3 className="text-2xl font-playfair font-black text-ink">Choose Your Sanctuary</h3>
                                         <p className="text-[10px] font-bold uppercase tracking-widest text-ink/40 leading-relaxed max-w-[200px]">Select any of our available vacant tables to begin your journey.</p>
@@ -502,9 +509,9 @@ function WelcomeGuestContent() {
                                                     <p className="text-[10px] font-black uppercase tracking-widest opacity-40">All premium tables are occupied.</p>
                                                     <button
                                                         onClick={fetchVacantTables}
-                                                        className="text-[9px] font-black text-[#D43425] uppercase underline"
+                                                        className="text-[9px] font-black text-[#D43425] uppercase underline flex items-center justify-center gap-1 mx-auto"
                                                     >
-                                                        Refresh Availability
+                                                        <RotateCcw size={10} /> Refresh Availability
                                                     </button>
                                                 </div>
                                             )}

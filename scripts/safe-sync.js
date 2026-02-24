@@ -1,4 +1,5 @@
 
+require('dotenv').config();
 const { neon } = require('@neondatabase/serverless');
 const { execSync } = require('child_process');
 const path = require('path');
@@ -13,7 +14,10 @@ function sanitizeDbUrl(url) {
 }
 
 async function run() {
-    const sql = neon("postgresql://neondb_owner:npg_8J2ofznDNhxc@ep-green-forest-a1lxj9cv-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require");
+    if (!process.env.DATABASE_URL) {
+        throw new Error('DATABASE_URL is not set. Please check your .env file.');
+    }
+    const sql = neon(process.env.DATABASE_URL);
 
     const clients = await sql`SELECT name, "databaseUrl" FROM "Client" WHERE "isolationLevel" = 'DEDICATED'`;
 

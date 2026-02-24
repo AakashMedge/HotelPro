@@ -4,6 +4,27 @@ import { useState, useEffect, useCallback, Suspense, useMemo, useRef } from 'rea
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
+import {
+    Utensils,
+    XCircle,
+    ThumbsDown,
+    Clock,
+    Search,
+    Frown,
+    HelpCircle,
+    Star,
+    CheckCircle2,
+    AlertTriangle,
+    MessageCircle,
+    Plus,
+    ArrowLeft,
+    HandMetal,
+    X,
+    Lock,
+    CreditCard,
+    Smartphone,
+    Banknote
+} from 'lucide-react';
 
 // ============================================
 // Types
@@ -33,6 +54,37 @@ interface OrderData {
     createdAt: string;
 }
 
+interface ComplaintData {
+    id: string;
+    type: string;
+    status: string;
+    description?: string;
+    resolvedNote?: string;
+    createdAt: string;
+}
+
+// ============================================
+// Complaint Type Labels
+// ============================================
+
+const COMPLAINT_TYPES = [
+    { key: 'NOT_RECEIVED', label: 'Missing Food', icon: <Utensils size={18} /> },
+    { key: 'WRONG_ITEM', label: 'Wrong Item', icon: <XCircle size={18} /> },
+    { key: 'QUALITY_ISSUE', label: 'Quality Issue', icon: <ThumbsDown size={18} /> },
+    { key: 'DELAY', label: 'Severe Delay', icon: <Clock size={18} /> },
+    { key: 'MISSING_ITEM', label: 'Missing Item', icon: <Search size={18} /> },
+    { key: 'RUDE_SERVICE', label: 'Service Issue', icon: <Frown size={18} /> },
+    { key: 'OTHER', label: 'Other Issue', icon: <HelpCircle size={18} /> },
+];
+
+const COMPLAINT_STATUS_LABELS: Record<string, { label: string; color: string; }> = {
+    SUBMITTED: { label: 'Reported', color: 'text-orange-500' },
+    ACKNOWLEDGED: { label: 'Seen by Manager', color: 'text-blue-500' },
+    IN_PROGRESS: { label: 'Being Resolved', color: 'text-purple-500' },
+    RESOLVED: { label: 'Resolved', color: 'text-green-600' },
+    DISMISSED: { label: 'Dismissed', color: 'text-zinc-400' },
+};
+
 // ============================================
 // Component
 // ============================================
@@ -52,21 +104,47 @@ function OrderStatusContent() {
     const [feedbackSent, setFeedbackSent] = useState(false);
     const [now, setNow] = useState(Date.now());
 
+    // Complaint system
+    const [showComplaintPanel, setShowComplaintPanel] = useState(false);
+    const [selectedComplaintType, setSelectedComplaintType] = useState<string | null>(null);
+    const [complaintDescription, setComplaintDescription] = useState('');
+    const [isSubmittingComplaint, setIsSubmittingComplaint] = useState(false);
+    const [activeComplaints, setActiveComplaints] = useState<ComplaintData[]>([]);
+    const [complaintSuccess, setComplaintSuccess] = useState(false);
+
+    // Serve confirmation
+    const [showServeConfirm, setShowServeConfirm] = useState(false);
+    const [serveConfirmDismissed, setServeConfirmDismissed] = useState(false);
+
     // AI Floating Chat
     const [aiOpen, setAiOpen] = useState(false);
     const [aiInput, setAiInput] = useState('');
     const [aiMessages, setAiMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
     const [aiLoading, setAiLoading] = useState(false);
+    const [isStarter, setIsStarter] = useState(false);
     const aiChatEndRef = useRef<HTMLDivElement>(null);
 
     const GRACE_PERIOD_MS = 120000; // 2 minutes window for cancellation
 
-    const steps = [
-        { key: 'NEW', label: 'Ordered', desc: 'Securely received' },
-        { key: 'PREPARING', label: 'Preparing', desc: 'In the kitchen' },
-        { key: 'READY', label: 'Ready', desc: 'Plated & checking' },
-        { key: 'SERVED', label: 'Served', desc: 'Enjoy your meal' }
-    ];
+    const steps = useMemo(() => {
+        if (isStarter) {
+            return [
+                { key: 'NEW', label: 'Ordered', desc: 'Securely received' },
+                { key: 'PREPARING', label: 'Preparing', desc: 'Staff is on it' },
+                { key: 'SERVED', label: 'Served', desc: 'Enjoy your meal' }
+            ];
+        }
+        return [
+            { key: 'NEW', label: 'Ordered', desc: 'Securely received' },
+            { key: 'PREPARING', label: 'Preparing', desc: 'In the kitchen' },
+            { key: 'READY', label: 'Ready', desc: 'Plated & checking' },
+            { key: 'SERVED', label: 'Served', desc: 'Enjoy your meal' }
+        ];
+    }, [isStarter]);
+
+    // ============================================
+    // Data Fetching
+    // ============================================
 
     const fetchOrderStatus = useCallback(async () => {
         if (!orderId) return;
@@ -76,6 +154,8 @@ function OrderStatusContent() {
             if (!data.success) throw new Error(data.error);
 
             const o = data.order;
+            const prevStatus = order?.status;
+
             setOrder({
                 id: o.id,
                 status: o.status,
@@ -99,12 +179,15 @@ function OrderStatusContent() {
             });
 
             const stepIndex = steps.findIndex(s => s.key === o.status);
-            // If BILL_REQUESTED, we maintain the 'Served' index (3) as it follows Served.
-            // But if it's CLOSED, we definitely show the final state.
-            setStep(stepIndex >= 0 ? stepIndex : (o.status === 'BILL_REQUESTED' ? 3 : (o.status === 'CLOSED' ? 3 : 0)));
+            const servedIndex = steps.length - 1;
+            setStep(stepIndex >= 0 ? stepIndex : (['BILL_REQUESTED', 'CLOSED', 'PAID'].includes(o.status) ? servedIndex : 0));
+
+            // Show serve confirmation when status changes to SERVED
+            if (o.status === 'SERVED' && prevStatus && prevStatus !== 'SERVED' && !serveConfirmDismissed) {
+                setShowServeConfirm(true);
+            }
 
             if (o.status === 'CLOSED') {
-                // Clear entire guest session context
                 const keysToClear = [
                     'hp_active_order_id',
                     'hp_session_id',
@@ -117,8 +200,6 @@ function OrderStatusContent() {
                     'hp_cart'
                 ];
                 keysToClear.forEach(key => localStorage.removeItem(key));
-
-                // Show completion and redirect
                 setTimeout(() => router.replace('/welcome-guest'), 5000);
             } else if (o.status === 'CANCELLED') {
                 localStorage.removeItem('hp_active_order_id');
@@ -131,7 +212,19 @@ function OrderStatusContent() {
             console.error(err);
             setLoading(false);
         }
-    }, [orderId, router]);
+    }, [orderId, router, serveConfirmDismissed]);
+
+    // Fetch active complaints for this order
+    const fetchComplaints = useCallback(async () => {
+        if (!orderId) return;
+        try {
+            const res = await fetch(`/api/customer/complaints?orderId=${orderId}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) setActiveComplaints(data.complaints || []);
+            }
+        } catch { /* silent */ }
+    }, [orderId]);
 
     // Timer for grace period
     useEffect(() => {
@@ -141,6 +234,7 @@ function OrderStatusContent() {
 
     useEffect(() => {
         setMounted(true);
+        setIsStarter(localStorage.getItem('hp_hotel_plan') === 'STARTER');
         if (!orderId) {
             const saved = localStorage.getItem('hp_active_order_id');
             if (saved) router.replace(`/order-status?id=${saved}`);
@@ -156,6 +250,9 @@ function OrderStatusContent() {
             if (data.event === 'ORDER_UPDATED' && data.payload.orderId === orderId) {
                 fetchOrderStatus();
             }
+            if (data.event === 'COMPLAINT_UPDATED' && data.payload.orderId === orderId) {
+                fetchComplaints();
+            }
         };
 
         // Fallback polling every 5s (Deployment safe)
@@ -167,7 +264,11 @@ function OrderStatusContent() {
             es.close();
             clearInterval(pollInterval);
         };
-    }, [orderId, fetchOrderStatus, router]);
+    }, [orderId, fetchOrderStatus, fetchComplaints, router]);
+
+    // ============================================
+    // Actions
+    // ============================================
 
     const handleBillRequest = async () => {
         if (!order) return;
@@ -219,9 +320,31 @@ function OrderStatusContent() {
         }
     };
 
+    // ── Real Feedback Submission ──
     const submitFeedback = async () => {
-        setFeedbackSent(true);
-        console.log("Feedback:", { rating, feedback });
+        if (!order || rating === 0) return;
+        try {
+            const res = await fetch('/api/customer/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    orderId: order.id,
+                    rating,
+                    comment: feedback || null,
+                    guestName: localStorage.getItem('hp_guest_name') || null,
+                    tableCode: localStorage.getItem('hp_table_code') || null,
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setFeedbackSent(true);
+            } else {
+                // Already submitted
+                setFeedbackSent(true);
+            }
+        } catch {
+            setFeedbackSent(true);
+        }
     };
 
     const simulatePayment = async () => {
@@ -236,6 +359,53 @@ function OrderStatusContent() {
         } finally {
             setIsRequesting(false);
         }
+    };
+
+    // ── Complaint Submission ──
+    const submitComplaint = async () => {
+        if (!order || !selectedComplaintType) return;
+        setIsSubmittingComplaint(true);
+        try {
+            const res = await fetch('/api/customer/complaints', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    orderId: order.id,
+                    type: selectedComplaintType,
+                    description: complaintDescription || null,
+                    guestName: localStorage.getItem('hp_guest_name') || null,
+                    tableCode: localStorage.getItem('hp_table_code') || null,
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setComplaintSuccess(true);
+                setActiveComplaints(prev => [data.complaint, ...prev]);
+                setTimeout(() => {
+                    setShowComplaintPanel(false);
+                    setComplaintSuccess(false);
+                    setSelectedComplaintType(null);
+                    setComplaintDescription('');
+                }, 2000);
+            }
+        } catch {
+            alert("Failed to report issue. Please try again.");
+        } finally {
+            setIsSubmittingComplaint(false);
+        }
+    };
+
+    // ── Serve Confirmation ──
+    const handleConfirmServed = () => {
+        setShowServeConfirm(false);
+        setServeConfirmDismissed(true);
+    };
+
+    const handleDisputeServed = () => {
+        setShowServeConfirm(false);
+        setServeConfirmDismissed(true);
+        setShowComplaintPanel(true);
+        setSelectedComplaintType('NOT_RECEIVED');
     };
 
     // AI Chat on Order Status Page
@@ -316,6 +486,7 @@ function OrderStatusContent() {
     );
 
     const isFinished = order.status === 'CLOSED';
+    const canReport = ['SERVED', 'READY', 'PREPARING', 'BILL_REQUESTED'].includes(order.status);
 
     return (
         <div className="min-h-screen bg-[#FAF7F2] text-[#1A1A1A] font-sans pb-32 overflow-x-hidden">
@@ -326,11 +497,87 @@ function OrderStatusContent() {
                     <h1 className="text-2xl font-serif italic font-black tracking-tight mt-1 text-[#1A1A1A]">Order Status</h1>
                 </div>
                 <div className="flex gap-3">
+                    {canReport && (
+                        <button
+                            onClick={() => setShowComplaintPanel(true)}
+                            className="w-10 h-10 rounded-full border border-red-200 flex items-center justify-center text-red-500 active:scale-95 transition-transform bg-red-50 shadow-sm"
+                            title="Report an Issue"
+                        >
+                            <AlertTriangle size={18} strokeWidth={2.5} />
+                        </button>
+                    )}
                     <Link href="/menu?append=true" className="w-10 h-10 rounded-full border border-zinc-200 flex items-center justify-center text-[#1A1A1A] active:scale-95 transition-transform bg-white shadow-sm">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
+                        <Plus size={18} strokeWidth={2.5} />
                     </Link>
                 </div>
             </div>
+
+            {/* ─── Serve Confirmation Banner ─── */}
+            <AnimatePresence>
+                {showServeConfirm && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -20, height: 0 }}
+                        animate={{ opacity: 1, y: 0, height: 'auto' }}
+                        exit={{ opacity: 0, y: -20, height: 0 }}
+                        className="overflow-hidden"
+                    >
+                        <div className="mx-4 mt-4 max-w-lg bg-linear-to-r from-emerald-500 to-teal-500 rounded-3xl p-5 shadow-xl shadow-emerald-200/50">
+                            <div className="flex items-start gap-4">
+                                <div className="p-3 bg-white/20 rounded-2xl text-white">
+                                    <Utensils size={24} />
+                                </div>
+                                <div className="flex-1">
+                                    <p className="text-[11px] font-black text-white uppercase tracking-wider">Order Status Dispatch</p>
+                                    <p className="text-[10px] text-white/70 mt-1">Did you receive your order?</p>
+                                </div>
+                            </div>
+                            <div className="flex gap-2 mt-4">
+                                <button
+                                    onClick={handleConfirmServed}
+                                    className="flex-1 bg-white text-emerald-700 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider active:scale-95 transition-transform flex items-center justify-center gap-2"
+                                >
+                                    <CheckCircle2 size={14} /> Yes, Received
+                                </button>
+                                <button
+                                    onClick={handleDisputeServed}
+                                    className="flex-1 bg-white/20 text-white border border-white/30 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider active:scale-95 transition-transform flex items-center justify-center gap-2"
+                                >
+                                    <XCircle size={14} /> Not Yet
+                                </button>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* ─── Active Complaints Banner ─── */}
+            {activeComplaints.length > 0 && (
+                <div className="mt-4 max-w-lg mx-auto space-y-2">
+                    {activeComplaints.filter(c => c.status !== 'RESOLVED' && c.status !== 'DISMISSED').map(c => (
+                        <motion.div
+                            key={c.id}
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="bg-white border border-orange-200 rounded-2xl px-4 py-3 flex items-center gap-3"
+                        >
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-orange-50 text-orange-600 border border-orange-100">
+                                <AlertTriangle size={18} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-700">
+                                    {COMPLAINT_TYPES.find(t => t.key === c.type)?.label || c.type}
+                                </p>
+                                <p className={`text-[9px] font-bold uppercase tracking-wider mt-0.5 ${COMPLAINT_STATUS_LABELS[c.status]?.color || 'text-zinc-400'}`}>
+                                    {COMPLAINT_STATUS_LABELS[c.status]?.label || c.status}
+                                </p>
+                            </div>
+                            {c.status === 'SUBMITTED' && (
+                                <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse" />
+                            )}
+                        </motion.div>
+                    ))}
+                </div>
+            )}
 
             <div className="px-6 max-w-lg mx-auto space-y-10 mt-8">
                 {/* ─── Tracker (Hidden in Checkout Mode) ─── */}
@@ -382,7 +629,6 @@ function OrderStatusContent() {
                                 const itemCreatedAt = new Date(item.createdAt).getTime();
                                 const timeLeftMs = Math.max(0, GRACE_PERIOD_MS - (now - itemCreatedAt));
                                 const canCancel = item.status === 'PENDING' && timeLeftMs > 0 && order.status === 'NEW';
-                                const formattedTime = `${Math.floor(timeLeftMs / 60000)}:${String(Math.floor((timeLeftMs % 60000) / 1000)).padStart(2, '0')}`;
 
                                 return (
                                     <div key={item.id} className="group">
@@ -397,6 +643,9 @@ function OrderStatusContent() {
                                                     )}
                                                     {item.status === 'READY' && (
                                                         <span className="text-[8px] font-black uppercase tracking-widest text-[#D43425] bg-red-50 px-1.5 py-0.5 rounded animate-pulse">Ready</span>
+                                                    )}
+                                                    {item.status === 'SERVED' && (
+                                                        <span className="text-[8px] font-black uppercase tracking-widest text-green-600 bg-green-50 px-1.5 py-0.5 rounded">Served</span>
                                                     )}
                                                 </div>
                                                 {item.variant && <span className="text-[10px] text-zinc-400 font-serif italic">{item.variant.name}</span>}
@@ -434,12 +683,66 @@ function OrderStatusContent() {
                                         className={`w-full py-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.25em] transition-all transform active:scale-95 shadow-xl ${order.status === 'BILL_REQUESTED' ? 'bg-zinc-100 text-zinc-400 cursor-default shadow-none border border-zinc-200' : 'bg-[#1A1A1A] text-white shadow-zinc-200/50'
                                             }`}
                                     >
-                                        {isRequesting ? 'Requesting...' : order.status === 'BILL_REQUESTED' ? '✓ Bill Requested — Wait for Cashier' : 'Request Final Bill'}
+                                        {isRequesting ? 'Requesting...' : order.status === 'BILL_REQUESTED' ? (isStarter ? '✓ Bill Requested — Wait for Staff' : '✓ Bill Requested — Wait for Cashier') : 'Request Final Bill'}
                                     </button>
                                 )}
                             </div>
                         </div>
                     </div>
+                )}
+
+                {/* ─── Feedback Section (When Served) ─── */}
+                {order.status === 'SERVED' && !feedbackSent && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-white rounded-[40px] border border-zinc-100 overflow-hidden shadow-2xl shadow-zinc-200/50 p-8"
+                    >
+                        <div className="text-center mb-6">
+                            <span className="text-[8px] font-black uppercase tracking-[0.4em] text-zinc-300">How was your experience?</span>
+                            <h3 className="text-lg font-serif italic font-black mt-1 text-[#1A1A1A]">Rate Your Meal</h3>
+                        </div>
+                        <div className="flex justify-center gap-4 mb-8">
+                            {[1, 2, 3, 4, 5].map(star => (
+                                <button
+                                    key={star}
+                                    onClick={() => setRating(star)}
+                                    className={`p-2 transition-all transform active:scale-90 ${star <= rating ? 'text-amber-400' : 'text-zinc-100'}`}
+                                >
+                                    <Star size={36} fill={star <= rating ? 'currentColor' : 'none'} strokeWidth={1.5} />
+                                </button>
+                            ))}
+                        </div>
+                        {rating > 0 && (
+                            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
+                                <textarea
+                                    value={feedback}
+                                    onChange={(e) => setFeedback(e.target.value)}
+                                    placeholder="Tell us more about your experience... (optional)"
+                                    className="w-full bg-zinc-50 rounded-2xl px-5 py-4 text-[12px] border border-zinc-200 resize-none h-20 outline-none focus:border-[#D43425] transition-colors"
+                                />
+                                <button
+                                    onClick={submitFeedback}
+                                    className="w-full mt-3 bg-[#1A1A1A] text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.25em] active:scale-95 transition-transform shadow-lg"
+                                >
+                                    Submit Feedback
+                                </button>
+                            </motion.div>
+                        )}
+                    </motion.div>
+                )}
+
+                {feedbackSent && order.status === 'SERVED' && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="text-center py-8"
+                    >
+                        <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto text-green-500 mb-4 border border-green-100">
+                            <CheckCircle2 size={32} />
+                        </div>
+                        <p className="text-[11px] font-black text-zinc-600 mt-3 uppercase tracking-wider">Thank you for your feedback!</p>
+                    </motion.div>
                 )}
 
                 {isFinished && (
@@ -521,16 +824,19 @@ function OrderStatusContent() {
 
                         {order.status !== 'PAID' && (
                             <div className="px-8 pb-8 space-y-3">
-                                <button className="w-full py-5 bg-[#1A1A1A] text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.25em] shadow-xl active:scale-95 transition-all">
-                                    💵 Pay at Counter
+                                <button className="w-full py-5 bg-[#1A1A1A] text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.25em] shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">
+                                    <Banknote size={14} /> Pay at Counter
                                 </button>
                                 <button
                                     onClick={simulatePayment}
-                                    className="w-full py-5 bg-linear-to-r from-[#D43425] to-[#B22A1E] text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.25em] shadow-xl active:scale-95 transition-all hover:brightness-110"
+                                    className="w-full py-5 bg-linear-to-r from-[#D43425] to-[#B22A1E] text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.25em] shadow-xl active:scale-95 transition-all hover:brightness-110 flex items-center justify-center gap-2"
                                 >
-                                    📱 Pay via Phone
+                                    <Smartphone size={14} /> Pay via Phone
                                 </button>
-                                <p className="text-[8px] text-center text-zinc-400 font-medium">🔒 Payments are secured and verified server-side</p>
+                                <div className="flex items-center justify-center gap-2 text-zinc-400 mt-2">
+                                    <Lock size={10} />
+                                    <p className="text-[8px] font-medium uppercase tracking-widest">Payments are secured</p>
+                                </div>
                             </div>
                         )}
 
@@ -543,6 +849,90 @@ function OrderStatusContent() {
                 </motion.div>
             )}
 
+            {/* ─── Complaint Modal ─── */}
+            <AnimatePresence>
+                {showComplaintPanel && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-100 bg-black/50 backdrop-blur-sm flex items-end justify-center"
+                        onClick={() => !isSubmittingComplaint && setShowComplaintPanel(false)}
+                    >
+                        <motion.div
+                            initial={{ y: '100%' }}
+                            animate={{ y: 0 }}
+                            exit={{ y: '100%' }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                            className="w-full max-w-lg bg-white rounded-t-[40px] shadow-2xl p-8 pb-12"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {complaintSuccess ? (
+                                <motion.div
+                                    initial={{ scale: 0.8, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    className="text-center py-8"
+                                >
+                                    <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto text-emerald-500 mb-4 border border-emerald-100">
+                                        <CheckCircle2 size={40} />
+                                    </div>
+                                    <h3 className="text-lg font-serif italic font-black mt-4 text-[#1A1A1A]">Report Sent</h3>
+                                    <p className="text-[11px] text-zinc-400 mt-2">The manager has been notified and will address your concern.</p>
+                                </motion.div>
+                            ) : (
+                                <>
+                                    {/* Handle bar */}
+                                    <div className="w-10 h-1 bg-zinc-200 rounded-full mx-auto mb-6" />
+
+                                    <div className="text-center mb-6">
+                                        <span className="text-[8px] font-black uppercase tracking-[0.4em] text-red-400">Report an Issue</span>
+                                        <h3 className="text-lg font-serif italic font-black mt-1 text-[#1A1A1A]">How can we help?</h3>
+                                    </div>
+
+                                    {/* Issue Type Grid */}
+                                    <div className="grid grid-cols-2 gap-3 mb-6">
+                                        {COMPLAINT_TYPES.map(type => (
+                                            <button
+                                                key={type.key}
+                                                onClick={() => setSelectedComplaintType(type.key)}
+                                                className={`flex items-center gap-3 p-4 rounded-2xl border-2 text-left transition-all active:scale-95 ${selectedComplaintType === type.key
+                                                    ? 'border-red-500 bg-red-50 text-red-600 shadow-lg shadow-red-100'
+                                                    : 'border-zinc-100 bg-white text-zinc-600 hover:border-zinc-200'
+                                                    }`}
+                                            >
+                                                <div className={`${selectedComplaintType === type.key ? 'text-red-500' : 'text-zinc-400'}`}>
+                                                    {type.icon}
+                                                </div>
+                                                <span className="text-[11px] font-black uppercase tracking-tight">{type.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Description */}
+                                    {selectedComplaintType && (
+                                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
+                                            <textarea
+                                                value={complaintDescription}
+                                                onChange={(e) => setComplaintDescription(e.target.value)}
+                                                placeholder="Tell us more about the issue... (optional)"
+                                                className="w-full bg-zinc-50 rounded-2xl px-5 py-4 text-[12px] border border-zinc-200 resize-none h-20 outline-none focus:border-[#D43425] transition-colors mb-4"
+                                            />
+                                            <button
+                                                onClick={submitComplaint}
+                                                disabled={isSubmittingComplaint}
+                                                className="w-full bg-[#D43425] text-white py-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.25em] shadow-xl shadow-red-200/50 active:scale-95 transition-all disabled:opacity-50"
+                                            >
+                                                {isSubmittingComplaint ? 'Sending...' : 'Report Issue to Manager'}
+                                            </button>
+                                        </motion.div>
+                                    )}
+                                </>
+                            )}
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* ─── Bottom CTA + AI Bubble ─── */}
             <div className="fixed bottom-8 left-0 right-0 px-6 z-50 pointer-events-none">
                 <div className="max-w-lg mx-auto flex justify-between items-end pointer-events-auto">
@@ -552,22 +942,21 @@ function OrderStatusContent() {
                     </Link>
 
                     {/* AI Floating Bubble */}
-                    <button
-                        onClick={() => setAiOpen(!aiOpen)}
-                        className="w-14 h-14 bg-[#D43425] rounded-full flex items-center justify-center shadow-2xl shadow-red-500/30 active:scale-90 transition-all relative"
-                    >
-                        {aiOpen ? (
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                        ) : (
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-                                <path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10a9.96 9.96 0 0 1-4.9-1.28L2 22l1.28-5.1A9.96 9.96 0 0 1 2 12C2 6.48 6.48 2 12 2z" />
-                                <path d="M8 12h.01M12 12h.01M16 12h.01" />
-                            </svg>
-                        )}
-                        {aiMessages.length === 0 && !aiOpen && (
-                            <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white animate-pulse" />
-                        )}
-                    </button>
+                    {!isStarter && (
+                        <button
+                            onClick={() => setAiOpen(!aiOpen)}
+                            className="w-14 h-14 bg-[#D43425] rounded-full flex items-center justify-center shadow-2xl shadow-red-500/30 active:scale-90 transition-all relative"
+                        >
+                            {aiOpen ? (
+                                <X size={24} strokeWidth={2.5} />
+                            ) : (
+                                <MessageCircle size={24} strokeWidth={2.5} />
+                            )}
+                            {aiMessages.length === 0 && !aiOpen && (
+                                <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white animate-pulse" />
+                            )}
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -583,8 +972,8 @@ function OrderStatusContent() {
                         <div className="bg-white rounded-3xl shadow-2xl border border-[#D43425]/10 overflow-hidden flex flex-col" style={{ maxHeight: '50vh' }}>
                             {/* Header */}
                             <div className="bg-[#FAF7F2] px-5 py-3 border-b border-zinc-100 flex items-center gap-3">
-                                <div className="w-8 h-8 bg-[#D43425] rounded-full flex items-center justify-center shrink-0">
-                                    <span className="text-white text-[10px] font-black">🤵</span>
+                                <div className="w-10 h-10 bg-[#D43425] rounded-xl flex items-center justify-center shrink-0 shadow-lg shadow-red-100">
+                                    <HandMetal size={18} className="text-white" />
                                 </div>
                                 <div className="flex-1">
                                     <p className="text-[10px] font-black uppercase tracking-widest text-[#D43425]/60">AI Waiter</p>
@@ -626,9 +1015,11 @@ function OrderStatusContent() {
                                 <button
                                     onClick={sendAiMessage}
                                     disabled={aiLoading || !aiInput.trim()}
-                                    className="w-10 h-10 bg-[#D43425] rounded-xl flex items-center justify-center text-white active:scale-90 transition-all disabled:opacity-40"
+                                    className="w-12 h-12 bg-zinc-900 text-white rounded-2xl flex items-center justify-center active:scale-90 transition-all disabled:opacity-40"
                                 >
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" /></svg>
+                                    <motion.div animate={aiLoading ? { x: [0, 5, 0] } : {}} transition={{ repeat: Infinity }}>
+                                        <Plus size={20} />
+                                    </motion.div>
                                 </button>
                             </div>
                         </div>

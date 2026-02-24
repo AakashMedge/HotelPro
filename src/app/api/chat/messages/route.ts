@@ -12,18 +12,30 @@ export async function GET(req: Request) {
 
         if (!channelId) return NextResponse.json({ success: false, error: "Channel ID required" }, { status: 400 });
 
+        // Role-based channel access check
+        const channel = await (prisma as any).chatChannel.findFirst({
+            where: { id: channelId, clientId: user.clientId }
+        });
+        if (!channel) return NextResponse.json({ success: false, error: "Channel not found" }, { status: 404 });
+
+        if (channel.type === 'ADMIN_ONLY' && !['ADMIN', 'MANAGER'].includes(user.role)) {
+            return NextResponse.json({ success: false, error: "Unauthorized for this channel" }, { status: 403 });
+        }
+
         const messages = await (prisma as any).chatMessage.findMany({
             where: {
                 channelId,
                 channel: { clientId: user.clientId } // Security check
             },
             include: {
-                sender: { select: { name: true, role: true } },
+                sender: { select: { id: true, name: true, role: true } },
                 acks: { select: { userId: true } }
             },
             orderBy: { createdAt: 'asc' },
             take: 100 // Limit history
         });
+
+        console.log(`[CHAT] Fetched ${messages.length} messages for channel ${channelId} (Client: ${user.clientId})`);
 
         return NextResponse.json({ success: true, messages });
     } catch (error) {

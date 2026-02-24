@@ -99,6 +99,45 @@ export default function SubscriptionsPage() {
         }
     };
 
+    // ─── Create Plan ───
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [newPlan, setNewPlan] = useState<Partial<PlanData>>({
+        name: '',
+        code: 'STARTER',
+        price: 0,
+        features: Object.keys(FEATURE_LABELS).reduce((acc, key) => ({ ...acc, [key]: false }), {}),
+        limits: { tables: 10, menuItems: 100 }
+    });
+
+    const handleCreate = async () => {
+        if (!newPlan.name || !newPlan.code) return alert("Please fill in name and code");
+        setSaving(true);
+        try {
+            const res = await fetch('/api/hq/plans', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newPlan),
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || 'Failed to create');
+            }
+            setShowCreateModal(false);
+            setNewPlan({
+                name: '',
+                code: 'STARTER',
+                price: 0,
+                features: Object.keys(FEATURE_LABELS).reduce((acc, key) => ({ ...acc, [key]: false }), {}),
+                limits: { tables: 10, menuItems: 100 }
+            });
+            fetchPlans();
+        } catch (err: any) {
+            alert('Create failed: ' + err.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
     // ─── Delete Plan ───
     const handleDelete = async (planId: string, planName: string) => {
         if (!confirm(`Deactivate plan "${planName}"? Active subscriptions will be preserved.`)) return;
@@ -137,7 +176,10 @@ export default function SubscriptionsPage() {
                         <Settings2 className="w-4 h-4" />
                         Global Limits
                     </button>
-                    <button className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-all shadow-sm flex items-center gap-2">
+                    <button
+                        onClick={() => setShowCreateModal(true)}
+                        className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-all shadow-sm flex items-center gap-2"
+                    >
                         <Plus className="w-4 h-4" />
                         Create New Plan
                     </button>
@@ -356,6 +398,117 @@ export default function SubscriptionsPage() {
                             >
                                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                                 {saving ? 'Saving...' : 'Save Changes'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Create Modal */}
+            {showCreateModal && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between p-6 border-b border-slate-100">
+                            <h2 className="text-lg font-bold text-slate-900">Define New Plan</h2>
+                            <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-600">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-5">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Plan Name</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Starter Pro"
+                                        value={newPlan.name}
+                                        onChange={(e) => setNewPlan({ ...newPlan, name: e.target.value })}
+                                        className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">System Code</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. CUSTOM_LITE"
+                                        value={newPlan.code}
+                                        onChange={(e) => setNewPlan({ ...newPlan, code: e.target.value.toUpperCase().replace(/\s+/g, '_') })}
+                                        className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-black focus:ring-2 focus:ring-indigo-500 outline-none placeholder:text-slate-300"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Monthly Price (₹)</label>
+                                <input
+                                    type="number"
+                                    value={newPlan.price}
+                                    onChange={(e) => setNewPlan({ ...newPlan, price: parseFloat(e.target.value) || 0 })}
+                                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Table Limit</label>
+                                    <input
+                                        type="number"
+                                        value={newPlan.limits?.tables ?? 0}
+                                        onChange={(e) => setNewPlan({
+                                            ...newPlan,
+                                            limits: { ...newPlan.limits, tables: parseInt(e.target.value) || 0 }
+                                        })}
+                                        className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Menu Limit</label>
+                                    <input
+                                        type="number"
+                                        value={newPlan.limits?.menuItems ?? 0}
+                                        onChange={(e) => setNewPlan({
+                                            ...newPlan,
+                                            limits: { ...newPlan.limits, menuItems: parseInt(e.target.value) || 0 }
+                                        })}
+                                        className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Entitlements</label>
+                                <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-2">
+                                    {Object.entries(FEATURE_LABELS).map(([key, label]) => (
+                                        <label key={key} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
+                                            <span className="text-xs font-medium text-slate-700">{label}</span>
+                                            <input
+                                                type="checkbox"
+                                                checked={!!newPlan.features?.[key]}
+                                                onChange={(e) => setNewPlan({
+                                                    ...newPlan,
+                                                    features: { ...newPlan.features, [key]: e.target.checked }
+                                                })}
+                                                className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 border-slate-300"
+                                            />
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3 p-6 border-t border-slate-100">
+                            <button
+                                onClick={() => setShowCreateModal(false)}
+                                className="flex-1 bg-white border border-slate-200 text-slate-700 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-100"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleCreate}
+                                disabled={saving}
+                                className="flex-1 bg-indigo-600 text-white py-2.5 rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                                {saving ? 'Creating...' : 'Launch Plan'}
                             </button>
                         </div>
                     </div>

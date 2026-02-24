@@ -6,58 +6,15 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       {
+        // Allow any https image source — needed for user-supplied menu item URLs
         protocol: 'https',
-        hostname: 'images.unsplash.com',
+        hostname: '**',
         pathname: '**',
       },
       {
-        protocol: 'https',
-        hostname: 'masalaandchai.com',
-        pathname: '**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'www.transparenttextures.com',
-        pathname: '**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'cdn.loveandlemons.com',
-        pathname: '**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'loveandlemons.com',
-        pathname: '**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'www.indianhealthyrecipes.com',
-        pathname: '**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'encrypted-tbn0.gstatic.com',
-        pathname: '**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'm.media-amazon.com',
-        pathname: '**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'www.cookwithmanali.com',
-        pathname: '**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'www.mystore.in',
-        pathname: '**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'static.toiimg.com',
+        // Allow http sources too (some CDNs still use it)
+        protocol: 'http',
+        hostname: '**',
         pathname: '**',
       },
     ],

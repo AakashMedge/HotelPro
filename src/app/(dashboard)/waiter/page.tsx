@@ -105,6 +105,12 @@ export default function WaiterDashboard() {
     const [outOfStockItems, setOutOfStockItems] = useState<string[]>([]);
     const [currentUser, setCurrentUser] = useState<any>(null);
 
+    // Serve confirmation modal
+    const [serveConfirmTable, setServeConfirmTable] = useState<TableData | null>(null);
+
+    // Complaint alerts
+    const [complaintAlerts, setComplaintAlerts] = useState<{ id: string; tableCode: string; type: string; guestName: string; timestamp: number }[]>([]);
+
     // ============================================
     // Data
     // ============================================
@@ -151,17 +157,52 @@ export default function WaiterDashboard() {
         setMounted(true);
         fetchData();
         const interval = setInterval(fetchData, 8000);
-        return () => clearInterval(interval);
+
+        // SSE for real-time complaint alerts
+        const es = new EventSource('/api/events');
+        es.onmessage = (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                if (data.event === 'COMPLAINT_RAISED') {
+                    const p = data.payload;
+                    setComplaintAlerts(prev => [{
+                        id: p.complaintId || Date.now().toString(),
+                        tableCode: p.tableCode,
+                        type: p.type,
+                        guestName: p.guestName || 'Guest',
+                        timestamp: Date.now(),
+                    }, ...prev].slice(0, 5)); // Keep last 5
+                    setNotification(`🚨 Customer complaint at Table ${p.tableCode}: ${p.type.replace('_', ' ')}`);
+                }
+                if (data.event === 'ORDER_UPDATED') {
+                    fetchData();
+                }
+            } catch { /* ignore */ }
+        };
+
+        return () => {
+            clearInterval(interval);
+            es.close();
+        };
     }, [fetchData]);
 
     // ============================================
     // Actions
     // ============================================
 
-    const handleMarkServed = async (e: React.MouseEvent, table: TableData) => {
+    // Step 1: Show confirmation modal instead of directly marking served
+    const handleMarkServedClick = (e: React.MouseEvent, table: TableData) => {
         e.preventDefault(); e.stopPropagation();
         if (!table.order || updatingTableId) return;
+        setServeConfirmTable(table);
+    };
+
+    // Step 2: Actually mark served after confirmation
+    const handleConfirmServed = async () => {
+        const table = serveConfirmTable;
+        if (!table?.order) return;
         setUpdatingTableId(table.id);
+        setServeConfirmTable(null);
         try {
             const res = await fetch(`/api/orders/${table.order.id}`, {
                 method: 'PATCH',
@@ -169,14 +210,18 @@ export default function WaiterDashboard() {
                 body: JSON.stringify({ status: 'SERVED', version: table.order.version || 1 }),
             });
             if (res.ok) {
-                setNotification(`✓ Table ${table.tableCode} marked as served`);
+                setNotification(`✓ Table ${table.tableCode} marked as served — customer will be asked to confirm`);
                 fetchData();
             }
         } finally { setUpdatingTableId(null); }
     };
 
-    const handleMarkCleaned = async (e: React.MouseEvent, tableId: string) => {
-        e.preventDefault(); e.stopPropagation();
+    const dismissComplaintAlert = (id: string) => {
+        setComplaintAlerts(prev => prev.filter(a => a.id !== id));
+    };
+
+    const handleMarkCleaned = async (e: React.MouseEvent | null, tableId: string) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
         setUpdatingTableId(tableId);
         try {
             const res = await fetch(`/api/tables/${tableId}`, {
@@ -187,7 +232,19 @@ export default function WaiterDashboard() {
             if (res.ok) {
                 setNotification(`✓ Table reset to vacant`);
                 fetchData();
+            } else {
+                const data = await res.json().catch(() => ({}));
+                if (res.status === 401) {
+                    setNotification('⚠ Session expired. Please log in again.');
+                    setTimeout(() => window.location.href = '/auth/login', 1500);
+                } else {
+                    setNotification(`✗ Failed: ${data.error || 'Unknown error'}`);
+                    console.error('[CLEAN TABLE] Error:', data);
+                }
             }
+        } catch (err) {
+            console.error('[CLEAN TABLE] Network error:', err);
+            setNotification('✗ Network error. Please try again.');
         } finally { setUpdatingTableId(null); }
     };
 
@@ -310,8 +367,8 @@ export default function WaiterDashboard() {
                                 key={f.key}
                                 onClick={() => setActiveFilter(f.key)}
                                 className={`shrink-0 flex items-center gap-1.5 px-3 md:px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${activeFilter === f.key
-                                        ? 'bg-[#111] text-white shadow-sm'
-                                        : `bg-zinc-100 hover:bg-zinc-200 ${f.color || 'text-zinc-500'}`
+                                    ? 'bg-[#111] text-white shadow-sm'
+                                    : `bg-zinc-100 hover:bg-zinc-200 ${f.color || 'text-zinc-500'}`
                                     }`}
                             >
                                 {f.label}
@@ -380,81 +437,110 @@ export default function WaiterDashboard() {
                                     animate={{ scale: 1, opacity: 1 }}
                                     className="relative"
                                 >
-                                    <Link
-                                        href={theme.id === 'VACANT' ? `/waiter/table/${table.id}/menu` : `/waiter/table/${table.id}`}
-                                        className={`block p-4 md:p-5 rounded-2xl border-2 transition-all h-full ${isUpdating ? 'opacity-50 pointer-events-none' : 'active:scale-[0.97]'} ${theme.cardBg} ${theme.cardBorder}`}
-                                    >
-                                        {/* Top Row: Table Number + Status Dot */}
-                                        <div className="flex items-start justify-between mb-2">
-                                            <span className={`text-2xl md:text-3xl font-black tracking-tighter ${theme.id === 'VACANT' ? 'text-zinc-200' : 'text-zinc-900'}`}>
-                                                {table.tableCode.replace('T-', '')}
-                                            </span>
-                                            <div className="flex flex-col items-end gap-1">
-                                                <div className={`w-2.5 h-2.5 rounded-full ${theme.dotColor}`} />
-                                                {elapsed && (
-                                                    <span className="text-[8px] font-bold text-zinc-400 tabular-nums">{elapsed}</span>
-                                                )}
+                                    {theme.id === 'DIRTY' ? (
+                                        /* DIRTY tables: no Link wrapper — Clean button is the primary action */
+                                        <div
+                                            className={`block p-4 md:p-5 rounded-2xl border-2 transition-all h-full ${isUpdating ? 'opacity-50 pointer-events-none' : ''} ${theme.cardBg} ${theme.cardBorder}`}
+                                        >
+                                            <div className="flex items-start justify-between mb-2">
+                                                <span className="text-2xl md:text-3xl font-black tracking-tighter text-zinc-900">
+                                                    {table.tableCode.replace('T-', '')}
+                                                </span>
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <div className={`w-2.5 h-2.5 rounded-full ${theme.dotColor}`} />
+                                                </div>
+                                            </div>
+                                            <p className={`text-[9px] font-black uppercase tracking-widest mb-1 ${theme.labelColor}`}>
+                                                {theme.label}
+                                            </p>
+                                            <div className="mt-3">
+                                                <button
+                                                    onClick={() => handleMarkCleaned(null, table.id)}
+                                                    disabled={isUpdating}
+                                                    className="w-full text-center text-[9px] font-black text-white bg-amber-500 uppercase tracking-widest py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-50"
+                                                >
+                                                    {isUpdating ? '⏳ Cleaning...' : '🧹 Clean'}
+                                                </button>
                                             </div>
                                         </div>
-
-                                        {/* Status Label */}
-                                        <p className={`text-[9px] font-black uppercase tracking-widest mb-1 ${theme.labelColor}`}>
-                                            {theme.label}
-                                        </p>
-
-                                        {/* Order Info */}
-                                        {order && (
-                                            <div className="mt-2 space-y-1">
-                                                {order.customerName && (
-                                                    <p className="text-[10px] font-bold text-zinc-600 truncate">
-                                                        👤 {order.customerName}
-                                                    </p>
-                                                )}
-                                                <p className="text-[9px] font-medium text-zinc-400">
-                                                    {itemCount} item{itemCount !== 1 ? 's' : ''}
-                                                    {order.grandTotal ? ` · ₹${order.grandTotal.toLocaleString()}` : ''}
-                                                </p>
+                                    ) : (
+                                        <Link
+                                            href={
+                                                theme.id === 'VACANT'
+                                                    ? `/waiter/table/${table.id}/menu`
+                                                    : theme.id === 'BILL_REQ'
+                                                        ? (currentUser?.plan === 'STARTER'
+                                                            ? `/waiter/table/${table.id}/bill`
+                                                            : `/waiter/table/${table.id}`)
+                                                        : `/waiter/table/${table.id}`
+                                            }
+                                            className={`block p-4 md:p-5 rounded-2xl border-2 transition-all h-full ${isUpdating ? 'opacity-50 pointer-events-none' : 'active:scale-[0.97]'} ${theme.cardBg} ${theme.cardBorder}`}
+                                        >
+                                            {/* Top Row: Table Number + Status Dot */}
+                                            <div className="flex items-start justify-between mb-2">
+                                                <span className={`text-2xl md:text-3xl font-black tracking-tighter ${theme.id === 'VACANT' ? 'text-zinc-200' : 'text-zinc-900'}`}>
+                                                    {table.tableCode.replace('T-', '')}
+                                                </span>
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <div className={`w-2.5 h-2.5 rounded-full ${theme.dotColor}`} />
+                                                    {elapsed && (
+                                                        <span className="text-[8px] font-bold text-zinc-400 tabular-nums">{elapsed}</span>
+                                                    )}
+                                                </div>
                                             </div>
-                                        )}
 
-                                        {/* Capacity (vacant only) */}
-                                        {theme.id === 'VACANT' && (
-                                            <p className="text-[9px] font-medium text-zinc-300 mt-2">
-                                                👥 {table.capacity} seats
+                                            {/* Status Label */}
+                                            <p className={`text-[9px] font-black uppercase tracking-widest mb-1 ${theme.labelColor}`}>
+                                                {theme.label}
                                             </p>
-                                        )}
 
-                                        {/* Quick Action */}
-                                        <div className="mt-3">
-                                            {theme.id === 'VACANT' ? (
-                                                <div className="w-full text-center text-[9px] font-black text-white bg-[#111] uppercase tracking-widest py-2.5 rounded-xl">
-                                                    + New Order
-                                                </div>
-                                            ) : theme.id === 'DIRTY' ? (
-                                                <button
-                                                    onClick={(e) => handleMarkCleaned(e, table.id)}
-                                                    className="w-full text-center text-[9px] font-black text-white bg-amber-500 uppercase tracking-widest py-2.5 rounded-xl active:scale-95 transition-transform"
-                                                >
-                                                    🧹 Clean
-                                                </button>
-                                            ) : theme.id === 'READY' ? (
-                                                <button
-                                                    onClick={(e) => handleMarkServed(e, table)}
-                                                    className="w-full text-center text-[9px] font-black text-white bg-green-500 uppercase tracking-widest py-2.5 rounded-xl shadow-md shadow-green-200 active:scale-95 transition-transform"
-                                                >
-                                                    ✓ Serve Now
-                                                </button>
-                                            ) : theme.id === 'BILL_REQ' ? (
-                                                <div className="w-full text-center text-[9px] font-black text-red-600 bg-red-100 uppercase tracking-widest py-2.5 rounded-xl">
-                                                    → Cashier
-                                                </div>
-                                            ) : (
-                                                <div className="w-full text-center text-[9px] font-bold text-zinc-400 bg-white border border-zinc-100 uppercase tracking-widest py-2.5 rounded-xl">
-                                                    View →
+                                            {/* Order Info */}
+                                            {order && (
+                                                <div className="mt-2 space-y-1">
+                                                    {order.customerName && (
+                                                        <p className="text-[10px] font-bold text-zinc-600 truncate">
+                                                            👤 {order.customerName}
+                                                        </p>
+                                                    )}
+                                                    <p className="text-[9px] font-medium text-zinc-400">
+                                                        {itemCount} item{itemCount !== 1 ? 's' : ''}
+                                                        {order.grandTotal ? ` · ₹${order.grandTotal.toLocaleString()}` : ''}
+                                                    </p>
                                                 </div>
                                             )}
-                                        </div>
-                                    </Link>
+
+                                            {/* Capacity (vacant only) */}
+                                            {theme.id === 'VACANT' && (
+                                                <p className="text-[9px] font-medium text-zinc-300 mt-2">
+                                                    👥 {table.capacity} seats
+                                                </p>
+                                            )}
+
+                                            {/* Quick Action */}
+                                            <div className="mt-3">
+                                                {theme.id === 'VACANT' ? (
+                                                    <div className="w-full text-center text-[9px] font-black text-white bg-[#111] uppercase tracking-widest py-2.5 rounded-xl">
+                                                        + New Order
+                                                    </div>
+                                                ) : theme.id === 'READY' ? (
+                                                    <button
+                                                        onClick={(e) => handleMarkServedClick(e, table)}
+                                                        className="w-full text-center text-[9px] font-black text-white bg-green-500 uppercase tracking-widest py-2.5 rounded-xl shadow-md shadow-green-200 active:scale-95 transition-transform"
+                                                    >
+                                                        ✓ Serve Now
+                                                    </button>
+                                                ) : theme.id === 'BILL_REQ' ? (
+                                                    currentUser?.plan === 'STARTER'
+                                                        ? <div className="w-full text-center text-[9px] font-black text-white bg-red-500 uppercase tracking-widest py-2.5 rounded-xl animate-pulse">💳 Collect Payment</div>
+                                                        : <div className="w-full text-center text-[9px] font-black text-amber-700 bg-amber-100 border border-amber-200 uppercase tracking-widest py-2.5 rounded-xl">⏳ With Cashier</div>
+                                                ) : (
+                                                    <div className="w-full text-center text-[9px] font-bold text-zinc-400 bg-white border border-zinc-100 uppercase tracking-widest py-2.5 rounded-xl">
+                                                        View →
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </Link>
+                                    )}
                                 </motion.div>
                             );
                         })}
@@ -500,6 +586,110 @@ export default function WaiterDashboard() {
                     </div>
                 </div>
             </div>
+
+            {/* ============================================ */}
+            {/* COMPLAINT ALERTS BANNER */}
+            {/* ============================================ */}
+            <AnimatePresence>
+                {complaintAlerts.length > 0 && (
+                    <div className="fixed top-4 right-4 z-50 space-y-2 max-w-xs">
+                        {complaintAlerts.map(alert => (
+                            <motion.div
+                                key={alert.id}
+                                initial={{ opacity: 0, x: 100, scale: 0.8 }}
+                                animate={{ opacity: 1, x: 0, scale: 1 }}
+                                exit={{ opacity: 0, x: 100, scale: 0.8 }}
+                                className="bg-red-50 border border-red-200 rounded-2xl p-3 shadow-xl shadow-red-100/50 flex items-start gap-2"
+                            >
+                                <span className="text-lg">🚨</span>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-[10px] font-black text-red-700 uppercase tracking-wider">Table {alert.tableCode}</p>
+                                    <p className="text-[9px] text-red-500 mt-0.5">{alert.guestName} — {alert.type.replace('_', ' ')}</p>
+                                </div>
+                                <button
+                                    onClick={() => dismissComplaintAlert(alert.id)}
+                                    className="text-red-300 hover:text-red-500 text-xs"
+                                >
+                                    ✕
+                                </button>
+                            </motion.div>
+                        ))}
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* ============================================ */}
+            {/* SERVE CONFIRMATION MODAL */}
+            {/* ============================================ */}
+            <AnimatePresence>
+                {serveConfirmTable && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+                        onClick={() => setServeConfirmTable(null)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            exit={{ scale: 0.9, y: 20 }}
+                            className="bg-white rounded-3xl shadow-2xl p-6 max-w-sm w-full"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="text-center mb-5">
+                                <span className="text-4xl">🍽️</span>
+                                <h3 className="text-lg font-black text-zinc-900 mt-2">Confirm Serve</h3>
+                                <p className="text-[11px] text-zinc-400 mt-1">
+                                    Mark Table {serveConfirmTable!.tableCode} as served?
+                                </p>
+                            </div>
+
+                            {/* Items checklist */}
+                            <div className="bg-zinc-50 rounded-2xl p-4 mb-5 space-y-2">
+                                {serveConfirmTable!.order?.items.map(item => (
+                                    <div key={item.id} className="flex items-center gap-2">
+                                        <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] ${item.status === 'READY' || item.status === 'SERVED'
+                                            ? 'bg-green-500 text-white' : 'bg-zinc-200 text-zinc-400'
+                                            }`}>
+                                            ✓
+                                        </span>
+                                        <span className="text-[11px] font-bold text-zinc-700 flex-1">
+                                            {item.quantity}× {item.itemName}
+                                        </span>
+                                        <span className={`text-[8px] font-black uppercase tracking-wider ${item.status === 'READY' ? 'text-green-500' :
+                                            item.status === 'SERVED' ? 'text-blue-500' :
+                                                item.status === 'PREPARING' ? 'text-orange-500' : 'text-zinc-300'
+                                            }`}>
+                                            {item.status || 'PENDING'}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <p className="text-[9px] text-zinc-400 text-center mb-4 italic">
+                                The customer will be asked to confirm receipt on their device.
+                            </p>
+
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setServeConfirmTable(null)}
+                                    className="flex-1 py-3 bg-zinc-100 text-zinc-600 rounded-xl text-[10px] font-bold uppercase tracking-wider active:scale-95 transition-transform"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleConfirmServed}
+                                    disabled={!!updatingTableId}
+                                    className="flex-1 py-3 bg-green-500 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider shadow-lg shadow-green-200 active:scale-95 transition-transform disabled:opacity-50"
+                                >
+                                    ✓ Confirm & Serve
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             <style jsx global>{`
                 .no-scrollbar::-webkit-scrollbar { display: none; }

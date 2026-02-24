@@ -12,6 +12,9 @@ export interface PlatformStats {
         plan: string;
         count: number;
     }[];
+    mrr: number;
+    activeSubscriptions: number;
+    growthRate: number;
 }
 
 /**
@@ -34,6 +37,9 @@ export async function getAllClients() {
             plan: true,
             status: true,
             createdAt: true,
+            subscription: {
+                select: { billingCycle: true }
+            },
             _count: {
                 select: { users: true, orders: true }
             }
@@ -49,7 +55,7 @@ export async function getAllClients() {
 export async function createClient(data: {
     name: string;
     slug: string;
-    plan: 'BASIC' | 'ADVANCE' | 'PREMIUM' | 'BUSINESS';
+    plan: 'STARTER' | 'GROWTH' | 'ELITE';
     adminUser: {
         username: string;
         name: string;

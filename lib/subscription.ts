@@ -15,22 +15,16 @@ export enum Feature {
  * Defines which plans have access to which platform features.
  */
 export const PLAN_FEATURES: Record<ClientPlan, Feature[]> = {
-    [ClientPlan.BASIC]: [
-        Feature.MULTI_SECTION_TABLES, // Basic needs sections
+    [ClientPlan.STARTER]: [
+        Feature.MULTI_SECTION_TABLES,
     ],
-    [ClientPlan.ADVANCE]: [
+    [ClientPlan.GROWTH]: [
         Feature.MULTI_SECTION_TABLES,
         Feature.INVENTORY_MANAGEMENT,
-        Feature.UNLIMITED_TABLES,
-    ],
-    [ClientPlan.PREMIUM]: [
-        Feature.MULTI_SECTION_TABLES,
-        Feature.INVENTORY_MANAGEMENT,
-        Feature.UNLIMITED_TABLES,
-        Feature.AI_CONCIERGE, // AI is a Premium draw
+        Feature.AI_CONCIERGE,
         Feature.STAFF_PERFORMANCE,
     ],
-    [ClientPlan.BUSINESS]: [
+    [ClientPlan.ELITE]: [
         Feature.MULTI_SECTION_TABLES,
         Feature.INVENTORY_MANAGEMENT,
         Feature.UNLIMITED_TABLES,
@@ -41,14 +35,11 @@ export const PLAN_FEATURES: Record<ClientPlan, Feature[]> = {
     ],
 };
 
-/**
- * Table Limits based on Plan
- */
+// Plan-based resource limits
 export const PLAN_LIMITS = {
-    [ClientPlan.BASIC]: { maxTables: 10, maxMenuItems: 50 },
-    [ClientPlan.ADVANCE]: { maxTables: 40, maxMenuItems: 150 },
-    [ClientPlan.PREMIUM]: { maxTables: 100, maxMenuItems: 500 },
-    [ClientPlan.BUSINESS]: { maxTables: 9999, maxMenuItems: 9999 },
+    [ClientPlan.STARTER]: { maxTables: 100, maxMenuItems: 300 },
+    [ClientPlan.GROWTH]: { maxTables: 250, maxMenuItems: 1000 },
+    [ClientPlan.ELITE]: { maxTables: 9999, maxMenuItems: 9999 },
 };
 
 /**

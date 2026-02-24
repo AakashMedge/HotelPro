@@ -6,8 +6,9 @@
 
 // We use string literals here instead of importing from @prisma/client 
 // to avoid build breakages when the generated client is out of sync.
-export type ClientPlan = 'BASIC' | 'ADVANCE' | 'PREMIUM' | 'BUSINESS';
+export type ClientPlan = 'STARTER' | 'GROWTH' | 'ELITE';
 export type ClientStatus = 'ACTIVE' | 'SUSPENDED' | 'TRIAL' | 'ARCHIVED' | 'PROVISIONING' | 'PROVISIONING_FAILED';
+export type BillingCycle = 'MONTHLY' | 'ANNUAL';
 
 // ============================================
 // CLIENT MANAGEMENT TYPES
@@ -18,6 +19,7 @@ export interface CreateClientInput {
     name: string;
     slug: string;
     plan: ClientPlan;
+    billingCycle?: BillingCycle;
 
     // Primary Admin User
     adminUsername: string;
@@ -33,6 +35,7 @@ export interface UpdateClientInput {
     name?: string;
     plan?: ClientPlan;
     status?: ClientStatus;
+    billingCycle?: BillingCycle;
     domain?: string;
 }
 
@@ -69,10 +72,9 @@ export interface ClientSubscription {
 
 // Dummy pricing for plans
 export const PLAN_PRICING: Record<string, number> = {
-    BASIC: 1999,      // ₹1,999/month - Starter
-    ADVANCE: 4999,    // ₹4,999/month - Growth
-    PREMIUM: 9999,    // ₹9,999/month - Enterprise Core
-    BUSINESS: 19999,  // ₹19,999/month - Platform Elite
+    STARTER: 1999,    // ₹1,999/month - Starter
+    GROWTH: 4999,     // ₹4,999/month - Growth
+    ELITE: 19999,     // ₹19,999/month - Elite
 };
 
 // Trial period in days

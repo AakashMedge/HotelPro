@@ -49,7 +49,7 @@ model Client {
   domain        String?      @unique
   
   // Reverting to Enums to match generated Prisma client expectations
-  plan          ClientPlan   @default(BASIC)
+  plan          ClientPlan   @default(STARTER)
   status        ClientStatus @default(TRIAL)
   isolationLevel IsolationLevel @default(SHARED)
   databaseUrl   String?
@@ -374,10 +374,9 @@ enum IsolationLevel {
 }
 
 enum ClientPlan {
-  BASIC
-  ADVANCE
-  PREMIUM
-  BUSINESS
+  STARTER
+  GROWTH
+  ELITE
 }
 
 enum ClientStatus {

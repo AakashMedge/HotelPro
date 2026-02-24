@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useEffect, useRef } from 'react';
 import {
     Send, Hash, Users, Bell, Shield, Coffee, ChevronRight,
@@ -211,14 +213,14 @@ export default function SharedHub({ role }: { role: string }) {
         <div className="h-full flex flex-col md:flex-row bg-[#F8FAFC] overflow-hidden">
 
             {/* 1. CHANNEL SIDEBAR - Simplified for non-admin */}
-            <aside className="w-full md:w-64 bg-white border-r border-slate-200 flex flex-col h-full shadow-sm relative z-30">
-                <div className="p-6">
+            <aside className="w-full md:w-64 bg-white md:border-r border-b md:border-b-0 border-slate-200 flex md:flex-col flex-row h-auto md:h-full shadow-sm relative z-30 shrink-0">
+                <div className="hidden md:block p-6">
                     <h2 className={`text-xl font-bold ${role === 'ADMIN' ? 'text-indigo-600' : 'text-slate-800'}`}>Pulse_Hub</h2>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Operational Sync</p>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
-                    <div className="space-y-1">
+                <div className="flex-1 md:overflow-y-auto overflow-x-auto p-2 md:p-4 no-scrollbar">
+                    <div className="flex md:flex-col gap-2 md:gap-1">
                         {channels.map((ch) => {
                             // Hide admin only channels from staff
                             if (ch.type === 'ADMIN_ONLY' && !['ADMIN', 'MANAGER'].includes(role)) return null;
@@ -227,13 +229,13 @@ export default function SharedHub({ role }: { role: string }) {
                                 <button
                                     key={ch.id}
                                     onClick={() => setActiveChannel(ch)}
-                                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeChannel?.id === ch.id
-                                        ? 'bg-indigo-50 text-indigo-600'
-                                        : 'text-slate-500 hover:bg-slate-50'
+                                    className={`md:w-full shrink-0 flex items-center gap-2 md:gap-3 px-3 py-2 md:px-4 md:py-3 rounded-full md:rounded-xl transition-all border md:border-none ${activeChannel?.id === ch.id
+                                        ? 'bg-indigo-50 text-indigo-600 border-indigo-200'
+                                        : 'text-slate-500 hover:bg-slate-50 border-slate-100'
                                         }`}
                                 >
-                                    <Hash className="w-4 h-4 opacity-50" />
-                                    <span className="text-xs font-bold tracking-tight">{ch.name}</span>
+                                    <Hash className="w-3 h-3 md:w-4 md:h-4 opacity-50" />
+                                    <span className="text-xs font-bold tracking-tight whitespace-nowrap">{ch.name}</span>
                                 </button>
                             );
                         })}
@@ -245,7 +247,7 @@ export default function SharedHub({ role }: { role: string }) {
             <main className="flex-1 flex flex-col h-full bg-slate-50/10 relative overflow-hidden">
 
                 {/* Chat Header */}
-                <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 shadow-sm sticky top-0 z-20">
+                <header className="h-14 md:h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-6 shrink-0 shadow-sm sticky top-0 z-20">
                     <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
                             <Hash className="w-4 h-4" />
@@ -257,7 +259,7 @@ export default function SharedHub({ role }: { role: string }) {
                 {/* Message Stream */}
                 <div
                     ref={scrollRef}
-                    className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar"
+                    className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-6 no-scrollbar"
                 >
                     {messages.map((msg) => {
                         const date = new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -270,7 +272,7 @@ export default function SharedHub({ role }: { role: string }) {
                                     <span className="text-xs font-bold text-slate-900">{msg.sender.name}</span>
                                     <span className="text-[9px] font-bold text-slate-300">{date}</span>
                                 </div>
-                                <div className={`p-5 rounded-3xl border shadow-sm transition-all max-w-2xl ${isStockOut ? 'border-rose-300 bg-rose-50' : 'border-slate-100 bg-white'
+                                <div className={`p-4 md:p-5 rounded-3xl border shadow-sm transition-all max-w-2xl ${isStockOut ? 'border-rose-300 bg-rose-50' : 'border-slate-100 bg-white'
                                     }`}>
 
                                     {/* Content (Text / Image / Audio) */}
@@ -314,7 +316,7 @@ export default function SharedHub({ role }: { role: string }) {
                 </div>
 
                 {/* Message Input */}
-                <footer className="p-6 bg-white border-t border-slate-100 shrink-0">
+                <footer className="p-3 md:p-6 bg-white border-t border-slate-100 shrink-0">
                     <div className="max-w-2xl mx-auto flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-200 shadow-sm relative">
 
                         {/* Hidden File Input */}
@@ -351,8 +353,8 @@ export default function SharedHub({ role }: { role: string }) {
                             onClick={isRecording ? stopRecording : startRecording}
                             disabled={sending}
                             className={`p-2 rounded-lg transition-all ${isRecording
-                                    ? 'bg-rose-500 text-white animate-pulse shadow-md shadow-rose-200'
-                                    : 'text-slate-400 hover:text-rose-500 hover:bg-white'
+                                ? 'bg-rose-500 text-white animate-pulse shadow-md shadow-rose-200'
+                                : 'text-slate-400 hover:text-rose-500 hover:bg-white'
                                 }`}
                         >
                             {isRecording ? <X className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
@@ -363,8 +365,8 @@ export default function SharedHub({ role }: { role: string }) {
                             onClick={handleSendText}
                             disabled={sending || !newMessage.trim() || !activeChannel || isRecording}
                             className={`p-2.5 rounded-xl transition-all ${newMessage.trim()
-                                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:scale-105'
-                                    : 'bg-slate-200 text-slate-400'
+                                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:scale-105'
+                                : 'bg-slate-200 text-slate-400'
                                 }`}
                         >
                             {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

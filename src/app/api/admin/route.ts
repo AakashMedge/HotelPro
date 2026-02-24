@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
 
         const stats = {
             restaurantName: client?.name || "Unknown",
-            plan: client?.plan || "BASIC",
+            plan: client?.plan || "STARTER",
             status: client?.status || "TRIAL",
 
             users: statsFromDb.userCount,

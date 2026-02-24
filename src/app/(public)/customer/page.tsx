@@ -22,23 +22,42 @@ const signatures = [
 
 export default function CustomerPage() {
     const [isHovered, setIsHovered] = useState(false);
+    const isStarter = typeof window !== 'undefined' && localStorage.getItem('hp_hotel_plan') === 'STARTER';
+
+    const mainLinks = [
+        { label: 'RESIDENCE', id: 'res', href: '/home' },
+        { label: 'CULINARY', id: 'cul', href: '/welcome-guest' },
+        { label: 'WELLNESS', id: 'wel', href: '#' },
+        { label: 'CONCIERGE', id: 'con', href: '/gift-card' }
+    ].filter(link => !isStarter || link.id === 'cul');
+
+    const secondaryLinks = [
+        { label: 'STORIES', id: 'sto', href: '/story' },
+        { label: 'GIFT CARDS', id: 'gift', href: '/gift-card' },
+        { label: 'INQUIRY', id: 'inq', href: '#' },
+        { label: 'LEGAL', id: 'leg', href: '#' }
+    ].filter(item => !isStarter || ['INQUIRY', 'LEGAL'].includes(item.label));
 
     return (
         <main className="min-h-screen bg-[#EFE7D9] text-black font-sans relative p-6 md:p-12 overflow-hidden">
             {/* Top Navigation */}
             <div className="flex justify-between items-start mb-12">
                 <Link
-                    href="/home"
+                    href={isStarter ? "/welcome-guest" : "/home"}
                     className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm hover:scale-105 transition-transform"
                 >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
                         <line x1="6" y1="6" x2="18" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
                     </svg>
                 </Link>
 
                 <div className="flex items-center gap-2">
-                    <button className="px-6 py-2 bg-white rounded-full text-sm font-semibold shadow-sm hover:shadow-md transition-shadow">
+                    <button
+                        onClick={() => window.location.href = '/welcome-guest'}
+                        className="px-6 py-2 bg-white rounded-full text-sm font-semibold shadow-sm hover:shadow-md transition-shadow"
+                    >
                         Book Now
                     </button>
                     <button className="w-10 h-10 bg-[#FF7F7F] text-black flex items-center justify-center rounded-full shadow-sm hover:rotate-12 transition-all">
@@ -59,6 +78,7 @@ export default function CustomerPage() {
                             {menuCategories.map((cat) => (
                                 <button
                                     key={cat}
+                                    onClick={() => window.location.href = '/menu'}
                                     className="w-40 py-3 border border-black/20 rounded-full text-lg font-medium hover:bg-black hover:text-white transition-all text-left px-8 group flex items-center justify-between"
                                 >
                                     {cat}
@@ -105,12 +125,7 @@ export default function CustomerPage() {
                 {/* Right Column: Main Links (Shifted Right) */}
                 <div className="md:col-span-2 md:pl-32 flex flex-col justify-center py-12 md:py-0">
                     <div className="space-y-0 text-left">
-                        {[
-                            { label: 'RESIDENCE', id: 'res', href: '/home' },
-                            { label: 'CULINARY', id: 'cul', href: '/welcome-guest' },
-                            { label: 'WELLNESS', id: 'wel', href: '#' },
-                            { label: 'CONCIERGE', id: 'con', href: '/gift-card' }
-                        ].map((link) => (
+                        {mainLinks.map((link) => (
                             <Link
                                 key={link.id}
                                 href={link.href}
@@ -125,12 +140,7 @@ export default function CustomerPage() {
                         ))}
 
                         <div className="flex flex-wrap gap-8 pt-16">
-                            {[
-                                { label: 'STORIES', id: 'sto', href: '/story' },
-                                { label: 'GIFT CARDS', id: 'gift', href: '/gift-card' },
-                                { label: 'INQUIRY', id: 'inq', href: '#' },
-                                { label: 'LEGAL', id: 'leg', href: '#' }
-                            ].map((item) => (
+                            {secondaryLinks.map((item) => (
                                 <Link
                                     key={item.id}
                                     href={item.href}

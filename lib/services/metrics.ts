@@ -10,7 +10,7 @@ import { PlatformStats } from "./admin";
  */
 export async function getAggregatedPlatformStats(): Promise<PlatformStats> {
     // 1. Fetch all clients
-    const clients = await (prisma.client as any).findMany({
+    const clients = await prisma.client.findMany({
         select: {
             id: true,
             plan: true,
@@ -30,7 +30,15 @@ export async function getAggregatedPlatformStats(): Promise<PlatformStats> {
         })
     ]);
 
-    // 3. Calculate plan distribution
+    // 3. Fetch all active subscriptions with their plans to calculate MRR
+    const activeSubscriptions = await prisma.subscription.findMany({
+        where: { status: 'ACTIVE' },
+        include: { plan: { select: { price: true } } }
+    });
+
+    const mrr = activeSubscriptions.reduce((sum, sub) => sum + Number(sub.plan.price), 0);
+
+    // 4. Calculate plan distribution
     const plansDistribution: Record<string, number> = {};
     clients.forEach((c: any) => {
         plansDistribution[c.plan] = (plansDistribution[c.plan] || 0) + 1;
@@ -44,6 +52,9 @@ export async function getAggregatedPlatformStats(): Promise<PlatformStats> {
         plansDistribution: Object.entries(plansDistribution).map(([plan, count]) => ({
             plan,
             count
-        }))
+        })),
+        mrr,
+        activeSubscriptions: activeSubscriptions.length,
+        growthRate: 12.5 // Simulated for now
     };
 }

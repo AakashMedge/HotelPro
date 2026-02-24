@@ -7,6 +7,7 @@ import {
     AlertTriangle, ShieldAlert, Loader2, ArrowUpRight,
     Activity, Server, Lock, Sparkles, Box
 } from 'lucide-react';
+import PlatformBroadcasts from '@/components/admin/PlatformBroadcasts';
 
 type AdminStats = {
     restaurantName: string;
@@ -48,7 +49,7 @@ export default function AdminDashboardPage() {
 
     const s = stats || {
         restaurantName: 'The Grand Hotel',
-        plan: 'PREMIUM',
+        plan: 'GROWTH',
         status: 'ACTIVE',
         users: 12,
         tables: 24,
@@ -63,6 +64,7 @@ export default function AdminDashboardPage() {
 
     return (
         <div className="p-6 md:p-10 space-y-10 max-w-7xl mx-auto">
+            <PlatformBroadcasts />
 
             {/* WELCOME SECTION */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden relative group">

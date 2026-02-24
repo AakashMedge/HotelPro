@@ -20,6 +20,7 @@ interface HQClientFormProps {
         slug: string;
         domain: string | null;
         plan: ClientPlan;
+        billingCycle?: 'MONTHLY' | 'ANNUAL';
         status?: ClientStatus;
         adminUsername?: string;
         adminName?: string;
@@ -36,7 +37,8 @@ export default function HQClientForm({ mode, initialData }: HQClientFormProps) {
         name: initialData?.name || '',
         slug: initialData?.slug || '',
         domain: initialData?.domain || '',
-        plan: initialData?.plan || 'BASIC',
+        plan: initialData?.plan || 'STARTER',
+        billingCycle: initialData?.billingCycle || 'MONTHLY',
         status: initialData?.status || 'TRIAL',
 
         // Admin fields (create mode only)
@@ -95,7 +97,7 @@ export default function HQClientForm({ mode, initialData }: HQClientFormProps) {
 
             {error && (
                 <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 flex items-center gap-3">
-                    <X className="w-5 h-5 flex-shrink-0" />
+                    <X className="w-5 h-5 shrink-0" />
                     <p className="font-medium">{error}</p>
                 </div>
             )}
@@ -116,7 +118,7 @@ export default function HQClientForm({ mode, initialData }: HQClientFormProps) {
                                 required
                                 value={formData.name}
                                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-medium"
+                                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-medium text-slate-900 bg-white"
                                 placeholder="e.g. The Grand Hotel"
                             />
                         </div>
@@ -133,7 +135,7 @@ export default function HQClientForm({ mode, initialData }: HQClientFormProps) {
                                     disabled={mode === 'edit'} // Slugs are immutable
                                     value={formData.slug}
                                     onChange={(e) => setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
-                                    className="w-full px-4 py-2 border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-mono text-sm disabled:bg-slate-50 disabled:text-slate-500"
+                                    className="w-full px-4 py-2 border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-mono text-sm text-slate-900 bg-white disabled:bg-slate-50 disabled:text-slate-500"
                                     placeholder="hotel-slug"
                                 />
                                 <span className="bg-slate-100 border border-l-0 border-slate-200 rounded-r-xl px-3 py-2 text-slate-500 font-mono text-sm">
@@ -150,7 +152,7 @@ export default function HQClientForm({ mode, initialData }: HQClientFormProps) {
                                     type="text"
                                     value={formData.domain}
                                     onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
-                                    className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-medium"
+                                    className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-medium text-slate-900 bg-white"
                                     placeholder="app.grandhotel.com"
                                 />
                             </div>
@@ -168,18 +170,37 @@ export default function HQClientForm({ mode, initialData }: HQClientFormProps) {
                     <div className="space-y-4">
                         <div>
                             <label className="block text-sm font-bold text-slate-700 mb-1">Service Plan</label>
-                            <div className="grid grid-cols-2 gap-3">
-                                {['BASIC', 'ADVANCE', 'PREMIUM', 'BUSINESS'].map((plan) => (
+                            <div className="grid grid-cols-3 gap-3">
+                                {['STARTER', 'GROWTH', 'ELITE'].map((plan) => (
                                     <button
                                         key={plan}
                                         type="button"
                                         onClick={() => setFormData({ ...formData, plan: plan as ClientPlan })}
-                                        className={`px-4 py-3 rounded-xl border-2 text-sm font-bold transition-all ${formData.plan === plan
-                                                ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                                                : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200'
+                                        className={`px-3 py-3 rounded-xl border-2 text-[10px] font-black tracking-widest transition-all ${formData.plan === plan
+                                            ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                                            : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200'
                                             }`}
                                     >
                                         {plan}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1">Billing Frequency</label>
+                            <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-100">
+                                {['MONTHLY', 'ANNUAL'].map((cycle) => (
+                                    <button
+                                        key={cycle}
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, billingCycle: cycle as any })}
+                                        className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest transition-all rounded-lg ${formData.billingCycle === cycle
+                                            ? 'bg-white text-slate-900 shadow-sm'
+                                            : 'text-slate-400 hover:text-slate-600'
+                                            }`}
+                                    >
+                                        {cycle}
                                     </button>
                                 ))}
                             </div>
@@ -191,7 +212,7 @@ export default function HQClientForm({ mode, initialData }: HQClientFormProps) {
                                 <select
                                     value={formData.status}
                                     onChange={(e) => setFormData({ ...formData, status: e.target.value as ClientStatus })}
-                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-medium bg-white"
+                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-medium text-slate-900 bg-white"
                                 >
                                     <option value="ACTIVE">Active (Live)</option>
                                     <option value="TRIAL">Trial Period</option>
@@ -219,7 +240,7 @@ export default function HQClientForm({ mode, initialData }: HQClientFormProps) {
                                     required
                                     value={formData.adminName}
                                     onChange={(e) => setFormData({ ...formData, adminName: e.target.value })}
-                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-medium"
+                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-medium text-slate-900 bg-white"
                                     placeholder="Manager Name"
                                 />
                             </div>
@@ -230,7 +251,7 @@ export default function HQClientForm({ mode, initialData }: HQClientFormProps) {
                                     required
                                     value={formData.adminUsername}
                                     onChange={(e) => setFormData({ ...formData, adminUsername: e.target.value })}
-                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-medium"
+                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-medium text-slate-900 bg-white"
                                     placeholder="admin_username"
                                 />
                             </div>
@@ -241,7 +262,7 @@ export default function HQClientForm({ mode, initialData }: HQClientFormProps) {
                                     required
                                     value={formData.adminPassword}
                                     onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })}
-                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-medium"
+                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-medium text-slate-900 bg-white"
                                     placeholder="••••••••"
                                 />
                             </div>
@@ -262,7 +283,7 @@ export default function HQClientForm({ mode, initialData }: HQClientFormProps) {
                 <button
                     type="submit"
                     disabled={isLoading}
-                    className="flex items-center gap-2 px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 hover:shadow-indigo-300 transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
+                    className="flex items-center gap-2 px-8 py-3 bg-slate-900 hover:bg-black text-white rounded-xl font-bold shadow-lg shadow-slate-200 transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed uppercase text-[11px] tracking-widest"
                 >
                     {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                     {mode === 'create' ? 'Provision Tenant' : 'Save Configuration'}

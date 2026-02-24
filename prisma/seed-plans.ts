@@ -24,11 +24,14 @@ const prisma = new PrismaClient({ adapter });
 const PLANS = [
     {
         name: 'Starter',
-        code: 'BASIC' as const,
+        code: 'STARTER' as const,
         price: 1999.00,
         features: {
             qr_menu: true,
             basic_analytics: true,
+            order_management: true,
+            basic_kot: true,
+            basic_billing: true,
             ai_assistant: false,
             inventory: false,
             ai_analysis: false,
@@ -39,17 +42,20 @@ const PLANS = [
             dedicated_support: false,
         },
         limits: {
-            tables: 30,
+            tables: 100,
             menuItems: 300,
         },
     },
     {
         name: 'Growth',
-        code: 'ADVANCE' as const,
+        code: 'GROWTH' as const,
         price: 4999.00,
         features: {
             qr_menu: true,
             basic_analytics: true,
+            order_management: true,
+            basic_kot: true,
+            basic_billing: true,
             ai_assistant: true,
             inventory: true,
             ai_analysis: false,
@@ -60,38 +66,20 @@ const PLANS = [
             dedicated_support: false,
         },
         limits: {
-            tables: 100,
-            menuItems: 5000,
+            tables: 250,
+            menuItems: 1000,
         },
     },
     {
-        name: 'Enterprise',
-        code: 'PREMIUM' as const,
-        price: 9999.00,
-        features: {
-            qr_menu: true,
-            basic_analytics: true,
-            ai_assistant: true,
-            inventory: true,
-            ai_analysis: true,
-            custom_branding: true,
-            isolated_database: true,
-            multi_property: false,
-            ai_automation: false,
-            dedicated_support: false,
-        },
-        limits: {
-            tables: 1000,
-            menuItems: 0, // 0 = Unlimited
-        },
-    },
-    {
-        name: 'Platform Elite',
-        code: 'BUSINESS' as const,
+        name: 'Elite',
+        code: 'ELITE' as const,
         price: 19999.00,
         features: {
             qr_menu: true,
             basic_analytics: true,
+            order_management: true,
+            basic_kot: true,
+            basic_billing: true,
             ai_assistant: true,
             inventory: true,
             ai_analysis: true,
@@ -102,8 +90,8 @@ const PLANS = [
             dedicated_support: true,
         },
         limits: {
-            tables: 0, // Unlimited
-            menuItems: 0, // Unlimited
+            tables: 0,     // 0 = unlimited
+            menuItems: 0,  // 0 = unlimited
         },
     },
 ];

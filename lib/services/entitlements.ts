@@ -53,7 +53,7 @@ const STALE_THRESHOLD_KITCHEN = 72 * 60 * 60 * 1000;  // 72h — block kitchen/c
 // ============================================
 
 const DEFAULT_PLANS: Record<string, { features: Record<string, boolean>; limits: Record<string, number> }> = {
-    BASIC: {
+    STARTER: {
         features: {
             qr_menu: true,
             basic_analytics: true,
@@ -66,9 +66,9 @@ const DEFAULT_PLANS: Record<string, { features: Record<string, boolean>; limits:
             ai_automation: false,
             dedicated_support: false,
         },
-        limits: { tables: 30, menuItems: 300 },
+        limits: { tables: 100, menuItems: 300 },
     },
-    ADVANCE: {
+    GROWTH: {
         features: {
             qr_menu: true,
             basic_analytics: true,
@@ -81,24 +81,9 @@ const DEFAULT_PLANS: Record<string, { features: Record<string, boolean>; limits:
             ai_automation: false,
             dedicated_support: false,
         },
-        limits: { tables: 100, menuItems: 5000 },
+        limits: { tables: 250, menuItems: 1000 },
     },
-    PREMIUM: {
-        features: {
-            qr_menu: true,
-            basic_analytics: true,
-            ai_assistant: true,
-            inventory: true,
-            ai_analysis: true,
-            custom_branding: true,
-            isolated_database: true,
-            multi_property: false,
-            ai_automation: false,
-            dedicated_support: false,
-        },
-        limits: { tables: 1000, menuItems: 0 }, // 0 = unlimited
-    },
-    BUSINESS: {
+    ELITE: {
         features: {
             qr_menu: true,
             basic_analytics: true,
@@ -148,8 +133,8 @@ export async function getEntitlements(clientId: string): Promise<EntitlementData
         select: { plan: true, status: true },
     });
 
-    const planCode = client?.plan || 'BASIC';
-    const defaults = DEFAULT_PLANS[planCode] || DEFAULT_PLANS.BASIC;
+    const planCode = client?.plan || 'STARTER';
+    const defaults = DEFAULT_PLANS[planCode] || DEFAULT_PLANS.STARTER;
 
     return {
         planName: planCode,

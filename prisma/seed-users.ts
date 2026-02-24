@@ -39,7 +39,7 @@ async function main() {
             data: {
                 name: "The Taj Residency",
                 slug: "taj",
-                plan: "PREMIUM",
+                plan: "GROWTH",
                 status: "ACTIVE"
             }
         });

@@ -47,11 +47,19 @@ export default function TableDetails() {
     const [error, setError] = useState<string | null>(null);
     const [updating, setUpdating] = useState(false);
     const [notification, setNotification] = useState<string | null>(null);
+    const [userPlan, setUserPlan] = useState<string>('STARTER');
 
     const fetchTableDetails = useCallback(async () => {
         try {
-            const tablesRes = await fetch(`/api/tables`);
-            const tablesData = await tablesRes.json();
+            const [tablesRes, userRes] = await Promise.all([
+                fetch('/api/tables'),
+                fetch('/api/auth/me'),
+            ]);
+            const [tablesData, uData] = await Promise.all([tablesRes.json(), userRes.json()]);
+            if (uData.success && uData.user?.plan) {
+                setUserPlan(uData.user.plan);
+                localStorage.setItem('hp_hotel_plan', uData.user.plan);
+            }
             const table = tablesData.tables?.find((t: any) => t.id === id);
 
             if (!table) throw new Error('Table not found');
@@ -116,19 +124,32 @@ export default function TableDetails() {
         } finally { setUpdating(false); }
     };
 
-    const requestBill = async () => {
+    // STARTER ONLY: waiter bypasses kitchen — mark directly to SERVED
+    const markReadyAndServe = async () => {
         if (!data || !data.fullId || updating) return;
+        if (!['NEW', 'PREPARING'].includes(data.status)) return;
         setUpdating(true);
         try {
+            // Step 1: READY
+            const r1 = await fetch(`/api/orders/${data.fullId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'READY', version: data.version })
+            });
+            const d1 = await r1.json();
+            const nextVersion = d1.order?.version ?? (data.version + 1);
+            // Step 2: SERVED
             await fetch(`/api/orders/${data.fullId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: 'BILL_REQUESTED', version: data.version })
+                body: JSON.stringify({ status: 'SERVED', version: nextVersion })
             });
-            setNotification('Bill sent to cashier!');
+            setNotification('Order marked ready & served!');
             await fetchTableDetails();
         } finally { setUpdating(false); }
     };
+
+    // requestBill removed — plan-based billing is handled in /bill page
 
     // Status badge styling
     const getItemStatusStyle = (status: string) => {
@@ -324,6 +345,17 @@ export default function TableDetails() {
                             Add More Items
                         </Link>
 
+                        {/* STARTER: bypass kitchen — mark ready & served in one tap */}
+                        {userPlan === 'STARTER' && (data.status === 'NEW' || data.status === 'PREPARING') && (
+                            <button
+                                onClick={markReadyAndServe}
+                                disabled={updating}
+                                className="w-full py-3 bg-green-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-green-600 active:scale-[0.98] transition-all disabled:opacity-60"
+                            >
+                                {updating ? '⏳ Updating...' : '✅ Food Ready & Served'}
+                            </button>
+                        )}
+
                         {data.status === 'READY' && (
                             <button
                                 onClick={markAsServed}
@@ -334,12 +366,12 @@ export default function TableDetails() {
                             </button>
                         )}
 
-                        {(data.status === 'SERVED' || data.status === 'READY') && (
+                        {(data.status === 'SERVED' || data.status === 'READY' || data.status === 'BILL_REQUESTED') && (
                             <Link
                                 href={`/waiter/table/${id}/bill`}
                                 className="w-full py-3 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-600 active:scale-[0.98] transition-all text-center flex items-center justify-center gap-2"
                             >
-                                🧾 Preview & Send Bill
+                                {userPlan === 'STARTER' ? '💳 Collect Payment' : (data.status === 'BILL_REQUESTED' ? '🧾 View Sent Bill' : '🧾 Preview & Send Bill')}
                             </Link>
                         )}
                     </div>
@@ -367,7 +399,16 @@ export default function TableDetails() {
                             <span className="text-[10px] font-bold uppercase tracking-widest">Add Items</span>
                         </Link>
 
-                        {data.status === 'READY' ? (
+                        {/* STARTER: bypass kitchen on mobile */}
+                        {userPlan === 'STARTER' && (data.status === 'NEW' || data.status === 'PREPARING') ? (
+                            <button
+                                onClick={markReadyAndServe}
+                                disabled={updating}
+                                className="flex-1 h-12 bg-green-500 text-white rounded-xl flex items-center justify-center shadow-sm active:scale-95 transition-all disabled:opacity-60"
+                            >
+                                <span className="text-[10px] font-bold uppercase tracking-widest">{updating ? '⏳' : '✅ Served'}</span>
+                            </button>
+                        ) : data.status === 'READY' ? (
                             <button
                                 onClick={markAsServed}
                                 disabled={updating}
@@ -375,12 +416,14 @@ export default function TableDetails() {
                             >
                                 <span className="text-[10px] font-bold uppercase tracking-widest">{updating ? '...' : 'Serve'}</span>
                             </button>
-                        ) : data.status === 'SERVED' ? (
+                        ) : (data.status === 'SERVED' || data.status === 'BILL_REQUESTED') ? (
                             <Link
                                 href={`/waiter/table/${id}/bill`}
                                 className="flex-1 h-12 bg-amber-500 text-white rounded-xl flex items-center justify-center shadow-sm active:scale-95 transition-all"
                             >
-                                <span className="text-[10px] font-bold uppercase tracking-widest">🧾 Bill</span>
+                                <span className="text-[10px] font-bold uppercase tracking-widest">
+                                    {userPlan === 'STARTER' ? '💳 Collect' : (data.status === 'BILL_REQUESTED' ? '🧾 View' : '🧾 Bill')}
+                                </span>
                             </Link>
                         ) : (
                             <div className="flex-1 h-12 bg-zinc-100 text-zinc-400 rounded-xl flex items-center justify-center">

@@ -63,6 +63,12 @@ export default function AIAssistantPage() {
     // ── Init ──
     useEffect(() => {
         if (typeof window === 'undefined') return;
+        const plan = localStorage.getItem('hp_hotel_plan');
+        if (plan === 'STARTER') {
+            router.replace('/menu');
+            return;
+        }
+
         setGuestName(localStorage.getItem('hp_guest_name') || 'Guest');
         setTableCode(localStorage.getItem('hp_table_code') || '');
         setTableId(localStorage.getItem('hp_table_id') || '');
@@ -186,8 +192,8 @@ export default function AIAssistantPage() {
         utterance.onend = () => {
             utteranceRef.current = null;
             setPhase('idle');
-            // Auto-listen after speaking? (Optional: could be annoying)
-            // startListening(); 
+            // Auto-listen after speaking
+            startListening();
         };
         utterance.onerror = () => {
             utteranceRef.current = null;
@@ -579,9 +585,9 @@ export default function AIAssistantPage() {
             {/* ─── Top Bar ─── */}
             <header className="shrink-0 px-5 pt-12 sm:pt-16 pb-3 relative z-10 flex items-center justify-between">
                 <div className="flex-1">
-                    <p className="text-[8px] font-black uppercase tracking-[0.5em] text-[#D43425]/40">
+                    <div className="text-[8px] font-black uppercase tracking-[0.5em] text-[#D43425]/40">
                         HotelPro Premium Suite
-                    </p>
+                    </div>
                     <h1 className="text-xl font-serif font-black text-[#1A1A1A] italic -mt-0.5">
                         The Master Waiter
                     </h1>
