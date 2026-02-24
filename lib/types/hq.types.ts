@@ -68,6 +68,7 @@ export interface ClientSubscription {
     isTrialActive: boolean;
     nextBillingDate: Date;
     monthlyPrice: number;
+    billingCycle?: string;
 }
 
 // Dummy pricing for plans

@@ -92,7 +92,7 @@ const COMPARISON_ROWS = [
     },
 ];
 
-export default function PricingPage() {
+function PricingContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const highlight = searchParams.get('highlight') || '';
@@ -204,10 +204,10 @@ export default function PricingPage() {
                                         onClick={() => handleSelectPlan(plan.code)}
                                         disabled={isCurrent}
                                         className={`w-full py-3.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all mb-12 ${isCurrent
-                                                ? 'bg-slate-50 text-slate-400 cursor-not-allowed border border-slate-100'
-                                                : plan.popular
-                                                    ? 'bg-slate-900 text-white hover:bg-black shadow-lg shadow-slate-200'
-                                                    : 'bg-white text-slate-900 border border-slate-200 hover:border-slate-900'
+                                            ? 'bg-slate-50 text-slate-400 cursor-not-allowed border border-slate-100'
+                                            : plan.popular
+                                                ? 'bg-slate-900 text-white hover:bg-black shadow-lg shadow-slate-200'
+                                                : 'bg-white text-slate-900 border border-slate-200 hover:border-slate-900'
                                             }`}
                                     >
                                         {isCurrent ? 'Current Plan' : plan.code === 'ELITE' ? 'Talk to Sales' : 'Select Plan'}
@@ -296,6 +296,14 @@ export default function PricingPage() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function PricingPage() {
+    return (
+        <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center text-slate-500 text-sm">Loading...</div>}>
+            <PricingContent />
+        </React.Suspense>
     );
 }
 
