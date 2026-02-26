@@ -1,6 +1,20 @@
-
 import { prisma } from "@/lib/db";
-import { PlatformStats } from "./admin";
+
+export interface PlatformStats {
+    totalClients: number;
+    totalOrders: number;
+    totalRevenue: number;
+    activeUsers: number;
+    plansDistribution: {
+        plan: string;
+        count: number;
+    }[];
+    mrr: number;
+    activeSubscriptions: number;
+    growthRate: number;
+    orderRevenue: number;
+    saasRevenue: number;
+}
 
 /**
  * Global Metrics Aggregator
@@ -19,7 +33,7 @@ export async function getAggregatedPlatformStats(): Promise<PlatformStats> {
     });
 
     // 2. Fetch platform-wide totals from the main database
-    const [totalOrders, sharedRevenue, activeUsers] = await Promise.all([
+    const [totalOrders, sharedRevenue, activeUsers, subscriptionRevenue] = await Promise.all([
         prisma.order.count({ where: { status: 'CLOSED' } }),
         prisma.order.aggregate({
             where: { status: 'CLOSED' },
@@ -27,16 +41,30 @@ export async function getAggregatedPlatformStats(): Promise<PlatformStats> {
         }),
         prisma.user.count({
             where: { isActive: true }
+        }),
+        (prisma as any).saaSPayment.aggregate({
+            where: { status: 'PAID' },
+            _sum: { amount: true }
         })
     ]);
 
-    // 3. Fetch all active subscriptions with their plans to calculate MRR
     const activeSubscriptions = await prisma.subscription.findMany({
         where: { status: 'ACTIVE' },
-        include: { plan: { select: { price: true } } }
+        include: { plan: { select: { price: true, name: true, code: true } } }
     });
 
-    const mrr = activeSubscriptions.reduce((sum, sub) => sum + Number(sub.plan.price), 0);
+    const mrr = activeSubscriptions.reduce((sum, sub) => sum + Number(sub.plan?.price || 0), 0);
+
+    // 4. Calculate Growth Rate (Subscribers growth compared to last month)
+    const lastMonth = new Date();
+    lastMonth.setMonth(lastMonth.getMonth() - 1);
+    const lastMonthSubsCount = await prisma.subscription.count({
+        where: { createdAt: { lt: lastMonth } }
+    });
+
+    const growthRate = lastMonthSubsCount === 0
+        ? (activeSubscriptions.length > 0 ? 100 : 0)
+        : Math.round(((activeSubscriptions.length - lastMonthSubsCount) / lastMonthSubsCount) * 100);
 
     // 4. Calculate plan distribution
     const plansDistribution: Record<string, number> = {};
@@ -44,10 +72,12 @@ export async function getAggregatedPlatformStats(): Promise<PlatformStats> {
         plansDistribution[c.plan] = (plansDistribution[c.plan] || 0) + 1;
     });
 
+    const totalRevenue = Number(sharedRevenue._sum.grandTotal || 0) + Number(subscriptionRevenue._sum.amount || 0);
+
     return {
         totalClients: clients.length,
         totalOrders,
-        totalRevenue: Number(sharedRevenue._sum.grandTotal || 0),
+        totalRevenue: totalRevenue,
         activeUsers,
         plansDistribution: Object.entries(plansDistribution).map(([plan, count]) => ({
             plan,
@@ -55,6 +85,8 @@ export async function getAggregatedPlatformStats(): Promise<PlatformStats> {
         })),
         mrr,
         activeSubscriptions: activeSubscriptions.length,
-        growthRate: 12.5 // Simulated for now
+        growthRate,
+        orderRevenue: Number(sharedRevenue._sum.grandTotal || 0),
+        saasRevenue: Number(subscriptionRevenue._sum.amount || 0)
     };
 }

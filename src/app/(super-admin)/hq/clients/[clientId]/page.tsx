@@ -102,7 +102,9 @@ export default async function ClientDetailPage({ params }: PageProps) {
                             <div>
                                 <h1 className="text-3xl font-black text-slate-900 tracking-tight">{client.name}</h1>
                                 <div className="flex items-center gap-3 mt-1.5 font-mono text-xs">
-                                    <span className="text-slate-400">{client.slug}.hotelpro.com</span>
+                                    <span className="text-slate-400">{client.slug}.hotelpro.io</span>
+                                    <span className="text-slate-200">•</span>
+                                    <span className="text-slate-400">{client.ownerEmail || 'no-owner-email'}</span>
                                     {client.domain && (
                                         <>
                                             <span className="text-slate-200">•</span>
@@ -235,7 +237,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
                 </div>
 
                 {/* Admin Access Panel */}
-                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 lg:col-span-3">
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8">
                     <div className="flex items-center justify-between mb-8">
                         <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-3">
                             <Shield className="w-4 h-4" />
@@ -247,30 +249,86 @@ export default async function ClientDetailPage({ params }: PageProps) {
                         </button>
                     </div>
 
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="space-y-4">
                         {(client as any).users?.length > 0 ? (
                             (client as any).users.map((user: any) => (
-                                <div key={user.id} className="flex items-center justify-between p-4 bg-slate-50 hover:bg-white hover:shadow-md hover:border-slate-100 border border-transparent rounded-2xl transition-all">
+                                <div key={user.id} className="flex items-center justify-between p-4 bg-slate-50 hover:bg-white hover:shadow-md hover:border-slate-100 border border-transparent rounded-2xl transition-all font-mono text-xs">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-slate-400 shadow-xs uppercase font-black text-xs">
+                                        <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-slate-400 shadow-sm uppercase font-black">
                                             {user.name.slice(0, 1)}
                                         </div>
                                         <div>
-                                            <p className="font-bold text-slate-800 text-sm">{user.name}</p>
-                                            <p className="text-[10px] text-slate-400 font-mono">@{user.username}</p>
+                                            <p className="font-bold text-slate-800">{user.name}</p>
+                                            <p className="text-[9px] text-slate-400 italic">@{user.username}</p>
                                         </div>
                                     </div>
                                     <span className={`text-[8px] px-2 py-0.5 rounded font-black uppercase tracking-widest ${user.isActive
-                                        ? 'bg-emerald-100 text-emerald-700'
-                                        : 'bg-red-100 text-red-700'
+                                        ? 'bg-emerald-100 text-emerald-700 font-black'
+                                        : 'bg-red-100 text-red-700 font-black'
                                         }`}>
                                         {user.isActive ? 'Active' : 'Locked'}
                                     </span>
                                 </div>
                             ))
                         ) : (
-                            <div className="col-span-full text-center py-10 text-slate-300 font-medium italic text-sm">
-                                No active access hierarchies found for this node.
+                            <div className="text-center py-6 text-slate-300 font-medium italic text-xs">
+                                No active access hierarchies found.
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Stripe Payment Ledger */}
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 lg:col-span-2">
+                    <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-3 mb-8">
+                        <CreditCard className="w-4 h-4" />
+                        Platform Revenue Ledger (Stripe)
+                    </h2>
+
+                    <div className="overflow-x-auto">
+                        {client.saaSPayments && client.saaSPayments.length > 0 ? (
+                            <table className="w-full text-left text-xs">
+                                <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-widest">
+                                        <th className="px-4 py-3 font-black">Reference</th>
+                                        <th className="px-4 py-3 font-black">Plan</th>
+                                        <th className="px-4 py-3 font-black">Amount</th>
+                                        <th className="px-4 py-3 font-black">Date</th>
+                                        <th className="px-4 py-3 font-black text-right">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {client.saaSPayments.map((payment: any) => (
+                                        <tr key={payment.id} className="hover:bg-slate-50/50 transition-colors">
+                                            <td className="px-4 py-4">
+                                                <p className="font-mono text-[9px] text-slate-400 truncate w-24 uppercase font-black" title={payment.stripeSessionId}>
+                                                    SID: {payment.stripeSessionId.slice(-8)}
+                                                </p>
+                                            </td>
+                                            <td className="px-4 py-4">
+                                                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[9px] font-black">
+                                                    {payment.plan}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-4 font-black text-slate-900">
+                                                ₹{payment.amount.toLocaleString()}
+                                            </td>
+                                            <td className="px-4 py-4 text-slate-500 font-medium">
+                                                {formatDate(payment.paidAt)}
+                                            </td>
+                                            <td className="px-4 py-4 text-right">
+                                                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[9px] font-black border border-emerald-100">
+                                                    SETTLED
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        ) : (
+                            <div className="py-12 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                                <p className="text-slate-400 text-sm font-medium italic">No Stripe transaction logs found for this node.</p>
+                                <p className="text-[10px] text-slate-300 uppercase tracking-widest mt-2">Sync healthy • Test Mode active</p>
                             </div>
                         )}
                     </div>

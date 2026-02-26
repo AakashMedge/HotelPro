@@ -7,6 +7,7 @@ import {
     Loader2, Activity, Zap, CreditCard
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import Link from 'next/link';
 
 interface PlatformStats {
     totalClients: number;
@@ -17,6 +18,8 @@ interface PlatformStats {
     mrr: number;
     activeSubscriptions: number;
     growthRate: number;
+    orderRevenue: number;
+    saasRevenue: number;
 }
 
 export default function HQDashboard() {
@@ -24,26 +27,28 @@ export default function HQDashboard() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
-    useEffect(() => {
-        async function fetchStats() {
-            try {
-                const res = await fetch('/api/admin/stats');
-                const data = await res.json();
-                if (data.success) {
-                    setStats(data.stats);
-                } else {
-                    setError(data.message || 'Failed to load stats');
-                }
-            } catch (err) {
-                setError('Network error');
-            } finally {
-                setLoading(false);
+    const fetchStats = async () => {
+        setLoading(true);
+        try {
+            const res = await fetch('/api/admin/stats');
+            const data = await res.json();
+            if (data.success) {
+                setStats(data.stats);
+            } else {
+                setError(data.message || 'Failed to load stats');
             }
+        } catch (err) {
+            setError('Network error');
+        } finally {
+            setLoading(false);
         }
+    };
+
+    useEffect(() => {
         fetchStats();
     }, []);
 
-    if (loading) {
+    if (loading && !stats) {
         return (
             <div className="h-[60vh] flex flex-col items-center justify-center">
                 <Loader2 className="w-6 h-6 animate-spin text-indigo-600 mb-4" />
@@ -52,7 +57,7 @@ export default function HQDashboard() {
         );
     }
 
-    if (error) {
+    if (error && !stats) {
         return (
             <div className="h-[60vh] flex items-center justify-center">
                 <div className="text-center space-y-4">
@@ -60,7 +65,7 @@ export default function HQDashboard() {
                         <Activity className="w-6 h-6 text-red-500" />
                     </div>
                     <p className="text-zinc-900 font-medium">{error}</p>
-                    <button onClick={() => window.location.reload()} className="text-xs text-indigo-600 underline underline-offset-4">Retry Connection</button>
+                    <button onClick={() => fetchStats()} className="text-xs text-indigo-600 underline underline-offset-4">Retry Connection</button>
                 </div>
             </div>
         );
@@ -80,51 +85,72 @@ export default function HQDashboard() {
                     <h1 className="text-4xl font-light text-zinc-950 tracking-tight">Command <span className="font-semibold italic text-indigo-600">Center</span></h1>
                     <p className="text-sm text-zinc-500 font-medium">Monitoring <span className="text-zinc-900 font-semibold">{stats?.totalClients} active properties</span> across the network.</p>
                 </div>
-                <div className="text-right">
-                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Global Managed Revenue</p>
-                    <div className="flex items-baseline gap-2 justify-end">
-                        <span className="text-xs font-bold text-indigo-600">INR</span>
-                        <p className="text-4xl font-black text-zinc-950 tabular-nums tracking-tighter">
-                            {(stats?.totalRevenue || 0).toLocaleString('en-IN')}
-                        </p>
+                <div className="text-right flex flex-col items-end gap-2">
+                    <button
+                        onClick={fetchStats}
+                        disabled={loading}
+                        className="text-[9px] font-black text-indigo-600 uppercase tracking-widest hover:text-indigo-700 flex items-center gap-1 mb-2 disabled:opacity-50"
+                    >
+                        <Zap className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} /> Force Live Sync
+                    </button>
+                    <div>
+                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Global Managed Revenue</p>
+                        <div className="flex items-baseline gap-2 justify-end">
+                            <span className="text-xs font-bold text-indigo-600">INR</span>
+                            <p className="text-4xl font-black text-zinc-950 tabular-nums tracking-tighter">
+                                {(stats?.totalRevenue || 0).toLocaleString('en-IN')}
+                            </p>
+                        </div>
+                        <div className="flex gap-4 mt-1 text-[9px] font-bold uppercase tracking-widest text-zinc-400">
+                            <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> SaaS: ₹{(stats?.saasRevenue || 0).toLocaleString()}</span>
+                            <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-blue-400" /> Orders: ₹{(stats?.orderRevenue || 0).toLocaleString()}</span>
+                        </div>
                     </div>
                 </div>
             </div>
 
             {/* Core Metrics: Infused with subtle color identities */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatMetric
-                    label="Managed Hotels"
-                    value={stats?.totalClients || 0}
-                    icon={<Building2 className="w-4 h-4" />}
-                    color="text-indigo-600"
-                    bg="bg-indigo-50"
-                    border="border-indigo-100"
-                />
-                <StatMetric
-                    label="Active Subscriptions"
-                    value={stats?.activeSubscriptions || 0}
-                    icon={<CreditCard className="w-4 h-4" />}
-                    color="text-emerald-600"
-                    bg="bg-emerald-50"
-                    border="border-emerald-100"
-                />
-                <StatMetric
-                    label="Monthly Recurring Revenue"
-                    value={`₹${(stats?.mrr || 0).toLocaleString('en-IN')}`}
-                    icon={<DollarSign className="w-4 h-4" />}
-                    color="text-blue-600"
-                    bg="bg-blue-50"
-                    border="border-blue-100"
-                />
-                <StatMetric
-                    label="Growth Velocity"
-                    value={`${stats?.growthRate}%`}
-                    icon={<Zap className="w-4 h-4" />}
-                    color="text-amber-600"
-                    bg="bg-amber-50"
-                    border="border-amber-100"
-                />
+                <Link href="/hq/clients" className="block outline-none focus:ring-2 focus:ring-indigo-500 rounded-4xl transition-all">
+                    <StatMetric
+                        label="Managed Hotels"
+                        value={stats?.totalClients || 0}
+                        icon={<Building2 className="w-4 h-4" />}
+                        color="text-indigo-600"
+                        bg="bg-indigo-50"
+                        border="border-indigo-100"
+                    />
+                </Link>
+                <Link href="/hq/subscriptions" className="block outline-none focus:ring-2 focus:ring-emerald-500 rounded-4xl transition-all">
+                    <StatMetric
+                        label="Active Subscriptions"
+                        value={stats?.activeSubscriptions || 0}
+                        icon={<CreditCard className="w-4 h-4" />}
+                        color="text-emerald-600"
+                        bg="bg-emerald-50"
+                        border="border-emerald-100"
+                    />
+                </Link>
+                <Link href="/hq/subscriptions" className="block outline-none focus:ring-2 focus:ring-blue-500 rounded-4xl transition-all">
+                    <StatMetric
+                        label="Monthly Recurring Revenue"
+                        value={`₹${(stats?.mrr || 0).toLocaleString('en-IN')}`}
+                        icon={<DollarSign className="w-4 h-4" />}
+                        color="text-blue-600"
+                        bg="bg-blue-50"
+                        border="border-blue-100"
+                    />
+                </Link>
+                <div className="block rounded-4xl">
+                    <StatMetric
+                        label="Growth Velocity"
+                        value={`${stats?.growthRate}%`}
+                        icon={<Zap className="w-4 h-4" />}
+                        color="text-amber-600"
+                        bg="bg-amber-50"
+                        border="border-amber-100"
+                    />
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
@@ -132,9 +158,9 @@ export default function HQDashboard() {
                 <div className="lg:col-span-8 space-y-8">
                     <div className="flex items-center justify-between">
                         <h2 className="text-xs font-black text-zinc-900 uppercase tracking-[0.2em]">Growth Statistics</h2>
-                        <button className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 transition-colors uppercase tracking-widest flex items-center gap-1">
+                        <Link href="/hq/subscriptions" className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 transition-colors uppercase tracking-widest flex items-center gap-1">
                             Detailed Audit <ArrowRight className="w-3 h-3" />
-                        </button>
+                        </Link>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         {stats?.plansDistribution.map((plan, i) => (
@@ -160,9 +186,9 @@ export default function HQDashboard() {
                             <h3 className="text-zinc-950 font-black text-xl tracking-tight">Revenue Velocity <span className="text-indigo-600">Intelligence</span></h3>
                             <p className="text-zinc-500 text-sm max-w-sm font-bold tracking-tight">Generating real-time reports for property growth and platform commission tracks.</p>
                         </div>
-                        <button className="bg-indigo-600 text-white px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition-all relative z-10 flex items-center gap-2 shadow-lg shadow-indigo-500/20">
+                        <Link href="/hq/subscriptions" className="bg-indigo-600 text-white px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition-all relative z-10 flex items-center gap-2 shadow-lg shadow-indigo-500/20">
                             Access Analytics <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
+                        </Link>
                     </div>
                 </div>
 
@@ -200,7 +226,7 @@ export default function HQDashboard() {
 
 function StatMetric({ label, value, icon, color, bg, border }: { label: string, value: string | number, icon: React.ReactNode, color: string, bg: string, border: string }) {
     return (
-        <div className={`bg-white p-8 space-y-5 rounded-4xl border ${border} hover:shadow-xl hover:shadow-zinc-200/50 transition-all group`}>
+        <div className={`bg-white p-8 space-y-5 rounded-4xl border ${border} hover:shadow-xl hover:shadow-zinc-200/50 transition-all group h-full`}>
             <div className="flex items-center justify-between">
                 <div className={`p-3 ${bg} ${color} rounded-2xl transition-transform group-hover:rotate-12`}>
                     {icon}
@@ -217,20 +243,20 @@ function StatMetric({ label, value, icon, color, bg, border }: { label: string, 
 
 function QuickAction({ href, title, description, icon, theme }: { href: string, title: string, description: string, icon: React.ReactNode, theme: 'blue' | 'indigo' | 'zinc' }) {
     const themes = {
-        blue: 'border-indigo-100 hover:border-indigo-600 hover:bg-indigo-50/10 text-indigo-600 icon-bg-indigo-600',
-        indigo: 'border-violet-100 hover:border-violet-600 hover:bg-violet-50/10 text-violet-600 icon-bg-violet-600',
-        zinc: 'border-zinc-100 hover:border-zinc-950 hover:bg-zinc-50/10 text-zinc-950 icon-bg-zinc-950'
+        blue: 'border-blue-100 hover:border-blue-600 hover:bg-blue-50/10 text-blue-600',
+        indigo: 'border-indigo-100 hover:border-indigo-600 hover:bg-indigo-50/10 text-indigo-600',
+        zinc: 'border-zinc-100 hover:border-zinc-950 hover:bg-zinc-50/10 text-zinc-950'
     };
 
     const iconBgs = {
-        blue: 'bg-indigo-600',
-        indigo: 'bg-violet-600',
+        blue: 'bg-blue-600',
+        indigo: 'bg-indigo-600',
         zinc: 'bg-zinc-950'
     };
 
     return (
-        <a href={href} className={`flex items-start gap-4 p-6 bg-white border-2 ${themes[theme].split(' ')[0]} ${themes[theme].split(' ')[1]} ${themes[theme].split(' ')[2]} rounded-4xl transition-all hover:shadow-2xl hover:shadow-zinc-200/50 group`}>
-            <div className={`w-12 h-12 rounded-2xl ${iconBgs[theme]} flex items-center justify-center shrink-0 shadow-lg shadow-current/10`}>
+        <Link href={href} className={`flex items-start gap-4 p-6 bg-white border-2 ${themes[theme]} rounded-4xl transition-all hover:shadow-2xl hover:shadow-zinc-200/50 group`}>
+            <div className={`w-12 h-12 rounded-2xl ${iconBgs[theme]} flex items-center justify-center shrink-0 shadow-lg shadow-current/10 text-white`}>
                 {icon}
             </div>
             <div className="flex-1 min-w-0">
@@ -240,6 +266,6 @@ function QuickAction({ href, title, description, icon, theme }: { href: string, 
                 </div>
                 <p className="text-[11px] text-zinc-400 leading-tight font-bold tracking-tight">{description}</p>
             </div>
-        </a>
+        </Link>
     );
 }

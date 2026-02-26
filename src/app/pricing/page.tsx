@@ -92,6 +92,31 @@ const COMPARISON_ROWS = [
     },
 ];
 
+// Feature display labels mapping
+const FEATURE_LABELS: Record<string, string> = {
+    qr_menu: 'QR Digital Menu',
+    order_management: 'Order Management',
+    basic_kot: 'Basic KOT System',
+    basic_billing: 'Basic Billing',
+    inventory: 'Inventory Tracking',
+    ai_assistant: 'AI Menu Assistant',
+    customer_flow: 'Customer Order Flow',
+    standard_branding: 'Standard Branding',
+    ai_automation: 'Full AI Automation',
+    ai_analysis: 'AI Performance Analysis',
+    multi_property: 'Multi-Property Sync',
+    isolated_database: 'Isolated Data Node',
+    custom_branding: 'Custom Branding',
+    dedicated_support: 'Priority Support',
+    basic_analytics: 'Basic Analytics',
+};
+
+const PLAN_TAGLINES: Record<string, string> = {
+    STARTER: 'Standard essentials for small outfits.',
+    GROWTH: 'Professional tools for scaling venues.',
+    ELITE: 'Maximum performance & dedicated infras.',
+};
+
 function PricingContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
@@ -99,18 +124,35 @@ function PricingContent() {
     const [billing, setBilling] = useState<'monthly' | 'annual'>('monthly');
     const [showComparison, setShowComparison] = useState(false);
     const [currentPlan, setCurrentPlan] = useState<string | null>(null);
+    const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [plans, setPlans] = useState<any[]>([]);
+    const [loadingPlans, setLoadingPlans] = useState(true);
 
     useEffect(() => {
-        async function fetchCurrentPlan() {
+        async function fetchData() {
+            setLoadingPlans(true);
             try {
+                // Fetch Available Plans
+                const plansRes = await fetch('/api/plans');
+                if (plansRes.ok) {
+                    const plansData = await plansRes.json();
+                    setPlans(plansData.plans || []);
+                }
+
+                // Fetch Current Active Plan
                 const res = await fetch('/api/entitlements');
                 if (res.ok) {
                     const data = await res.json();
-                    setCurrentPlan(data.planName?.toUpperCase() || null);
+                    setCurrentPlan(data.targetPlan?.toUpperCase() || data.planName?.toUpperCase() || null);
                 }
-            } catch { }
+            } catch (err) {
+                console.error("Failed to fetch dynamic pricing data", err);
+            } finally {
+                setLoadingPlans(false);
+            }
         }
-        fetchCurrentPlan();
+        fetchData();
     }, []);
 
     const getPrice = (base: number) => {
@@ -118,9 +160,43 @@ function PricingContent() {
         return base;
     };
 
-    const handleSelectPlan = (planCode: string) => {
+    const handleSelectPlan = async (planCode: string) => {
         if (currentPlan === planCode) return;
-        router.push(`/admin/billing?upgrade=${planCode}`);
+
+        setLoadingPlan(planCode);
+        setErrorMsg(null);
+
+        try {
+            console.log(`[Pricing] Initiating checkout for plan: ${planCode}`);
+            const res = await fetch('/api/billing/create-checkout-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    planCode,
+                    billingCycle: billing.toUpperCase()
+                }),
+            });
+
+            console.log(`[Pricing] API Response status: ${res.status}`);
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || 'Checkout initiation failed');
+            }
+
+            const { url } = await res.json();
+            if (url) {
+                window.location.href = url;
+            }
+        } catch (err: any) {
+            console.error("Checkout error:", err);
+            setErrorMsg(err.message || "Something went wrong. Please try again.");
+
+            // Fallback for demo if API fails
+            setTimeout(() => setErrorMsg(null), 5000);
+        } finally {
+            setLoadingPlan(null);
+        }
     };
 
     const renderCellValue = (val: boolean | string) => {
@@ -174,64 +250,111 @@ function PricingContent() {
                 </div>
             </div>
 
+            {/* Error Display */}
+            {errorMsg && (
+                <div className="max-w-md mx-auto px-6 mb-8 -mt-8">
+                    <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-widest text-center animate-in fade-in slide-in-from-top-2 duration-300">
+                        {errorMsg}
+                    </div>
+                </div>
+            )}
+
             {/* Matrix */}
             <div className="max-w-7xl mx-auto px-6 pb-32">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-12 lg:gap-16 items-start">
-                    {PLANS.map((plan) => {
-                        const isCurrent = currentPlan === plan.code;
-                        const isHighlighted = highlight === plan.code;
-                        const price = getPrice(plan.price);
+                {loadingPlans ? (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-12 lg:gap-16 items-start">
+                        {[1, 2, 3].map((i) => (
+                            <div key={i} className="animate-pulse bg-slate-50 h-[600px] rounded-2xl"></div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-12 lg:gap-16 items-start">
+                        {plans.map((plan) => {
+                            const isCurrent = currentPlan === plan.code;
+                            const isHighlighted = highlight === plan.code || plan.code === 'GROWTH';
+                            const price = getPrice(plan.price);
 
-                        return (
-                            <div key={plan.code} className="group">
-                                <div className={`flex flex-col h-full ${isHighlighted ? 'opacity-100 ring-1 ring-slate-900/5 p-2 rounded-2xl' : ''}`}>
-                                    <div className="mb-10">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400">{plan.name}</h3>
-                                            {plan.popular && (
-                                                <span className="text-[10px] font-bold bg-slate-900 text-white px-2 py-0.5 rounded-full uppercase tracking-widest">Recommended</span>
-                                            )}
-                                        </div>
-                                        <p className="text-xs text-slate-500 font-medium mb-8 leading-snug">{plan.tagline}</p>
+                            // Transform features dictionary to list
+                            const displayedFeatures = Object.entries(plan.features || {})
+                                .filter(([key]) => FEATURE_LABELS[key])
+                                .map(([key, included]) => ({
+                                    label: FEATURE_LABELS[key],
+                                    included: !!included
+                                }));
 
-                                        <div className="flex items-baseline gap-1">
-                                            <span className="text-3xl font-bold tracking-tighter">₹{price.toLocaleString()}</span>
-                                            <span className="text-xs text-slate-400 font-medium uppercase tracking-widest">/mo</span>
-                                        </div>
-                                    </div>
+                            // Add limits to features
+                            if (plan.limits?.tables !== undefined) {
+                                displayedFeatures.push({
+                                    label: `Up to ${plan.limits.tables === 0 ? 'Unlimited' : plan.limits.tables} Tables`,
+                                    included: true
+                                });
+                            }
+                            if (plan.limits?.menuItems !== undefined) {
+                                displayedFeatures.push({
+                                    label: `Up to ${plan.limits.menuItems === 0 ? 'Unlimited' : plan.limits.menuItems} Menu Items`,
+                                    included: true
+                                });
+                            }
 
-                                    <button
-                                        onClick={() => handleSelectPlan(plan.code)}
-                                        disabled={isCurrent}
-                                        className={`w-full py-3.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all mb-12 ${isCurrent
-                                            ? 'bg-slate-50 text-slate-400 cursor-not-allowed border border-slate-100'
-                                            : plan.popular
-                                                ? 'bg-slate-900 text-white hover:bg-black shadow-lg shadow-slate-200'
-                                                : 'bg-white text-slate-900 border border-slate-200 hover:border-slate-900'
-                                            }`}
-                                    >
-                                        {isCurrent ? 'Current Plan' : plan.code === 'ELITE' ? 'Talk to Sales' : 'Select Plan'}
-                                    </button>
+                            return (
+                                <div key={plan.code} className="group transition-all duration-500 hover:translate-y-[-4px]">
+                                    <div className={`flex flex-col h-full ${isHighlighted ? 'opacity-100 ring-1 ring-slate-900/5 p-2 rounded-2xl bg-white shadow-xl shadow-slate-100' : ''}`}>
+                                        <div className="p-6">
+                                            <div className="mb-10">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400">{plan.name}</h3>
+                                                    {plan.code === 'GROWTH' && (
+                                                        <span className="text-[10px] font-bold bg-slate-900 text-white px-2 py-0.5 rounded-full uppercase tracking-widest leading-none flex items-center h-5">Recommended</span>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs text-slate-500 font-medium mb-8 leading-snug">
+                                                    {PLAN_TAGLINES[plan.code] || 'Platform features for your scale.'}
+                                                </p>
 
-                                    <div className="space-y-4">
-                                        {plan.features.map((f) => (
-                                            <div key={f.label} className="flex items-start gap-3">
-                                                {f.included ? (
-                                                    <Check className="w-4 h-4 text-slate-900 shrink-0 mt-0.5" strokeWidth={2.5} />
-                                                ) : (
-                                                    <span className="w-4 h-4 text-slate-200 shrink-0 mt-0.5 text-center">—</span>
-                                                )}
-                                                <span className={`text-[13px] leading-tight ${f.included ? 'text-slate-600 font-medium' : 'text-slate-300 italic'}`}>
-                                                    {f.label}
-                                                </span>
+                                                <div className="flex items-baseline gap-1">
+                                                    <span className="text-3xl font-bold tracking-tighter">₹{price.toLocaleString()}</span>
+                                                    <span className="text-xs text-slate-400 font-medium uppercase tracking-widest">/mo</span>
+                                                </div>
                                             </div>
-                                        ))}
+
+                                            <button
+                                                onClick={() => handleSelectPlan(plan.code)}
+                                                disabled={isCurrent || loadingPlan === plan.code}
+                                                className={`w-full py-3.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all mb-12 ${isCurrent
+                                                    ? 'bg-slate-50 text-slate-400 cursor-not-allowed border border-slate-100'
+                                                    : plan.code === 'GROWTH'
+                                                        ? 'bg-slate-900 text-white hover:bg-black shadow-lg shadow-slate-200'
+                                                        : 'bg-white text-slate-900 border border-slate-200 hover:border-slate-900'
+                                                    }`}
+                                            >
+                                                {loadingPlan === plan.code
+                                                    ? 'Loading...'
+                                                    : isCurrent
+                                                        ? 'Current Plan'
+                                                        : 'Select Plan'}
+                                            </button>
+
+                                            <div className="space-y-4">
+                                                {displayedFeatures.map((f: any) => (
+                                                    <div key={f.label} className="flex items-start gap-3">
+                                                        {f.included ? (
+                                                            <Check className="w-4 h-4 text-slate-900 shrink-0 mt-0.5" strokeWidth={2.5} />
+                                                        ) : (
+                                                            <span className="w-4 h-4 text-slate-200 shrink-0 mt-0.5 text-center">—</span>
+                                                        )}
+                                                        <span className={`text-[13px] leading-tight ${f.included ? 'text-slate-600 font-medium' : 'text-slate-300 italic'}`}>
+                                                            {f.label}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        );
-                    })}
-                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
 
             {/* Advanced Comparison Toggle */}

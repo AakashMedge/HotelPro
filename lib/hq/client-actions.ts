@@ -27,6 +27,9 @@ import {
 export async function getClientsWithStats(): Promise<ClientWithStats[]> {
     const clients = await prisma.client.findMany({
         include: {
+            subscription: {
+                include: { plan: true }
+            },
             _count: {
                 select: {
                     users: true,
@@ -39,10 +42,9 @@ export async function getClientsWithStats(): Promise<ClientWithStats[]> {
         orderBy: { createdAt: 'desc' }
     });
 
-    // Add dummy subscription data for each client
     return clients.map((client: any) => ({
         ...client,
-        subscription: generateDummySubscription(client.plan, client.createdAt)
+        subscription: mapSubscription(client.subscription, client.plan, client.createdAt)
     })) as ClientWithStats[];
 }
 
@@ -53,6 +55,13 @@ export async function getClientById(clientId: string): Promise<ClientWithStats |
     const client = await prisma.client.findUnique({
         where: { id: clientId },
         include: {
+            subscription: {
+                include: { plan: true }
+            },
+            saaSPayments: {
+                orderBy: { paidAt: 'desc' },
+                take: 10
+            },
             _count: {
                 select: {
                     users: true,
@@ -80,8 +89,36 @@ export async function getClientById(clientId: string): Promise<ClientWithStats |
     const tenant = client as any;
     return {
         ...tenant,
-        subscription: generateDummySubscription(tenant.plan, tenant.createdAt)
+        subscription: mapSubscription(tenant.subscription, tenant.plan, tenant.createdAt)
     } as ClientWithStats;
+}
+
+/**
+ * Map DB subscription to ClientSubscription type
+ */
+function mapSubscription(sub: any, clientPlan: string, createdAt: Date): ClientSubscription {
+    if (!sub) {
+        // Fallback for clients without subscription record (though they should have one)
+        return {
+            planStartDate: createdAt,
+            planEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+            isTrialActive: false,
+            nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            billingCycle: 'MONTHLY',
+            monthlyPrice: PLAN_PRICING[clientPlan as keyof typeof PLAN_PRICING] || 0
+        };
+    }
+
+    return {
+        planStartDate: sub.startDate || sub.createdAt,
+        planEndDate: sub.currentPeriodEnd,
+        trialEndsAt: sub.trialEndsAt || new Date(sub.createdAt.getTime() + 14 * 24 * 60 * 60 * 1000),
+        isTrialActive: sub.status === 'TRIAL',
+        nextBillingDate: sub.currentPeriodEnd,
+        billingCycle: sub.billingCycle || 'MONTHLY',
+        monthlyPrice: Number(sub.plan?.price || PLAN_PRICING[clientPlan as keyof typeof PLAN_PRICING] || 0)
+    };
 }
 
 /**
@@ -396,34 +433,6 @@ export async function restoreClient(clientId: string): Promise<{ success: boolea
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
-
-/**
- * Generate dummy subscription data based on plan
- * This will be replaced with real billing integration later
- */
-function generateDummySubscription(plan: any, createdAt: Date): ClientSubscription {
-    const now = new Date();
-    const trialEnd = new Date(createdAt);
-    trialEnd.setDate(trialEnd.getDate() + TRIAL_PERIOD_DAYS);
-
-    const isTrialActive = now < trialEnd;
-
-    // For demo: billing cycle is monthly from creation date
-    const nextBilling = new Date(createdAt);
-    while (nextBilling < now) {
-        nextBilling.setMonth(nextBilling.getMonth() + 1);
-    }
-
-    return {
-        planStartDate: createdAt,
-        planEndDate: nextBilling,
-        trialEndsAt: trialEnd,
-        isTrialActive: isTrialActive,
-        nextBillingDate: nextBilling,
-        billingCycle: 'MONTHLY', // Default for dummy
-        monthlyPrice: PLAN_PRICING[plan as keyof typeof PLAN_PRICING] || 0
-    };
-}
 
 /**
  * Validate slug format

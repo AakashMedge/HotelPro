@@ -1,21 +1,7 @@
 import { prisma } from "@/lib/db";
 import { AuditAction } from "@prisma/client";
 import { logAudit } from "./audit";
-import { getAggregatedPlatformStats } from "./metrics";
-
-export interface PlatformStats {
-    totalClients: number;
-    totalOrders: number;
-    totalRevenue: number;
-    activeUsers: number;
-    plansDistribution: {
-        plan: string;
-        count: number;
-    }[];
-    mrr: number;
-    activeSubscriptions: number;
-    growthRate: number;
-}
+import { getAggregatedPlatformStats, PlatformStats } from "./metrics";
 
 /**
  * Fetch high-level platform statistics for the Super Admin Dashboard.

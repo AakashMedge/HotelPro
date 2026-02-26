@@ -23,6 +23,40 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
     console.log('--- SEEDING MULTI-TENANT DATABASE ---');
 
+    // 0. Create Plans
+    console.log('Seeding Plans...');
+    const plans = [
+        {
+            name: "Starter",
+            code: "STARTER",
+            price: 1999.00,
+            features: { qr_menu: true, basic_analytics: true, ai_assistant: false, inventory: false, ai_analysis: false, custom_branding: false, isolated_database: false, multi_property: false, ai_automation: false, dedicated_support: false },
+            limits: { tables: 100, menuItems: 300 }
+        },
+        {
+            name: "Growth",
+            code: "GROWTH",
+            price: 4999.00,
+            features: { qr_menu: true, basic_analytics: true, ai_assistant: true, inventory: true, ai_analysis: false, custom_branding: false, isolated_database: false, multi_property: false, ai_automation: false, dedicated_support: false },
+            limits: { tables: 250, menuItems: 1000 }
+        },
+        {
+            name: "Elite",
+            code: "ELITE",
+            price: 19998.00,
+            features: { qr_menu: true, basic_analytics: true, ai_assistant: true, inventory: true, ai_analysis: true, custom_branding: true, isolated_database: true, multi_property: true, ai_automation: true, dedicated_support: true },
+            limits: { tables: 0, menuItems: 0 }
+        }
+    ];
+
+    for (const p of plans) {
+        await prisma.plan.upsert({
+            where: { code: p.code },
+            update: { price: p.price, features: p.features, limits: p.limits },
+            create: p
+        });
+    }
+
     // 1. Create a Platform Admin Client (The HQ)
     console.log('Creating Platform Management Client...');
     const hq = await prisma.client.upsert({
