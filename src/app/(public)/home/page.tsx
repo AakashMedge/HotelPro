@@ -548,7 +548,16 @@ export default function HomePage() {
                 <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-end gap-8 sm:gap-12">
                     <div>
                         <div className="text-[#D43425] font-black text-2xl sm:text-3xl md:text-4xl tracking-tighter mb-3 sm:mb-4">HOTELPRO</div>
-                        <p className="text-[#EFE7D9]/40 text-xs sm:text-sm max-w-sm">Premium dining and accommodation experiences.</p>
+                        <p className="text-[#EFE7D9]/40 text-xs sm:text-sm max-w-sm mb-6">Premium dining and accommodation experiences.</p>
+                        <Link 
+                            href="/book-demo" 
+                            className="inline-flex items-center gap-2 bg-[#D43425] text-white px-6 py-3 rounded-full text-sm font-medium hover:bg-[#b0291d] transition-colors"
+                        >
+                            Book a Demo
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                            </svg>
+                        </Link>
                     </div>
                     <div className="flex flex-col items-start md:items-end gap-4 sm:gap-6">
                         <div className="flex gap-4 sm:gap-6">
