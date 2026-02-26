@@ -43,6 +43,8 @@ export interface ClientWithStats {
     id: string;
     name: string;
     slug: string;
+    ownerEmail: string | null;
+    stripeCustomerId: string | null;
     domain: string | null;
     plan: ClientPlan;
     status: ClientStatus;
@@ -55,6 +57,7 @@ export interface ClientWithStats {
         menuItems: number;
     };
     subscription?: ClientSubscription;
+    saaSPayments?: any[];
 }
 
 // ============================================

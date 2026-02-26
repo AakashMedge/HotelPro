@@ -23,40 +23,42 @@ export async function GET() {
         const entitlements = await getEntitlements(user.clientId);
 
         // 2. Get subscription details (dates, status)
-        const subscription = await (prisma.subscription as any).findUnique({
+        const subscription = await prisma.subscription.findUnique({
             where: { clientId: user.clientId },
             include: { plan: true },
         });
 
-        // 3. Get current usage
+        // 3. Get payment history
+        const payments = await prisma.saaSPayment.findMany({
+            where: { clientId: user.clientId },
+            orderBy: { paidAt: 'desc' },
+            take: 10
+        });
+
+        // 4. Get current usage
         const [tableCount, menuItemCount] = await Promise.all([
             prisma.table.count({ where: { clientId: user.clientId } }),
             prisma.menuItem.count({ where: { clientId: user.clientId } }),
         ]);
 
-        // 4. Build response
+        // 5. Build response
         const plan = subscription?.plan;
         const planPrice = plan ? Number(plan.price) : 0;
 
-        // Calculate next billing date (30 days from last update or creation)
-        const lastBillingDate = subscription?.updatedAt || subscription?.createdAt || new Date();
-        const nextBillingDate = new Date(lastBillingDate);
-        nextBillingDate.setDate(nextBillingDate.getDate() + 30);
-
         return NextResponse.json({
             plan: {
-                name: entitlements.planName,
+                name: plan?.name || entitlements.planName,
                 code: plan?.code || entitlements.planName,
                 price: planPrice,
                 features: entitlements.features,
                 limits: entitlements.limits,
             },
             subscription: {
-                status: entitlements.subscriptionStatus || subscription?.status || 'ACTIVE',
-                startDate: subscription?.createdAt || null,
-                lastBillingDate: lastBillingDate,
-                nextBillingDate: nextBillingDate,
-                version: entitlements.version || 1,
+                status: subscription?.status || entitlements.subscriptionStatus || 'ACTIVE',
+                startDate: subscription?.startDate || subscription?.createdAt || null,
+                lastBillingDate: subscription?.updatedAt || subscription?.createdAt,
+                nextBillingDate: subscription?.currentPeriodEnd || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                version: subscription?.version || entitlements.version || 1,
             },
             usage: {
                 tables: {
@@ -74,14 +76,24 @@ export async function GET() {
                         : 0,
                 },
             },
+            payments: payments.map(p => ({
+                id: p.id,
+                amount: Number(p.amount),
+                currency: p.currency,
+                plan: p.plan,
+                status: p.status,
+                paidAt: p.paidAt,
+                sessionId: p.stripeSessionId
+            })),
             // All 3 plans for comparison
             allPlans: [
-                { name: 'Starter', code: 'STARTER', price: 1999, highlight: entitlements.planName === 'Starter' || entitlements.planName === 'STARTER' },
-                { name: 'Growth', code: 'GROWTH', price: 4999, highlight: entitlements.planName === 'Growth' || entitlements.planName === 'GROWTH' },
-                { name: 'Elite', code: 'ELITE', price: 19999, highlight: entitlements.planName === 'Elite' || entitlements.planName === 'ELITE' },
+                { name: 'Starter', code: 'STARTER', price: 1999, highlight: (plan?.code || entitlements.planName) === 'STARTER' },
+                { name: 'Growth', code: 'GROWTH', price: 4999, highlight: (plan?.code || entitlements.planName) === 'GROWTH' },
+                { name: 'Elite', code: 'ELITE', price: 19999, highlight: (plan?.code || entitlements.planName) === 'ELITE' },
             ],
         });
-    } catch {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    } catch (error: any) {
+        console.error('Billing API Error:', error);
+        return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
     }
 }

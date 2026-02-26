@@ -61,6 +61,10 @@ model Client {
   updatedAt     DateTime     @updatedAt
   deletedAt     DateTime?    // For soft-deletion/archiving
 
+  ownerEmail    String?      // Real owner email for billing
+  stripeCustomerId String?   @unique
+
+  saaSPayments  SaaSPayment[]
   subscription   Subscription?
   platformConversations PlatformConversation[]
 
@@ -503,6 +507,7 @@ model Subscription {
   status           SubscriptionStatus @default(TRIALING)
   version          Int                @default(1) // Monotonic: always increments
   billingCycle     String             @default("MONTHLY")
+  startDate        DateTime?          @default(now())
   currentPeriodEnd DateTime?
   graceUntil       DateTime?          // Tenant stays operational until this date
   createdAt        DateTime           @default(now())
@@ -684,4 +689,22 @@ model PlatformBroadcast {
   target    String   @default("ALL")          // ALL, STARTER, GROWTH, ELITE
   sentBy    String   // Admin Name
   createdAt DateTime @default(now())
+}
+model SaaSPayment {
+  id               String   @id @default(uuid())
+  clientId         String
+  stripeSessionId  String   @unique
+  stripePaymentIntentId String?
+  amount           Decimal  @db.Decimal(10, 2)
+  currency         String   @default("INR")
+  status           String   @default("PAID") // PAID, PENDING, FAILED
+  plan             String   // e.g. "GROWTH"
+  billingCycle     String   @default("MONTHLY")
+  paidAt           DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  client           Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
 }

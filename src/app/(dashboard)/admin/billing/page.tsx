@@ -7,6 +7,7 @@ import {
     ShieldCheck, Info, ChevronRight,
     Search, Filter, Download
 } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 type BillingData = {
@@ -28,36 +29,81 @@ type BillingData = {
         tables: { current: number; limit: number; percentage: number };
         menuItems: { current: number; limit: number; percentage: number };
     };
+    payments: {
+        id: string;
+        amount: number;
+        currency: string;
+        plan: string;
+        status: string;
+        paidAt: string;
+        sessionId: string;
+    }[];
     allPlans: { name: string; code: string; price: number; highlight: boolean }[];
 };
 
+const PAYMENT_STATUS_COLORS: Record<string, string> = {
+    PAID: 'bg-emerald-100 text-emerald-700',
+    PENDING: 'bg-amber-100 text-amber-700',
+    FAILED: 'bg-red-100 text-red-700',
+};
+
 const PLAN_DETAILS: Record<string, string[]> = {
-    STARTER: ['100 Tables', '300 Menu Items', 'QR Menu & Ordering', 'Basic Analytics'],
-    GROWTH: ['Unlimited Tables', '1,000 Menu Items', 'Inventory Management', 'AI Assistant', 'Standard Branding'],
-    ELITE: ['Unlimited Tables', 'Unlimited Menu Items', 'Multi-Property Sync', 'Isolated Data Node', 'Custom Branding', 'Priority Support'],
+    STARTER: ['QR Digital Menu', 'Order Management', 'Basic KOT System', 'Basic Billing', '100 Tables Limit', '300 Menu Items Limit'],
+    GROWTH: ['Everything in Starter', 'Inventory Management', 'AI Menu Assistant', 'Customer Order Flow', '250 Tables Limit', '1,000 Menu Items Limit', 'Standard Branding'],
+    ELITE: ['Everything in Growth', 'Full AI Automation', 'AI Performance Analysis', 'Multi-Property Sync', 'Isolated Data Node', 'Custom Branding', 'Priority Support', 'Unlimited Capacity'],
 };
 
 export default function AdminBillingPage() {
     const [loading, setLoading] = useState(true);
     const [billing, setBilling] = useState<BillingData | null>(null);
     const [showUpgradeDetails, setShowUpgradeDetails] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
+
+    const searchParams = useSearchParams();
+    const sessionId = searchParams.get('session_id');
+
+    const fetchBilling = async () => {
+        try {
+            const res = await fetch('/api/admin/billing');
+            if (res.ok) {
+                const data = await res.json();
+                setBilling(data);
+            }
+        } catch (err) {
+            console.error('Failed to fetch billing:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        async function fetchBilling() {
-            try {
-                const res = await fetch('/api/admin/billing');
-                if (res.ok) {
-                    const data = await res.json();
-                    setBilling(data);
-                }
-            } catch (err) {
-                console.error('Failed to fetch billing:', err);
-            } finally {
-                setLoading(false);
-            }
-        }
         fetchBilling();
     }, []);
+
+    const handleManualSync = async () => {
+        if (!sessionId || isSyncing) return;
+        setIsSyncing(true);
+        try {
+            const res = await fetch('/api/admin/billing/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                await fetchBilling(); // Refresh data
+                // Clean URL after success
+                window.history.replaceState({}, '', '/admin/billing');
+            } else {
+                alert(`Sync Failed: ${data.error}`);
+            }
+        } catch (err) {
+            console.error('Manual sync failed:', err);
+            alert('Manual sync failed. Please check your internet and console logs.');
+        } finally {
+            setIsSyncing(false);
+        }
+    };
 
     if (loading) return (
         <div className="min-h-screen bg-white flex items-center justify-center">
@@ -77,6 +123,28 @@ export default function AdminBillingPage() {
             <header className="mb-12">
                 <h1 className="text-2xl font-semibold tracking-tight">Account & Billing</h1>
                 <p className="text-slate-500 text-sm mt-1">Manage your professional subscription and resource allocation.</p>
+
+                {sessionId && (
+                    <div className="mt-6 p-4 bg-emerald-50 border border-emerald-100 rounded-lg flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-500">
+                        <div className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center shrink-0 shadow-sm">
+                            <CheckCircle2 className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                            <p className="text-sm font-semibold text-emerald-900">Payment Successful!</p>
+                            <p className="text-xs text-emerald-600 mb-2">Your subscription is being activated.</p>
+                            <button
+                                onClick={handleManualSync}
+                                disabled={isSyncing}
+                                className={`text-[10px] font-bold uppercase py-1.5 px-3 rounded shadow-sm transition-all ${isSyncing
+                                    ? 'bg-emerald-100 text-emerald-400 cursor-wait'
+                                    : 'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95'
+                                    }`}
+                            >
+                                {isSyncing ? 'Syncing...' : 'Sync Now'}
+                            </button>
+                        </div>
+                    </div>
+                )}
             </header>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
@@ -144,7 +212,7 @@ export default function AdminBillingPage() {
                         </div>
                     </section>
 
-                    {/* Financial Records (Simplified) */}
+                    {/* Financial Records */}
                     <section>
                         <div className="flex items-center justify-between mb-6">
                             <h2 className="text-sm font-medium uppercase tracking-wider text-slate-400">Payment History</h2>
@@ -153,13 +221,50 @@ export default function AdminBillingPage() {
                             </button>
                         </div>
                         <div className="border border-slate-100 rounded-xl overflow-hidden">
-                            <div className="bg-slate-50/50 px-6 py-12 flex flex-col items-center justify-center text-center">
-                                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center border border-slate-100 mb-4 shadow-sm">
-                                    <History className="w-5 h-5 text-slate-300" />
+                            {billing?.payments && billing.payments.length > 0 ? (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-xs">
+                                        <thead>
+                                            <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-widest">
+                                                <th className="px-6 py-4 font-black">Date</th>
+                                                <th className="px-6 py-4 font-black">Plan</th>
+                                                <th className="px-6 py-4 font-black">Amount</th>
+                                                <th className="px-6 py-4 font-black text-right">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 font-medium">
+                                            {billing.payments.map((payment) => (
+                                                <tr key={payment.id} className="hover:bg-slate-50 transition-colors">
+                                                    <td className="px-6 py-4 text-slate-900 border-none">
+                                                        {new Date(payment.paidAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-slate-600 border-none">
+                                                        <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold uppercase">
+                                                            {payment.plan}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-slate-900 font-bold border-none">
+                                                        ₹{payment.amount.toLocaleString()}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right border-none">
+                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${PAYMENT_STATUS_COLORS[payment.status] || 'bg-slate-100 text-slate-600'}`}>
+                                                            {payment.status}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 </div>
-                                <p className="text-sm font-medium text-slate-900">No payment records found</p>
-                                <p className="text-xs text-slate-400 mt-1">Your billing history will appear here once your first cycle processes.</p>
-                            </div>
+                            ) : (
+                                <div className="bg-slate-50/50 px-6 py-12 flex flex-col items-center justify-center text-center">
+                                    <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center border border-slate-100 mb-4 shadow-sm">
+                                        <History className="w-5 h-5 text-slate-300" />
+                                    </div>
+                                    <p className="text-sm font-medium text-slate-900">No payment records found</p>
+                                    <p className="text-xs text-slate-400 mt-1">Your billing history will appear here once your first cycle processes.</p>
+                                </div>
+                            )}
                         </div>
                     </section>
                 </div>

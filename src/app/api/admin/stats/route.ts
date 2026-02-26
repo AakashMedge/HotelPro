@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { getPlatformStats } from '@/lib/services/admin';
 import { requireSuperAdmin } from '@/lib/hq/auth';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET() {
     try {
         // Only Super Admins can see platform-level stats

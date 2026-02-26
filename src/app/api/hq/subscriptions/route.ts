@@ -29,18 +29,25 @@ export async function GET() {
     }
 
     try {
-        const subscriptions = await (prisma.subscription as any).findMany({
-            include: {
-                client: { select: { id: true, name: true, slug: true, status: true } },
-                plan: { select: { id: true, name: true, code: true, price: true } },
-            },
-            orderBy: { updatedAt: 'desc' },
-        });
+        const [subscriptions, payments] = await Promise.all([
+            prisma.subscription.findMany({
+                include: {
+                    client: { select: { id: true, name: true, slug: true, status: true, ownerEmail: true, stripeCustomerId: true } },
+                    plan: { select: { id: true, name: true, code: true, price: true } },
+                },
+                orderBy: { updatedAt: 'desc' },
+            }),
+            prisma.saaSPayment.findMany({
+                include: { client: { select: { name: true, slug: true, ownerEmail: true } } },
+                orderBy: { paidAt: 'desc' },
+                take: 50
+            })
+        ]);
 
-        return NextResponse.json({ subscriptions });
+        return NextResponse.json({ subscriptions, payments });
     } catch (error: any) {
         console.error("[HQ/SUBSCRIPTIONS] GET error:", error.message);
-        return NextResponse.json({ error: "Failed to fetch subscriptions" }, { status: 500 });
+        return NextResponse.json({ error: "Failed to fetch data" }, { status: 500 });
     }
 }
 
