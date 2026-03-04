@@ -1,7 +1,34 @@
-
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
+import { getTenantFromRequest } from "@/lib/tenant";
+
+/**
+ * GET /api/tables/[id]
+ * Public/Customer check — Tenant-Validated
+ */
+export async function GET(
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    try {
+        const { id } = await params;
+        const tenant = await getTenantFromRequest();
+        if (!tenant) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+
+        const db = getDb();
+        const table = await (db.table as any).findFirst({
+            where: { id, clientId: tenant.id, deletedAt: null },
+            select: { id: true, tableCode: true, status: true }
+        });
+
+        if (!table) return NextResponse.json({ success: false, error: "Table not found" }, { status: 404 });
+
+        return NextResponse.json({ success: true, table });
+    } catch (e: any) {
+        return NextResponse.json({ success: false, error: e.message }, { status: 500 });
+    }
+}
 
 /**
  * PATCH /api/tables/[id]

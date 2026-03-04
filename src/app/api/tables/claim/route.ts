@@ -73,6 +73,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
                     select: { id: true, customerName: true, status: true },
                     take: 1,
                     orderBy: { createdAt: 'desc' }
+                },
+                qrCodes: {
+                    where: { isActive: true },
+                    select: { id: true },
+                    take: 1
                 }
             }
         });
@@ -84,7 +89,38 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             );
         }
 
-        // 3. Table State Resolution
+        // 3. QR Session Validation (Security Layer)
+        // If the table has an active QR code, we REQUIRE a valid QR session.
+        if (table.qrCodes && table.qrCodes.length > 0) {
+            const qrSessionToken = request.cookies.get("hp-qr-session")?.value;
+
+            if (!qrSessionToken) {
+                console.warn(`[TABLE_CLAIM] ✗ Missing QR session cookie for protected table ${table.tableCode}`);
+                return NextResponse.json(
+                    { success: false, error: "This table requires a QR scan. Please scan the physical code on the table." },
+                    { status: 403 }
+                );
+            }
+
+            const validSession = await (db as any).qRSession.findFirst({
+                where: {
+                    sessionToken: qrSessionToken,
+                    tableId: table.id,
+                    isActive: true,
+                    expiresAt: { gt: new Date() }
+                }
+            });
+
+            if (!validSession) {
+                console.warn(`[TABLE_CLAIM] ✗ Invalid or expired QR session for protected table ${table.tableCode}`);
+                return NextResponse.json(
+                    { success: false, error: "QR session expired or invalid. Please scan the table QR code again." },
+                    { status: 403 }
+                );
+            }
+        }
+
+        // 4. Table State Resolution
         const activeOrder = table.orders[0] || null;
 
         if (table.status === 'DIRTY') {

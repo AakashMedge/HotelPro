@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma, getDb } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
+import { eventEmitter } from "@/lib/services/eventEmitter";
 
 /**
  * PATCH /api/manager/tables
@@ -31,6 +32,13 @@ export async function PATCH(request: NextRequest) {
         const updated = await (db.table as any).update({
             where: { id },
             data: { status }
+        });
+
+        // Emit real-time update
+        eventEmitter.emit("TABLE_UPDATED", {
+            tableId: id,
+            tableCode: updated.tableCode,
+            status: updated.status
         });
 
         return NextResponse.json({ success: true, table: updated });
@@ -65,6 +73,15 @@ export async function POST(request: NextRequest) {
             if (!table) throw new Error("Table not found");
 
             // 2. Cancel all active orders for this table
+            const ordersToCancel = await tx.order.findMany({
+                where: {
+                    tableId: id,
+                    clientId,
+                    status: { notIn: ["CLOSED", "CANCELLED"] }
+                },
+                select: { id: true }
+            });
+
             await tx.order.updateMany({
                 where: {
                     tableId: id,
@@ -77,24 +94,47 @@ export async function POST(request: NextRequest) {
                 }
             });
 
-            // 3. Reset the table status
+            // 3. Deactivate all active QR sessions for this table
+            await (tx as any).qRSession.updateMany({
+                where: { tableId: id, isActive: true },
+                data: { isActive: false }
+            });
+
+            // 4. Reset the table status
             const updated = await tx.table.update({
                 where: { id },
                 data: { status: "VACANT" }
             });
 
-            // 4. Record the specific Reset audit log
+            // 5. Force eviction signal for all connected devices on this table
+            eventEmitter.emit('SESSION_TERMINATED', {
+                tableId: id,
+                reason: "MANAGER_RESET"
+            });
+
+            // 6. Record Audit
             await tx.auditLog.create({
                 data: {
                     clientId,
-                    action: "STATUS_CHANGED",
+                    action: "EMERGENCY_RESET",
                     actorId: user.id,
-                    metadata: {
-                        tableCode: table.tableCode,
-                        action: "EMERGENCY_RESET",
-                        previousStatus: "LOCKED"
-                    }
+                    metadata: { tableId: id, tableCode: table.tableCode, cancelledOrders: ordersToCancel.length }
                 }
+            });
+
+            // Emit events for all cancelled orders
+            ordersToCancel.forEach((o: any) => {
+                eventEmitter.emit("ORDER_UPDATED", {
+                    orderId: o.id,
+                    status: "CANCELLED"
+                });
+            });
+
+            // Emit table update event
+            eventEmitter.emit("TABLE_UPDATED", {
+                tableId: id,
+                tableCode: table.tableCode,
+                status: "VACANT"
             });
 
             return updated;

@@ -1,8 +1,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma, getDb } from "@/lib/db";
-import { requireRole } from "@/lib/auth";
-import { hashPassword } from "@/lib/auth";
+import { requireRole, hashPassword, encryptPassword, decryptPassword } from "@/lib/auth";
 
 /**
  * GET /api/staff
@@ -32,6 +31,7 @@ export async function GET(request: NextRequest) {
                 username: true,
                 role: true,
                 isActive: true,
+                passwordEncrypted: true,
                 createdAt: true,
                 totalOrders: true,
                 totalSales: true,
@@ -46,8 +46,15 @@ export async function GET(request: NextRequest) {
             }
         });
 
-        console.log(`[STAFF_API] ✅ Success. Found ${staff.length} staff.`);
-        return NextResponse.json({ success: true, staff });
+        // Decrypt passwords for the Admin
+        const staffWithPasswords = staff.map((s: any) => ({
+            ...s,
+            password: s.passwordEncrypted ? decryptPassword(s.passwordEncrypted) : null,
+            passwordEncrypted: undefined // Hide the raw encrypted blob from frontend
+        }));
+
+        console.log(`[STAFF_API] ✅ Success. Found ${staffWithPasswords.length} staff.`);
+        return NextResponse.json({ success: true, staff: staffWithPasswords });
     } catch (error: any) {
         console.error("[STAFF_API] 💥 CRITICAL ERROR:", error);
         if (error?.message === "Authentication required" || error?.message?.includes("Access denied")) {
@@ -85,6 +92,7 @@ export async function POST(request: NextRequest) {
         }
 
         const passwordHash = await hashPassword(password);
+        const passwordEncrypted = encryptPassword(password);
 
         // 2. Create in Control Plane (for global authentication)
         const newUser = await (prisma.user as any).create({
@@ -93,6 +101,7 @@ export async function POST(request: NextRequest) {
                 name,
                 username,
                 passwordHash,
+                passwordEncrypted,
                 role,
                 isActive: true
             },

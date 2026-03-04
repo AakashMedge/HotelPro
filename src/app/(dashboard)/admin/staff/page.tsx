@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import {
     Users, UserPlus, Shield, ChefHat, Receipt, UserCheck, X,
-    AlertCircle, Search, Trash2, Loader2, Lock
+    AlertCircle, Search, Trash2, Loader2, Lock, Edit3, Eye, EyeOff
 } from 'lucide-react';
 
 type StaffMember = {
@@ -12,6 +12,7 @@ type StaffMember = {
     username: string;
     role: 'ADMIN' | 'MANAGER' | 'WAITER' | 'KITCHEN' | 'CASHIER';
     isActive: boolean;
+    password?: string;
     createdAt: string;
 };
 
@@ -49,10 +50,18 @@ export default function AdminStaffPage() {
     const [search, setSearch] = useState('');
     const [showAddModal, setShowAddModal] = useState(false);
     const [plan, setPlan] = useState<string>('STARTER');
+    const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
 
     const [formData, setFormData] = useState({ name: '', username: '', password: '', role: 'WAITER' as string });
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
+
+    // Edit Modal State
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [editingMember, setEditingMember] = useState<StaffMember | null>(null);
+    const [editFormData, setEditFormData] = useState({ name: '', username: '', password: '', role: 'WAITER' as string });
+    const [showPassword, setShowPassword] = useState(false);
+    const [showEditPassword, setShowEditPassword] = useState(false);
 
     const fetchStaff = () => {
         fetch('/api/staff')
@@ -102,6 +111,49 @@ export default function AdminStaffPage() {
         }
     };
 
+    const handleEdit = (member: StaffMember) => {
+        setEditingMember(member);
+        setEditFormData({
+            name: member.name,
+            username: member.username,
+            password: '', // New password is empty
+            role: member.role
+        });
+        setShowEditModal(true);
+    };
+
+    const handleUpdate = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingMember) return;
+        setSubmitting(true);
+        setError('');
+        try {
+            const body: any = {
+                name: editFormData.name,
+                username: editFormData.username,
+                role: editFormData.role
+            };
+            if (editFormData.password) body.password = editFormData.password;
+
+            const res = await fetch(`/api/staff/${editingMember.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+            if (data.success) {
+                setShowEditModal(false);
+                fetchStaff();
+            } else {
+                setError(data.error || 'Failed to update staff');
+            }
+        } catch {
+            setError('Network error');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
     const handleToggleStatus = async (id: string, currentStatus: boolean) => {
         try {
             const res = await fetch(`/api/staff/${id}`, {
@@ -142,10 +194,10 @@ export default function AdminStaffPage() {
                     <div className="flex items-center gap-3 mt-1">
                         <p className="text-sm text-slate-500 font-medium">{staff.length} team members registered</p>
                         <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border ${isStarterPlan
-                                ? 'bg-blue-50 text-blue-600 border-blue-200'
-                                : plan === 'GROWTH'
-                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                                    : 'bg-purple-50 text-purple-600 border-purple-200'
+                            ? 'bg-blue-50 text-blue-600 border-blue-200'
+                            : plan === 'GROWTH'
+                                ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                                : 'bg-purple-50 text-purple-600 border-purple-200'
                             }`}>
                             {plan} Plan
                         </span>
@@ -191,6 +243,7 @@ export default function AdminStaffPage() {
                                 <th className="px-6 py-4">Name</th>
                                 <th className="px-6 py-4">Username</th>
                                 <th className="px-6 py-4">Role</th>
+                                <th className="px-6 py-4">Password</th>
                                 <th className="px-6 py-4 text-center">Status</th>
                                 <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
@@ -225,6 +278,22 @@ export default function AdminStaffPage() {
                                                 {member.role}
                                             </span>
                                         </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`text-xs font-mono transition-all ${revealedPasswords[member.id] ? 'text-indigo-600 font-bold' : 'text-slate-300'}`}>
+                                                    {revealedPasswords[member.id] ? (member.password || '••••••') : '••••••'}
+                                                </span>
+                                                {member.role !== 'ADMIN' && (
+                                                    <button
+                                                        onClick={() => setRevealedPasswords(prev => ({ ...prev, [member.id]: !prev[member.id] }))}
+                                                        className={`p-1 rounded transition-colors ${revealedPasswords[member.id] ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-slate-100 text-slate-400'}`}
+                                                        title={revealedPasswords[member.id] ? "Hide Password" : "Show Password"}
+                                                    >
+                                                        {revealedPasswords[member.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
                                         <td className="px-6 py-4 text-center">
                                             {member.role === 'ADMIN' ? (
                                                 <div className="px-3 py-1 rounded-lg text-[10px] font-bold uppercase bg-slate-100 text-slate-400 cursor-not-allowed inline-block">
@@ -245,12 +314,20 @@ export default function AdminStaffPage() {
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex items-center justify-end gap-2">
                                                 {member.role !== 'ADMIN' && (
-                                                    <button
-                                                        onClick={() => handleDelete(member.id)}
-                                                        className="p-2 opacity-0 group-hover:opacity-100 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-all"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
+                                                    <>
+                                                        <button
+                                                            onClick={() => handleEdit(member)}
+                                                            className="p-2 opacity-0 group-hover:opacity-100 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-lg transition-all"
+                                                        >
+                                                            <Edit3 className="w-4 h-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDelete(member.id)}
+                                                            className="p-2 opacity-0 group-hover:opacity-100 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-all"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </>
                                                 )}
                                             </div>
                                         </td>
@@ -311,14 +388,23 @@ export default function AdminStaffPage() {
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Password</label>
-                                    <input
-                                        required
-                                        type="password"
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-100 outline-none"
-                                        placeholder="••••••"
-                                        value={formData.password}
-                                        onChange={e => setFormData({ ...formData, password: e.target.value })}
-                                    />
+                                    <div className="relative">
+                                        <input
+                                            required
+                                            type={showPassword ? "text" : "password"}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 pr-11 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-100 outline-none"
+                                            placeholder="••••••"
+                                            value={formData.password}
+                                            onChange={e => setFormData({ ...formData, password: e.target.value })}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                                        >
+                                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -350,6 +436,103 @@ export default function AdminStaffPage() {
                                 >
                                     {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
                                     {submitting ? 'Creating...' : 'Create Account'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* EDIT MEMBER MODAL */}
+            {showEditModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm shadow-2xl">
+                    <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between mb-8">
+                            <div>
+                                <h3 className="text-xl font-bold text-slate-900 tracking-tight">Edit Member</h3>
+                                <p className="text-xs text-slate-400 font-medium">Update account details or reset password.</p>
+                            </div>
+                            <button
+                                onClick={() => { setShowEditModal(false); setError(''); }}
+                                className="p-2 hover:bg-slate-50 rounded-xl transition-colors"
+                            >
+                                <X className="w-5 h-5 text-slate-400" />
+                            </button>
+                        </div>
+
+                        {error && (
+                            <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600 text-xs font-semibold">
+                                <AlertCircle className="w-4 h-4 shrink-0" />
+                                {error}
+                            </div>
+                        )}
+
+                        <form onSubmit={handleUpdate} className="space-y-5">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Full Name</label>
+                                <input
+                                    required
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-100 outline-none"
+                                    placeholder="Full Name"
+                                    value={editFormData.name}
+                                    onChange={e => setEditFormData({ ...editFormData, name: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Username</label>
+                                    <input
+                                        required
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-100 outline-none"
+                                        placeholder="username"
+                                        value={editFormData.username}
+                                        onChange={e => setEditFormData({ ...editFormData, username: e.target.value.toLowerCase().replace(/\s/g, '') })}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">New Password</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showEditPassword ? "text" : "password"}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 pr-11 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-100 outline-none"
+                                            placeholder="••••••"
+                                            value={editFormData.password}
+                                            onChange={e => setEditFormData({ ...editFormData, password: e.target.value })}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowEditPassword(!showEditPassword)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                                        >
+                                            {showEditPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
+                                    </div>
+                                    <p className="text-[9px] text-slate-400 pl-1 mt-1 font-medium italic">*Leave blank to keep current password</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Role Assignment</label>
+                                <select
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-100 outline-none appearance-none"
+                                    value={editFormData.role}
+                                    onChange={e => setEditFormData({ ...editFormData, role: e.target.value })}
+                                >
+                                    {availableRoles.map(r => (
+                                        <option key={r.value} value={r.value}>{r.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="pt-2">
+                                <button
+                                    disabled={submitting}
+                                    type="submit"
+                                    className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                                >
+                                    {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Edit3 className="w-4 h-4" />}
+                                    {submitting ? 'Updating...' : 'Update Member'}
                                 </button>
                             </div>
                         </form>

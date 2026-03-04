@@ -3,9 +3,14 @@ import Stripe from 'stripe';
 import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth/server';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-    apiVersion: '2024-12-18.acacia' as any, // Use a stable version
-});
+// Lazy initialization of Stripe to avoid crash if keys are missing
+const getStripe = () => {
+    if (!process.env.STRIPE_SECRET_KEY) return null;
+    return new Stripe(process.env.STRIPE_SECRET_KEY!, {
+        apiVersion: '2024-12-18.acacia' as any,
+    });
+};
+
 
 export async function POST(req: Request) {
     try {
@@ -32,6 +37,13 @@ export async function POST(req: Request) {
 
         if (!client) {
             return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+        }
+
+        const stripe = getStripe();
+
+        if (!stripe) {
+            console.error('[Stripe] ❌ Error: STRIPE_SECRET_KEY is missing in .env');
+            return NextResponse.json({ error: 'Billing system configuration missing.' }, { status: 500 });
         }
 
         // 3. Create Stripe Checkout Session

@@ -15,6 +15,7 @@ import { getTenantFromRequest } from "@/lib/tenant";
 import { requireRole } from "@/lib/auth";
 import { hasReachedLimit, PLAN_LIMITS } from "@/lib/subscription";
 import { ClientPlan } from "@prisma/client";
+import { generateSecretToken, generateShortCode, signPayload, buildQrUrl } from "@/lib/qr";
 
 // ============================================
 // GET /api/tables — Fast Discovery
@@ -137,7 +138,7 @@ export async function POST(request: NextRequest) {
     try {
         // 1. Auth gate — only Manager/Admin can create tables
         const user = await requireRole(["MANAGER", "ADMIN"]);
-        const { tableCode, capacity } = await request.json();
+        const { tableCode, capacity, floorId, section } = await request.json();
 
         if (!tableCode || !capacity) {
             return NextResponse.json(
@@ -177,20 +178,57 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // 5. Create table
+        // 5. Create table (with optional floor assignment)
         const table = await (db.table as any).create({
             data: {
                 clientId: user.clientId,
                 tableCode: tableCode.trim(),
                 capacity: Number(capacity),
-                status: "VACANT"
+                status: "VACANT",
+                ...(floorId ? { floorId } : {}),
+            },
+            include: {
+                floor: true
             }
         });
 
-        const elapsed = Date.now() - startTime;
-        console.log(`[TABLES_CREATE] ✓ ${tableCode} created | ${elapsed}ms`);
+        // 6. Automatically generate a QR Code for this new table
+        const prefix = table.floor?.prefix || 'TB';
+        const secretToken = generateSecretToken();
+        let shortCode = generateShortCode(prefix, table.tableCode);
 
-        return NextResponse.json({ success: true, table });
+        // Ensure shortCode uniqueness
+        const existingShort = await (db as any).qRCode.findUnique({ where: { shortCode } });
+        if (existingShort) {
+            shortCode = `${shortCode}-${Date.now().toString(36).slice(-4).toUpperCase()}`;
+        }
+
+        const qrCode = await (db as any).qRCode.create({
+            data: {
+                clientId: user.clientId,
+                tableId: table.id,
+                secretToken,
+                shortCode,
+                version: 1,
+                isActive: true,
+                createdBy: user.id,
+            },
+        });
+
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        const signature = signPayload(secretToken, shortCode, 1);
+        const qrUrl = buildQrUrl(baseUrl, shortCode, secretToken, 1, signature);
+
+        const elapsed = Date.now() - startTime;
+        console.log(`[TABLES_CREATE] ✓ ${tableCode} created with Auto-QR | ${elapsed}ms`);
+
+        return NextResponse.json({
+            success: true,
+            table: {
+                ...table,
+                qrCodes: [{ ...qrCode, url: qrUrl }]
+            }
+        });
 
     } catch (error: any) {
         const elapsed = Date.now() - startTime;

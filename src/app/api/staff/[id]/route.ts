@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma, getDb } from "@/lib/db";
-import { requireRole, hashPassword } from "@/lib/auth";
+import { requireRole, hashPassword, encryptPassword } from "@/lib/auth";
 
 /**
  * PATCH /api/staff/[id]
@@ -37,15 +37,19 @@ export async function PATCH(
         }
 
         let passwordHash = undefined;
+        let passwordEncrypted = undefined;
         if (body.password) {
             passwordHash = await hashPassword(body.password);
+            passwordEncrypted = encryptPassword(body.password);
         }
 
         const updateData = {
             isActive: body.isActive !== undefined ? body.isActive : existingStaff.isActive,
             name: body.name !== undefined ? body.name : existingStaff.name,
+            username: body.username !== undefined ? body.username.toLowerCase().replace(/\s/g, '') : existingStaff.username,
             role: body.role !== undefined ? body.role : existingStaff.role,
-            ...(passwordHash && { passwordHash })
+            ...(passwordHash && { passwordHash }),
+            ...(passwordEncrypted && { passwordEncrypted })
         };
 
         // 2. Update in Control Plane

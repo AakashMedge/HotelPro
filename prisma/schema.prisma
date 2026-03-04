@@ -23,6 +23,7 @@ model User {
   username       String     @unique
   name           String
   passwordHash   String
+  passwordEncrypted String?   // Reversible vault for Admin to see
   role           UserRole
   isActive       Boolean    @default(true)
   createdAt      DateTime   @default(now())
@@ -74,6 +75,7 @@ model Client {
 
   users         User[]
   tables        Table[]
+  floors        Floor[]
   categories    Category[]
   menuItems     MenuItem[]
   orders        Order[]
@@ -85,6 +87,8 @@ model Client {
   inventories    Inventory[]
   payments       Payment[]
   chatChannels   ChatChannel[]
+  qrCodes       QRCode[]
+  qrSessions    QRSession[]
 }
 
 model Table {
@@ -93,18 +97,95 @@ model Table {
   tableCode        String      
   status           TableStatus @default(VACANT)
   assignedWaiterId String?
-  section          String?     // e.g. "Patio", "Main Hall", "VIP"
+  section          String?     // Legacy — use floorId instead
+  floorId          String?     // Links to Floor/Zone
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
   deletedAt        DateTime?
   capacity         Int         @default(4)
 
   client           Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  floor            Floor?      @relation(fields: [floorId], references: [id], onDelete: SetNull)
   orders           Order[]
   assignedWaiter   User?       @relation(fields: [assignedWaiterId], references: [id])
+  qrCodes          QRCode[]
 
   @@unique([clientId, tableCode])
   @@index([clientId])
+  @@index([floorId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FLOOR / ZONE MANAGEMENT
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Floor {
+  id          String    @id @default(uuid())
+  clientId    String
+  name        String    // e.g. "Main Hall", "AC Room 1"
+  type        FloorType @default(MAIN_HALL)
+  prefix      String    // Short code e.g. "MH", "AC", "VIP"
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  client      Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tables      Table[]
+
+  @@unique([clientId, name])
+  @@unique([clientId, prefix])
+  @@index([clientId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QR CODE & SESSION SYSTEM
+// ─────────────────────────────────────────────────────────────────────────────
+
+model QRCode {
+  id             String     @id @default(uuid())
+  clientId       String
+  tableId        String
+  secretToken    String     @unique  // 64-char hex (256-bit), rotatable
+  shortCode      String     @unique  // Human-readable e.g. "QR-MH-T01"
+  version        Int        @default(1) // Increments on rotation
+  isActive       Boolean    @default(true)
+  expiresAt      DateTime?  // Optional hard expiry
+  lastScannedAt  DateTime?
+  lastScannedIp  String?
+  scanCount      Int        @default(0)
+  createdBy      String?    // User ID who created it
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  client         Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  table          Table      @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  sessions       QRSession[]
+
+  @@index([clientId])
+  @@index([tableId])
+}
+
+model QRSession {
+  id             String    @id @default(uuid())
+  qrCodeId       String
+  clientId       String
+  tableId        String
+  sessionToken   String    @unique  // Unique per scan
+  ipAddress      String?
+  userAgent      String?   @db.Text
+  isActive       Boolean   @default(true)
+  orderId        String?   // Linked order once created
+  createdAt      DateTime  @default(now())
+  expiresAt      DateTime  // Short TTL: 2-4 hours
+
+  qrCode         QRCode    @relation(fields: [qrCodeId], references: [id], onDelete: Cascade)
+  client         Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([qrCodeId])
+  @@index([clientId])
+  @@index([tableId])
+  @@index([sessionToken])
 }
 
 model Category {
@@ -410,6 +491,17 @@ enum UserRole {
   CASHIER
 }
 
+enum FloorType {
+  MAIN_HALL
+  AC_ROOM
+  ROOFTOP
+  VIP
+  OUTDOOR
+  BAR
+  BANQUET
+  CUSTOM
+}
+
 enum TableStatus {
   VACANT
   ACTIVE
@@ -473,6 +565,19 @@ enum AuditAction {
   SETTING_CHANGED
   SENSITIVE_DELETE
   CLIENT_ARCHIVED
+
+  // QR & Floor Management
+  FLOOR_CREATED
+  FLOOR_UPDATED
+  FLOOR_DELETED
+  QR_GENERATED
+  QR_ROTATED
+  QR_REVOKED
+  QR_SCANNED
+  QR_SESSION_CREATED
+  QR_SESSION_EXPIRED
+  QR_SUSPICIOUS_SCAN
+  EMERGENCY_RESET
 
   // Subscription Lifecycle
   SUBSCRIPTION_CREATED

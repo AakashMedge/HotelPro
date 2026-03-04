@@ -565,6 +565,73 @@ export async function cancelOrderItem(orderId: string, itemId: string, clientId:
     });
 }
 
+/**
+ * Update the status of a specific order item.
+ * Enables granular tracking (e.g. marking a specific drink as Served).
+ */
+export async function updateOrderItemStatus(
+    orderId: string,
+    itemId: string,
+    newStatus: OrderItemStatus,
+    clientId: string,
+    actorId?: string,
+    db: PrismaClient = globalPrisma
+): Promise<OrderWithItems> {
+    return await db.$transaction(async (tx) => {
+        const order = await tx.order.findFirst({
+            where: { id: orderId, clientId: clientId },
+            include: { table: { select: { tableCode: true } } }
+        });
+
+        if (!order) throw new OrderError("Order not found", "ORDER_NOT_FOUND");
+
+        const item = await tx.orderItem.findFirst({
+            where: { id: itemId, orderId: orderId }
+        });
+
+        if (!item) throw new OrderError("Item not found", "MENU_ITEM_NOT_FOUND");
+
+        await tx.orderItem.update({
+            where: { id: itemId },
+            data: { status: newStatus }
+        });
+
+        // Audit Log
+        await tx.auditLog.create({
+            data: {
+                clientId,
+                action: "STATUS_CHANGED",
+                actorId: actorId || null,
+                orderId: order.id,
+                metadata: {
+                    itemName: item.itemName,
+                    itemId: item.id,
+                    oldStatus: item.status,
+                    newStatus: newStatus,
+                    type: "ITEM_STATUS_CHANGE"
+                }
+            }
+        });
+
+        const finalOrder = (await tx.order.findUnique({
+            where: { id: orderId },
+            include: {
+                items: true,
+                table: { select: { id: true, tableCode: true, assignedWaiterId: true } }
+            },
+        })) as OrderWithItems;
+
+        // Emit real-time event
+        eventEmitter.emit('ORDER_UPDATED', {
+            orderId: finalOrder.id,
+            tableCode: finalOrder.table.tableCode,
+            status: finalOrder.status
+        });
+
+        return finalOrder;
+    });
+}
+
 // ============================================
 // Errors
 // ============================================

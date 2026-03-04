@@ -77,5 +77,16 @@ export function releaseGhostTables(db: PrismaClient | any, ghosts: GhostTable[])
 export function cleanupGhostSessions(tables: any[], db: PrismaClient | any): GhostTable[] {
     const ghosts = detectGhostSessions(tables);
     releaseGhostTables(db, ghosts);
+
+    // Run parallel async cleanup for expired QR Sessions
+    (db as any).qRSession.updateMany({
+        where: { isActive: true, expiresAt: { lt: new Date() } },
+        data: { isActive: false }
+    }).then((result: any) => {
+        if (result.count > 0) console.log(`[QR_SESSION] 🧹 Auto-expired ${result.count} stale QR sessions.`);
+    }).catch((err: any) => {
+        console.error("[QR_SESSION] ✗ Failed to auto-expire sessions:", err.message);
+    });
+
     return ghosts;
 }

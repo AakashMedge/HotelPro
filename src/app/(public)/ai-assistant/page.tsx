@@ -114,6 +114,36 @@ export default function AIAssistantPage() {
         localStorage.setItem('hp_cart', JSON.stringify(mapped));
     }, [cart]);
 
+    // ============= Table Status Polling =============
+    useEffect(() => {
+        const targetTableId = tableId || localStorage.getItem('hp_table_id');
+        if (!targetTableId) return;
+
+        const checkTable = async () => {
+            try {
+                const res = await fetch(`/api/tables/${targetTableId}`);
+                if (res.status === 404 || res.status === 401) {
+                    const keysToClear = ['hp_table_id', 'hp_table_code', 'hp_session_id', 'hp_cart', 'hp_active_order_id'];
+                    keysToClear.forEach(k => localStorage.removeItem(k));
+                    router.replace('/welcome-guest');
+                    return;
+                }
+                const data = await res.json();
+                if (data.success && data.table?.status === 'VACANT') {
+                    // Manager reset the table
+                    const keysToClear = ['hp_table_id', 'hp_table_code', 'hp_session_id', 'hp_cart', 'hp_active_order_id'];
+                    keysToClear.forEach(k => localStorage.removeItem(k));
+                    router.replace('/welcome-guest?msg=reset');
+                }
+            } catch (err) {
+                console.error("Table check error:", err);
+            }
+        };
+
+        const interval = setInterval(checkTable, 5000);
+        return () => clearInterval(interval);
+    }, [tableId, router]);
+
     // Auto-scroll messages
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -874,8 +904,6 @@ export default function AIAssistantPage() {
                 </div>
             </div>
 
-            {/* ─── Bottom Nav ─── */}
-            <MobileNav />
 
             {/* ─── Global Styles ─── */}
             <style jsx global>{`

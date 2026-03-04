@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 
         // 1. Fetch data for Current Client Only (Strict Isolation)
         const [tables, activeOrders, closedOrders, staff, auditLogs] = await Promise.all([
-            db.table.findMany({
+            (db.table as any).findMany({
                 where: { clientId, deletedAt: null },
                 select: {
                     id: true,
@@ -21,17 +21,22 @@ export async function GET(request: NextRequest) {
                     status: true,
                     assignedWaiterId: true,
                     updatedAt: true,
+                    qrCodes: {
+                        where: { isActive: true },
+                        select: { shortCode: true, version: true },
+                        take: 1
+                    },
                     orders: {
                         where: {
                             clientId,
-                            status: { not: "CLOSED" },
+                            status: { notIn: ["CLOSED", "CANCELLED"] },
                             NOT: { payment: { status: "PAID" } }
                         },
                         select: {
                             id: true,
                             status: true,
                             updatedAt: true,
-                            items: { select: { id: true, itemName: true, quantity: true } }
+                            items: { select: { id: true, itemName: true, quantity: true, status: true } }
                         },
                         take: 1
                     }
@@ -122,9 +127,11 @@ export async function GET(request: NextRequest) {
                 code: t.tableCode,
                 realId: t.id,
                 status: t.orders?.[0]?.status || t.status,
+                qrProtected: t.qrCodes && t.qrCodes.length > 0,
+                qrCode: t.qrCodes?.[0] || null,
                 waiter: staff.find((s: any) => s.id === t.assignedWaiterId)?.name || "Unassigned",
                 items: t.orders?.[0]?.items?.length || 0,
-                itemSummary: t.orders?.[0]?.items?.map((i: any) => ({ name: i.itemName, qty: i.quantity })) || [],
+                itemSummary: t.orders?.[0]?.items?.map((i: any) => ({ id: i.id, name: i.itemName, qty: i.quantity, status: i.status })) || [],
                 lastUpdate: t.orders?.[0]?.updatedAt ? new Date(t.orders[0].updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Live",
                 orderId: t.orders?.[0]?.id || null,
                 updatedAt: t.updatedAt || null

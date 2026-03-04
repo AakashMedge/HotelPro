@@ -3,9 +3,13 @@ import Stripe from 'stripe';
 import { prisma } from '@/lib/db';
 import { headers } from 'next/headers';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-    apiVersion: '2024-12-18.acacia' as any,
-});
+// Lazy initialization to avoid server crash if key is missing/invalid
+const getStripe = () => {
+    if (!process.env.STRIPE_SECRET_KEY) return null;
+    return new Stripe(process.env.STRIPE_SECRET_KEY!, {
+        apiVersion: '2024-12-18.acacia' as any,
+    });
+};
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
@@ -24,6 +28,10 @@ export async function POST(req: Request) {
     try {
         if (!signature || !webhookSecret) {
             throw new Error('Missing signature or webhook secret');
+        }
+        const stripe = getStripe();
+        if (!stripe) {
+            throw new Error('Stripe is not initialized. Please set STRIPE_SECRET_KEY.');
         }
         event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
         console.log(`🔔 Event Verified: ${event.type}`);

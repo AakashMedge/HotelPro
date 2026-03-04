@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { cancelOrderItem, OrderError } from "@/lib/services/order";
+import { cancelOrderItem, updateOrderItemStatus, OrderError } from "@/lib/services/order";
 import { getTenantFromRequest } from "@/lib/tenant";
 import { getDb } from "@/lib/db";
 
@@ -39,6 +39,44 @@ export async function DELETE(
         console.error("[ORDER ITEM API] Error cancelling item:", error);
         return NextResponse.json(
             { success: false, error: "Failed to cancel item" },
+            { status: 500 }
+        );
+    }
+}
+
+export async function PATCH(
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string, itemId: string }> }
+): Promise<NextResponse> {
+    try {
+        const { id, itemId } = await params;
+        const tenant = await getTenantFromRequest();
+        if (!tenant) return NextResponse.json({ success: false, error: "Authentication required" }, { status: 401 });
+
+        const body = await request.json();
+        const { status } = body;
+
+        if (!status) {
+            return NextResponse.json({ success: false, error: "Status is required" }, { status: 400 });
+        }
+
+        const db = getDb();
+        const order = await updateOrderItemStatus(id, itemId, status, tenant.id, undefined, db);
+
+        return NextResponse.json({
+            success: true,
+            order
+        });
+    } catch (error) {
+        if (error instanceof OrderError) {
+            return NextResponse.json(
+                { success: false, error: error.message, code: error.code },
+                { status: 400 }
+            );
+        }
+        console.error("[ORDER ITEM API] Error updating item:", error);
+        return NextResponse.json(
+            { success: false, error: "Failed to update item status" },
             { status: 500 }
         );
     }

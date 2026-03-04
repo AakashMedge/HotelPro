@@ -150,6 +150,21 @@ function OrderStatusContent() {
         if (!orderId) return;
         try {
             const res = await fetch(`/api/orders/${orderId}`);
+
+            // If order is gone or access denied, clear and exit
+            if (res.status === 404 || res.status === 401) {
+                const keysToClear = [
+                    'hp_active_order_id',
+                    'hp_cart',
+                    'hp_session_id',
+                    'hp_table_id',
+                    'hp_table_code'
+                ];
+                keysToClear.forEach(key => localStorage.removeItem(key));
+                router.replace('/welcome-guest');
+                return;
+            }
+
             const data = await res.json();
             if (!data.success) throw new Error(data.error);
 
@@ -204,13 +219,18 @@ function OrderStatusContent() {
             } else if (o.status === 'CANCELLED') {
                 localStorage.removeItem('hp_active_order_id');
                 localStorage.removeItem('hp_cart');
+                localStorage.removeItem('hp_session_id');
                 setOrder(null);
+                router.replace('/welcome-guest?msg=cancelled');
             }
 
             setLoading(false);
         } catch (err) {
-            console.error(err);
-            setLoading(false);
+            console.error("Order Status Fetch Error:", err);
+            // If we have an order ID but fetch fails, it usually means the session is dead
+            if (orderId) {
+                setLoading(false);
+            }
         }
     }, [orderId, router, serveConfirmDismissed]);
 
@@ -247,7 +267,19 @@ function OrderStatusContent() {
         const es = new EventSource('/api/events');
         es.onmessage = (e) => {
             const data = JSON.parse(e.data);
-            if (data.event === 'ORDER_UPDATED' && data.payload.orderId === orderId) {
+
+            // 1. Session Kill-Signal from Manager
+            if (data.event === 'SESSION_TERMINATED') {
+                const targetTableId = localStorage.getItem('hp_table_id');
+                if (data.payload.tableId === targetTableId) {
+                    const keysToClear = ['hp_active_order_id', 'hp_cart', 'hp_session_id', 'hp_table_id', 'hp_table_code', 'hp_guest_name', 'hp_party_size'];
+                    keysToClear.forEach(key => localStorage.removeItem(key));
+                    router.replace('/welcome-guest?msg=terminated');
+                }
+            }
+
+            // 2. Order/Item Status Updates
+            if ((data.event === 'ORDER_UPDATED' || data.event === 'TABLE_UPDATED') && data.payload.orderId === orderId) {
                 fetchOrderStatus();
             }
             if (data.event === 'COMPLAINT_UPDATED' && data.payload.orderId === orderId) {
@@ -624,40 +656,70 @@ function OrderStatusContent() {
                                 <p className="text-[11px] font-black text-[#D43425] leading-none mt-0.5">#{localStorage.getItem('hp_table_code') || 'T-1'}</p>
                             </div>
                         </div>
-                        <div className="p-8 space-y-6">
-                            {order.items.map((item) => {
-                                const itemCreatedAt = new Date(item.createdAt).getTime();
-                                const timeLeftMs = Math.max(0, GRACE_PERIOD_MS - (now - itemCreatedAt));
-                                const canCancel = item.status === 'PENDING' && timeLeftMs > 0 && order.status === 'NEW';
-
-                                return (
-                                    <div key={item.id} className="group">
-                                        <div className="flex justify-between items-start">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-2">
-                                                    <p className={`text-[13px] font-bold ${item.status === 'CANCELLED' ? 'text-zinc-300 line-through' : 'text-[#1A1A1A]'}`}>
-                                                        {item.qty}× {item.name}
-                                                    </p>
-                                                    {item.status === 'CANCELLED' && (
-                                                        <span className="text-[8px] font-black uppercase tracking-widest text-zinc-300 bg-zinc-50 px-1.5 py-0.5 rounded">Cancelled</span>
-                                                    )}
-                                                    {item.status === 'READY' && (
-                                                        <span className="text-[8px] font-black uppercase tracking-widest text-[#D43425] bg-red-50 px-1.5 py-0.5 rounded animate-pulse">Ready</span>
-                                                    )}
-                                                    {item.status === 'SERVED' && (
-                                                        <span className="text-[8px] font-black uppercase tracking-widest text-green-600 bg-green-50 px-1.5 py-0.5 rounded">Served</span>
-                                                    )}
+                        <div className="p-8 space-y-8">
+                            {/* ACTIVE ITEMS */}
+                            {order.items.some(i => i.status !== 'SERVED' && i.status !== 'CANCELLED') && (
+                                <div>
+                                    <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-4">In Preparation</p>
+                                    <div className="space-y-4">
+                                        {order.items.filter(i => i.status !== 'SERVED' && i.status !== 'CANCELLED').map((item) => (
+                                            <div key={item.id} className="flex justify-between items-center group">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-6 h-6 rounded-lg bg-zinc-50 border border-zinc-100 flex items-center justify-center text-[10px] font-bold text-zinc-900">
+                                                            {item.qty}
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-[13px] font-bold text-[#111111]">{item.name}</p>
+                                                            <div className="flex items-center gap-2 mt-0.5">
+                                                                <span className={`text-[8px] font-black uppercase tracking-widest ${item.status === 'READY' ? 'text-[#D43425] animate-pulse' : 'text-zinc-400'}`}>
+                                                                    {item.status === 'READY' ? 'Plated & Checking' : item.status === 'PREPARING' ? 'Chef is cooking' : 'Order Received'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                {item.variant && <span className="text-[10px] text-zinc-400 font-serif italic">{item.variant.name}</span>}
-                                            </div>
-                                            {item.status !== 'CANCELLED' && (
                                                 <span className="text-[13px] font-black tabular-nums tracking-tighter">₹{item.price * item.qty}</span>
-                                            )}
-                                        </div>
-                                        <div className="h-px w-4 bg-zinc-50 mt-4 group-last:hidden" />
+                                            </div>
+                                        ))}
                                     </div>
-                                );
-                            })}
+                                </div>
+                            )}
+
+                            {/* SERVED ITEMS */}
+                            {order.items.some(i => i.status === 'SERVED') && (
+                                <div className="pt-4 border-t border-zinc-50">
+                                    <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-4">Enjoy Your Meal</p>
+                                    <div className="space-y-4">
+                                        {order.items.filter(i => i.status === 'SERVED').map((item) => (
+                                            <div key={item.id} className="flex justify-between items-center opacity-60">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-6 h-6 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-[10px] font-bold text-emerald-600">
+                                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M20 6L9 17l-5-5" /></svg>
+                                                    </div>
+                                                    <p className="text-[13px] font-bold text-zinc-500">{item.qty}× {item.name}</p>
+                                                </div>
+                                                <span className="text-[13px] font-black tabular-nums tracking-tighter text-zinc-400">₹{item.price * item.qty}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* CANCELLED ITEMS */}
+                            {order.items.some(i => i.status === 'CANCELLED') && (
+                                <div className="pt-4 border-t border-zinc-50 opacity-40">
+                                    <p className="text-[10px] font-black text-rose-400 uppercase tracking-widest mb-4">Cancelled</p>
+                                    <div className="space-y-2">
+                                        {order.items.filter(i => i.status === 'CANCELLED').map((item) => (
+                                            <div key={item.id} className="flex justify-between items-center text-[11px]">
+                                                <p className="font-bold line-through">{item.qty}× {item.name}</p>
+                                                <span>₹{item.price * item.qty}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="pt-8 border-t border-dashed border-zinc-100 space-y-5">
                                 <div className="space-y-2">

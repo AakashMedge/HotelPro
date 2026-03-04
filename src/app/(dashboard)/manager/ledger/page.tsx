@@ -369,72 +369,77 @@ export default function LedgerPage() {
                             </div>
 
                             <div className="p-8 space-y-8 bg-zinc-50/30 flex-1 overflow-y-auto no-scrollbar">
-                                {/* FINANCES SECTION */}
+                                {/* PREMIUM THERMAL RECEIPT UI */}
                                 <section className="space-y-4">
                                     <div className="flex items-center gap-2 px-2">
                                         <div className="w-1 h-3 bg-zinc-900 rounded-full" />
-                                        <span className="text-[10px] font-bold text-zinc-900 uppercase tracking-widest">Financial Summary</span>
+                                        <span className="text-[10px] font-bold text-zinc-900 uppercase tracking-widest">Bill Preview</span>
                                     </div>
+                                    <div className="bg-white border-2 border-zinc-900 p-8 rounded-[2.5rem] shadow-sm font-sans relative overflow-hidden">
+                                        {/* Receipt Top Branding */}
+                                        <div className="text-center pb-8 mb-8 border-b-2 border-zinc-900 border-dashed">
+                                            <h3 className="text-3xl font-black tracking-tighter uppercase leading-none mb-2">
+                                                {hospitalitySettings?.businessName || 'HotelPro Royal'}
+                                            </h3>
+                                            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Fine Dining & Bar</p>
+                                        </div>
 
-                                    <div className="bg-white border border-zinc-100 p-8 rounded-[2.5rem] shadow-sm space-y-6">
-                                        <div className="space-y-3">
-                                            <div className="flex justify-between text-xs font-bold text-zinc-400 uppercase tracking-tight">
-                                                <span>Gross Amount</span>
-                                                <span className="text-zinc-900 font-mono">₹{selectedBill.subtotal.toLocaleString()}</span>
+                                        {/* Bill Info Grid */}
+                                        <div className="grid grid-cols-2 gap-y-4 text-[11px] font-bold uppercase mb-8">
+                                            <div className="space-y-1">
+                                                <p className="text-zinc-400 text-[8px] tracking-widest">Bill For</p>
+                                                <p className="text-zinc-900 text-lg">Table {selectedBill.table}</p>
                                             </div>
-                                            {selectedBill.discount > 0 && (
-                                                <div className="flex justify-between text-xs font-bold text-emerald-600 uppercase tracking-tight">
-                                                    <span>Discount Applied</span>
-                                                    <span className="font-mono">- ₹{selectedBill.discount.toLocaleString()}</span>
-                                                </div>
-                                            )}
-                                            <div className="flex justify-between text-xs font-bold text-zinc-400 uppercase tracking-tight">
-                                                <span>Tax (GST + Svc)</span>
-                                                <span className="text-zinc-900 font-mono">₹{(selectedBill.gst + selectedBill.serviceCharge).toLocaleString()}</span>
+                                            <div className="text-right space-y-1">
+                                                <p className="text-zinc-400 text-[8px] tracking-widest">{new Date(selectedBill.date).toLocaleDateString()}</p>
+                                                <p className="text-zinc-900">{new Date(selectedBill.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                                             </div>
                                         </div>
 
-                                        <div className="h-px bg-zinc-100" />
-
-                                        <div className="flex justify-between items-end">
-                                            <div>
-                                                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Final Settlement</p>
-                                                <div className="flex items-center gap-2">
-                                                    <CreditCard size={14} className="text-zinc-400" />
-                                                    <span className="text-[10px] font-bold text-zinc-900 uppercase">{selectedBill.paymentMethod}</span>
-                                                </div>
-                                            </div>
-                                            <h3 className="text-5xl font-bold text-zinc-900 tracking-tighter tabular-nums">₹{selectedBill.total.toLocaleString()}</h3>
-                                        </div>
-                                    </div>
-                                </section>
-
-                                {/* ITEMIZED SECTION */}
-                                <section className="space-y-4">
-                                    <div className="flex items-center gap-2 px-2">
-                                        <div className="w-1 h-3 bg-zinc-400 rounded-full" />
-                                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Itemized Breakdown</span>
-                                    </div>
-                                    <div className="bg-white border border-zinc-100 p-8 rounded-[2.5rem] shadow-sm">
-                                        <div className="space-y-5">
+                                        {/* Itemized Loop */}
+                                        <div className="space-y-6 mb-8">
                                             {selectedBill.itemsList.map((item: any, i: number) => (
-                                                <div key={i} className="flex justify-between group">
-                                                    <div className="flex gap-5">
-                                                        <span className="text-xs font-bold text-zinc-300 font-mono">0{item.quantity}</span>
-                                                        <div>
-                                                            <p className="text-xs font-bold text-zinc-900 uppercase tracking-tight">{item.itemName}</p>
-                                                            {item.selectedVariant && (
-                                                                <p className="text-[10px] font-bold text-zinc-400 uppercase mt-0.5">{item.selectedVariant.name}</p>
-                                                            )}
-                                                        </div>
+                                                <div key={i} className="flex justify-between items-start group">
+                                                    <div className="flex-1 pr-4">
+                                                        <p className="text-xs font-black text-zinc-900 uppercase leading-none mb-1">{item.itemName}</p>
+                                                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-tighter italic">₹{Number(item.priceSnapshot).toLocaleString()} × {item.quantity}</p>
                                                     </div>
-                                                    <span className="text-xs font-bold text-zinc-900 font-mono">₹{(Number(item.priceSnapshot) * item.quantity).toLocaleString()}</span>
+                                                    <span className="text-xs font-black text-zinc-900 tabular-nums">₹{(Number(item.priceSnapshot) * item.quantity).toLocaleString()}</span>
                                                 </div>
                                             ))}
                                         </div>
-                                        <div className="mt-8 pt-6 border-t border-dashed border-zinc-100 flex justify-between items-center opacity-50">
-                                            <span className="text-[10px] font-bold text-zinc-400 uppercase">Items Total</span>
-                                            <span className="text-xs font-bold text-zinc-900 font-mono">₹{selectedBill.subtotal.toLocaleString()}</span>
+
+                                        {/* Totals Section */}
+                                        <div className="pt-8 border-t-2 border-zinc-900 border-dashed space-y-4">
+                                            <div className="flex justify-between text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                                                <span>Subtotal</span>
+                                                <span className="text-zinc-900">₹{selectedBill.subtotal.toLocaleString()}</span>
+                                            </div>
+                                            {selectedBill.discount > 0 && (
+                                                <div className="flex justify-between text-xs font-bold text-emerald-600 uppercase tracking-wider">
+                                                    <span>Discount</span>
+                                                    <span>-₹{selectedBill.discount.toLocaleString()}</span>
+                                                </div>
+                                            )}
+                                            <div className="flex justify-between text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                                                <span>GST (5%)</span>
+                                                <span className="text-zinc-900">₹{selectedBill.gst.toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex justify-between text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                                                <span>Service Charge (5%)</span>
+                                                <span className="text-zinc-900">₹{selectedBill.serviceCharge.toLocaleString()}</span>
+                                            </div>
+
+                                            <div className="pt-6 border-t border-zinc-100 flex justify-between items-baseline">
+                                                <span className="text-xs font-black text-zinc-900 uppercase tracking-widest">Total Amount</span>
+                                                <span className="text-4xl font-black text-zinc-900 tracking-tighter">₹{selectedBill.total.toLocaleString()}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Footer Receipt */}
+                                        <div className="text-center pt-10 border-t-2 border-zinc-100 border-dashed">
+                                            <p className="text-[11px] font-black uppercase tracking-widest italic mb-2">Thank you for visiting!</p>
+                                            <p className="text-[8px] font-bold text-zinc-300 uppercase tracking-[0.3em]">HotelPro Royal · Powered by HotelPro</p>
                                         </div>
                                     </div>
                                 </section>

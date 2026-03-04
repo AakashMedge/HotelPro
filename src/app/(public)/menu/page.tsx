@@ -169,6 +169,49 @@ function MenuContent() {
         return () => clearInterval(interval);
     }, [isStaffMode, router]);
 
+    // ============= Table Status Real-time sync =============
+    useEffect(() => {
+        if (isStaffMode) return;
+        const targetTableId = tableId || localStorage.getItem('hp_table_id');
+        if (!targetTableId) return;
+
+        // 1. Polling Fallback
+        const checkTable = async () => {
+            try {
+                const res = await fetch(`/api/tables/${targetTableId}`);
+                if (res.status === 404 || res.status === 401) {
+                    const keysToClear = ['hp_table_id', 'hp_table_code', 'hp_session_id', 'hp_cart', 'hp_active_order_id'];
+                    keysToClear.forEach(k => localStorage.removeItem(k));
+                    router.replace('/welcome-guest');
+                    return;
+                }
+                const data = await res.json();
+                if (data.success && data.table?.status === 'VACANT') {
+                    const keysToClear = ['hp_table_id', 'hp_table_code', 'hp_session_id', 'hp_cart', 'hp_active_order_id'];
+                    keysToClear.forEach(k => localStorage.removeItem(k));
+                    router.replace('/welcome-guest?msg=reset');
+                }
+            } catch (err) { console.error("Table check error:", err); }
+        };
+
+        // 2. Real-time Kill Signal (SSE)
+        const es = new EventSource('/api/events');
+        es.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            if (data.event === 'SESSION_TERMINATED' && data.payload.tableId === targetTableId) {
+                const keysToClear = ['hp_table_id', 'hp_table_code', 'hp_session_id', 'hp_cart', 'hp_active_order_id'];
+                keysToClear.forEach(k => localStorage.removeItem(k));
+                router.replace('/welcome-guest?msg=terminated');
+            }
+        };
+
+        const interval = setInterval(checkTable, 10000); // Relaxed polling as we have SSE
+        return () => {
+            clearInterval(interval);
+            es.close();
+        };
+    }, [isStaffMode, tableId, router]);
+
     useEffect(() => {
         if (cart.length > 0) {
             sessionStartRef.current = Date.now();
@@ -748,9 +791,9 @@ function MenuContent() {
 
             {/* ─── Cart Bar ─── */}
             {basketCount > 0 && !isCartOpen && (
-                <div className="fixed bottom-[60px] left-0 right-0 z-40 px-4" style={{ animation: 'slideUp 0.3s ease' }}>
+                <div className="fixed bottom-6 left-0 right-0 z-40 px-4" style={{ animation: 'slideUp 0.3s ease' }}>
                     <button onClick={() => setIsCartOpen(true)}
-                        className="w-full bg-[#1A1A1A] text-white py-3.5 px-5 rounded-xl flex items-center justify-between active:scale-[0.99] transition-transform">
+                        className="w-full bg-[#1A1A1A] text-white py-3.5 px-5 rounded-xl flex items-center justify-between shadow-2xl active:scale-[0.99] transition-transform">
                         <div className="text-left">
                             <p className="text-[10px] text-white/50 font-medium uppercase tracking-wider">{basketCount} item{basketCount > 1 ? 's' : ''}</p>
                             <p className="text-sm font-bold mt-0.5">₹{basketTotal.toLocaleString()}</p>
@@ -873,8 +916,7 @@ function MenuContent() {
             )}
 
 
-            {/* Mobile Nav */}
-            {!isCartOpen && <MobileNav />}
+            {/* Mobile Nav removed per request */}
 
             <style jsx global>{`
                 @keyframes slideUp {

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import SidebarLogoutButton from '@/components/auth/SidebarLogoutButton';
+import { ChevronRight } from 'lucide-react';
 
 export default function ManagerLayout({
     children,
@@ -15,6 +16,7 @@ export default function ManagerLayout({
     const [mounted, setMounted] = useState(false);
     const [user, setUser] = useState<{ name: string, plan: string } | null>(null);
     const [authChecking, setAuthChecking] = useState(true);
+    const [isCollapsed, setIsCollapsed] = useState(false);
 
     useEffect(() => {
         setMounted(true);
@@ -49,6 +51,7 @@ export default function ManagerLayout({
         { label: 'DIRECTOR', path: '/manager', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z', starterVisible: true },
         { label: 'STAFF', path: '/manager/staff', icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2m16-10a4 4 0 00-4-4H5a4 4 0 00-4 4v2m16-10a4 4 0 00-4-4H5a4 4 0 00-4 4v2', starterVisible: true },
         { label: 'FLOOR', path: '/manager/floor', icon: 'M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm2 0v12h12V6H6z M8 10h8 M8 14h4', starterVisible: true },
+        { label: 'QR', path: '/manager/architecture', icon: 'M3 3h7v7H3V3zm11 0h7v7h-7V3zM3 14h7v7H3v-7zm14 3h.01M17 14h.01M14 17h.01M14 14h3v3h-3v-3z', starterVisible: true },
         { label: 'MENU', path: '/manager/menu', icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253', starterVisible: true },
         { label: 'LEDGER', path: '/manager/ledger', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01', starterVisible: true },
         { label: 'HUB', path: '/manager/hub', icon: 'M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z', starterVisible: true },
@@ -72,59 +75,75 @@ export default function ManagerLayout({
         <div className="min-h-screen bg-[#FDFCF9] text-[#1A1A1A] font-sans flex flex-col md:flex-row antialiased overflow-hidden h-screen">
 
             {/* PROFESSIONAL STAFF SIDEBAR */}
-            <aside className="hidden md:flex w-20 lg:w-24 bg-[#0F0F0F] flex-col items-center py-6 lg:py-8 shrink-0 z-50">
-                <div className="mb-8 lg:mb-12">
-                    <div className="w-10 h-10 lg:w-12 lg:h-12 bg-[#D43425] rounded-xl flex items-center justify-center font-black text-white text-lg lg:text-xl shadow-lg shadow-red-900/20">
-                        HP
+            <aside
+                className={`
+                    flex flex-col bg-[#0F0F0F] transition-all duration-300 ease-in-out shrink-0 z-50
+                    ${isCollapsed ? 'w-20' : 'w-64 lg:w-72'}
+                `}
+            >
+                <div className={`py-8 flex items-center ${isCollapsed ? 'justify-center' : 'px-8 justify-between'}`}>
+                    <div className="flex items-center gap-4 overflow-hidden">
+                        <div className="w-10 h-10 lg:w-12 lg:h-12 bg-[#D43425] rounded-xl flex items-center justify-center font-black text-white text-lg lg:text-xl shadow-lg shadow-red-900/20 shrink-0">
+                            HP
+                        </div>
+                        {!isCollapsed && (
+                            <div className="transition-all duration-300">
+                                <h1 className="font-bold text-white leading-none tracking-tight text-lg">HotelPro</h1>
+                                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-1">Manager Control</p>
+                            </div>
+                        )}
                     </div>
                 </div>
 
-                <nav className="flex flex-col gap-6 lg:gap-8 grow">
+                <div className="px-5 mb-4">
+                    <button
+                        onClick={() => setIsCollapsed(!isCollapsed)}
+                        className="w-full h-10 flex items-center justify-center rounded-xl bg-white/5 border border-white/5 text-zinc-500 hover:text-white hover:bg-white/10 transition-all shadow-sm"
+                    >
+                        <ChevronRight className={`transition-transform duration-300 ${isCollapsed ? '' : 'rotate-180'}`} size={18} />
+                    </button>
+                </div>
+
+                <nav className="flex flex-col gap-1 px-4 grow overflow-y-auto no-scrollbar pb-10">
+                    {!isCollapsed && <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest px-4 mb-2 mt-4">Command Center</p>}
                     {navItems.map((item) => {
                         const isActive = pathname === item.path;
                         return (
                             <Link
                                 href={item.path}
                                 key={item.label}
-                                className={`flex flex-col items-center gap-1.5 lg:gap-2 group transition-all ${isActive ? 'text-[#D43425]' : 'text-zinc-500 hover:text-white'}`}
+                                className={`
+                                    flex items-center transition-all group rounded-2xl
+                                    ${isActive ? 'bg-[#D43425]/10 text-[#D43425] border border-[#D43425]/20 shadow-[0_0_15px_rgba(212,52,37,0.1)]' : 'text-zinc-500 hover:text-white hover:bg-white/5'}
+                                    ${isCollapsed ? 'justify-center p-3' : 'px-4 py-3 justify-between'}
+                                `}
+                                title={isCollapsed ? item.label : ''}
                             >
-                                <div className={`w-10 h-10 lg:w-12 lg:h-12 rounded-2xl flex items-center justify-center transition-all ${isActive ? 'bg-[#D43425]/10 border border-[#D43425]/20 shadow-[0_0_15px_rgba(212,52,37,0.1)]' : 'bg-white/5 border border-white/5'}`}>
-                                    <svg width="20" height="20" className="lg:w-[22px] lg:h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d={item.icon} />
-                                    </svg>
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all shrink-0 ${isActive ? 'bg-white shadow-sm' : 'bg-transparent'}`}>
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d={item.icon} />
+                                        </svg>
+                                    </div>
+                                    {!isCollapsed && (
+                                        <span className="text-sm font-bold uppercase tracking-widest whitespace-nowrap overflow-hidden">
+                                            {item.label}
+                                        </span>
+                                    )}
                                 </div>
-                                <span className="text-[8px] lg:text-[9px] font-black uppercase tracking-[0.15em]">{item.label}</span>
+                                {!isCollapsed && isActive && <ChevronRight className="w-3 h-3 opacity-50 shrink-0" />}
                             </Link>
                         )
                     })}
                 </nav>
 
-                <div className="mt-auto">
-                    <SidebarLogoutButton variant="desktop" />
+                <div className="p-6 border-t border-white/5 mt-auto flex justify-center">
+                    <SidebarLogoutButton variant="desktop" isCollapsed={isCollapsed} />
                 </div>
             </aside>
 
-            {/* MOBILE BOTTOM NAVIGATION */}
-            <nav className="md:hidden fixed bottom-0 left-0 w-full bg-[#0F0F0F] border-t border-white/5 flex items-center justify-around h-16 sm:h-20 px-4 z-100 pb-[env(safe-area-inset-bottom)]">
-                {navItems.map((item) => {
-                    const isActive = pathname === item.path;
-                    return (
-                        <Link
-                            href={item.path}
-                            key={item.label}
-                            className={`flex flex-col items-center gap-1 opacity-40 transition-all ${isActive ? 'opacity-100 text-[#D43425]' : 'text-zinc-500'}`}
-                        >
-                            <div className={`w-9 h-9 flex items-center justify-center ${isActive ? 'bg-[#D43425]/10 rounded-xl' : ''}`}>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d={item.icon} />
-                                </svg>
-                            </div>
-                            <span className="text-[7px] font-black uppercase tracking-widest leading-none">{item.label}</span>
-                        </Link>
-                    )
-                })}
-                <SidebarLogoutButton variant="mobile" />
-            </nav>
+            {/* MOBILE NAVIGATION - REMOVED AS PER REQUEST */}
+            {/* ... */}
 
             {/* MAIN OPERATIONS FRAME */}
             <div className="grow flex flex-col min-w-0 h-full overflow-hidden">
@@ -150,7 +169,7 @@ export default function ManagerLayout({
                     </div>
                 </header>
 
-                <main className="grow overflow-hidden flex flex-col pb-16 sm:pb-20 md:pb-0">
+                <main className="grow overflow-hidden flex flex-col">
                     {children}
                 </main>
             </div>

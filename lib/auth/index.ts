@@ -8,7 +8,7 @@
  */
 
 // Password utilities
-export { hashPassword, verifyPassword } from "./password";
+export { hashPassword, verifyPassword, encryptPassword, decryptPassword } from "./password";
 
 // JWT utilities
 export { signToken, verifyToken, decodeTokenUnsafe } from "./jwt";

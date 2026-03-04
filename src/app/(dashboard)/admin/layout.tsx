@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import SidebarLogoutButton from '@/components/auth/SidebarLogoutButton';
-import { LayoutDashboard, Users, BarChart3, Map, ShieldCheck, History, CreditCard, Settings, ChevronRight, MessageSquare, UtensilsCrossed } from 'lucide-react';
+import { LayoutDashboard, Users, BarChart3, Map, ShieldCheck, History, CreditCard, Settings, ChevronRight, MessageSquare, UtensilsCrossed, Receipt } from 'lucide-react';
 
 export default function AdminLayout({
     children,
@@ -58,6 +58,7 @@ export default function AdminLayout({
         { label: 'Analytics', path: '/admin/analytics', icon: BarChart3, color: 'text-emerald-600', bg: 'bg-emerald-50', starterVisible: true },
         { label: 'Architecture', path: '/admin/architecture', icon: Map, color: 'text-orange-600', bg: 'bg-orange-50', starterVisible: true },
         { label: 'Menu', path: '/admin/menu', icon: UtensilsCrossed, color: 'text-rose-600', bg: 'bg-rose-50', starterVisible: true },
+        { label: 'Ledger', path: '/admin/ledger', icon: Receipt, color: 'text-emerald-600', bg: 'bg-emerald-50', starterVisible: true },
         { label: 'Compliance', path: '/admin/compliance', icon: ShieldCheck, color: 'text-purple-600', bg: 'bg-purple-50', starterVisible: false },
         { label: 'Logs', path: '/admin/logs', icon: History, color: 'text-rose-600', bg: 'bg-rose-50', starterVisible: true },
         { label: 'Billing', path: '/admin/billing', icon: CreditCard, color: 'text-amber-600', bg: 'bg-amber-50', starterVisible: true },

@@ -8,8 +8,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 // ============================================
 
 type LineItem = {
+    id: string;
     name: string;
     qty: number;
+    status: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED' | 'CANCELLED';
     variant?: { name: string; price: number };
     modifiers?: { name: string; price: number }[];
     notes?: string;
@@ -19,7 +21,7 @@ type Ticket = {
     id: string;
     fullId: string;
     table: string;
-    status: 'NEW' | 'PREPARING' | 'READY' | 'SERVED';
+    status: string;
     items: LineItem[];
     createdAt: number;
     version: number;
@@ -51,10 +53,17 @@ export default function KitchenKDS() {
     const [activeTab, setActiveTab] = useState<'NEW' | 'PREPARING'>('NEW');
     const [mounted, setMounted] = useState(false);
     const [updating, setUpdating] = useState<string | null>(null);
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+    const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 3000);
+    };
 
     const fetchOrders = useCallback(async () => {
         try {
-            const res = await fetch('/api/orders?status=NEW,PREPARING');
+            // Fetch any order that has active items
+            const res = await fetch('/api/orders?status=NEW,PREPARING,READY,SERVED');
             const data = await res.json();
             if (!data.success) return;
 
@@ -63,16 +72,18 @@ export default function KitchenKDS() {
                 fullId: order.id,
                 table: order.tableCode.replace('T-', ''),
                 status: order.status,
-                items: order.items.map(i => ({
+                items: order.items.filter((i: any) => i.status === 'PENDING' || i.status === 'PREPARING').map(i => ({
+                    id: i.id,
                     name: i.itemName,
                     qty: i.quantity,
+                    status: i.status || 'PENDING',
                     variant: i.selectedVariant,
                     modifiers: i.selectedModifiers,
                     notes: i.notes
                 })),
                 createdAt: new Date(order.createdAt).getTime(),
                 version: order.version,
-            }));
+            })).filter((t: Ticket) => t.items.some(i => ['PENDING', 'PREPARING'].includes(i.status)));
 
             setTickets(newTickets);
         } catch (err) {
@@ -82,17 +93,43 @@ export default function KitchenKDS() {
         }
     }, []);
 
-    const moveStatus = async (ticketId: string, nextStatus: 'PREPARING' | 'READY') => {
-        const ticket = tickets.find(t => t.id === ticketId);
-        if (!ticket) return;
-        setUpdating(ticketId);
+    const moveStatus = async (ticket: Ticket, nextStatus: 'PREPARING' | 'READY') => {
+        setUpdating(ticket.id);
         try {
-            await fetch(`/api/orders/${ticket.fullId}`, {
+            const targetItems = ticket.items.filter(i =>
+                (nextStatus === 'PREPARING' && i.status === 'PENDING') ||
+                (nextStatus === 'READY' && i.status === 'PREPARING')
+            );
+
+            // 1. Update individual items
+            for (const item of targetItems) {
+                await fetch(`/api/orders/${ticket.fullId}/items/${item.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: nextStatus }),
+                });
+            }
+
+            // 2. Synchronize Order status (This moves the ticket between KDS tabs)
+            const orderRes = await fetch(`/api/orders/${ticket.fullId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: nextStatus, version: ticket.version }),
+                body: JSON.stringify({
+                    status: nextStatus,
+                    version: ticket.version
+                }),
             });
-            await fetchOrders();
+
+            if (orderRes.ok) {
+                showToast(nextStatus === 'PREPARING' ? "Preparation started" : "Order marked as Ready");
+                await fetchOrders();
+            } else {
+                const errData = await orderRes.json();
+                showToast(errData.error || "failed to move order", "error");
+            }
+        } catch (err) {
+            console.error(err);
+            showToast("System synchronization error", "error");
         } finally {
             setUpdating(null);
         }
@@ -239,17 +276,17 @@ export default function KitchenKDS() {
                                     <div className="pt-4 border-t border-zinc-50 mt-auto">
                                         {activeTab === 'NEW' ? (
                                             <button
-                                                onClick={() => moveStatus(ticket.id, 'PREPARING')}
+                                                onClick={() => moveStatus(ticket, 'PREPARING')}
                                                 className="w-full text-center text-[10px] font-bold text-white uppercase tracking-widest py-3 bg-[#111111] rounded-xl hover:bg-black active:scale-95 transition-all shadow-sm"
                                             >
                                                 Start Prep
                                             </button>
                                         ) : (
                                             <button
-                                                onClick={() => moveStatus(ticket.id, 'READY')}
+                                                onClick={() => moveStatus(ticket, 'READY')}
                                                 className="w-full text-center text-[10px] font-bold text-white uppercase tracking-widest py-3 bg-green-600 rounded-xl hover:bg-green-700 active:scale-95 transition-all shadow-green-200 shadow-lg"
                                             >
-                                                Complete Order
+                                                Complete Items
                                             </button>
                                         )}
                                     </div>
@@ -265,6 +302,20 @@ export default function KitchenKDS() {
                     )}
                 </div>
             </div>
+
+            {/* TOAST SYSTEM */}
+            <AnimatePresence>
+                {toast && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 50, x: '-50%' }}
+                        animate={{ opacity: 1, y: 0, x: '-50%' }}
+                        exit={{ opacity: 0, y: 50, x: '-50%' }}
+                        className={`fixed bottom-10 left-1/2 z-200 px-6 py-3 rounded-2xl shadow-xl border text-sm font-bold uppercase tracking-widest ${toast.type === 'error' ? 'bg-red-500 text-white border-red-400' : 'bg-zinc-900 text-white border-zinc-800'}`}
+                    >
+                        {toast.message}
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             <style jsx global>{`
                 .no-scrollbar::-webkit-scrollbar { display: none; }
