@@ -3,7 +3,7 @@
  * 
  * Standardizes on Single-Database Multi-Tenant Architecture.
  * All tenants share the same database; isolation is enforced via 'clientId'.
- * (v2: Force refresh for plan migration)
+ * (v3: Force refresh for estimatedTime field)
  */
 import { PrismaClient } from "@prisma/client";
 import { PrismaNeon } from "@prisma/adapter-neon";
@@ -48,7 +48,8 @@ const globalForPrisma = globalThis as unknown as {
 
 // FORCE RESET IN DEV TEMPORARILY TO FIX STALE SCHEMA
 if (process.env.NODE_ENV !== "production") {
-    // Always reset to ensure new schema (like ComplaintStatus.VERIFIED) is picked up
+    // Always reset to ensure new schema (like estimatedTime) is picked up
+    // @ts-ignore
     globalForPrisma.prisma = undefined;
 }
 

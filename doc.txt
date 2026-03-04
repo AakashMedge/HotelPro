@@ -1,0 +1,28 @@
+Techstack:The project HotelPro is a modern, AI-native Restaurant Management System (POS) built with a cutting-edge tech stack focused on high performance, real-time AI capabilities, and premium user experience.
+
+Core Framework & Language
+Next.js 16: The latest version of the React framework for building the web application.
+TypeScript: Used throughout for type-safe development.
+React 19: The UI library powering the frontend.
+Styling & UI
+Tailwind CSS 4: The massive utility-first CSS framework for modern, responsive design.
+Framer Motion: Used for smooth animations and transitions.
+Lucide React: A comprehensive icon library.
+Database & ORM
+PostgreSQL: The primary relational database.
+Neon: A serverless PostgreSQL platform used as the database provider.
+Prisma: The Object-Relational Mapper (ORM) used to interact with the database.
+AI & Voice Services
+Groq: Powers the "Master Waiter AI" using Llama 3.k-70B/8B models for ultra-low latency reasoning.
+ElevenLabs: Provides the neural voice engine (Turbo v2.5) for real-time voice updates.
+Vercel AI SDK: Used for integrating AI models into the application.
+Infrastructure & Security
+Arcjet: Provides enterprise-grade security, including bot protection and rate limiting.
+Stripe: Integrated for payment processing.
+Key Utilities
+Authentication: bcryptjs for password hashing and jose for JWT handling.
+QR Code Handling: qrcode, qrcode.react, and html5-qrcode for generating and scanning menus.
+Reporting: jspdf for generating GST-ready invoices/receipts.
+Real-time: ws (WebSockets) for live order flow and kitchen updates.
+
+

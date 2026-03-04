@@ -35,8 +35,10 @@ export interface MenuItem {
 }
 
 export interface CartItem {
+    cartId?: string;
     menuItemId: string;
     name: string;
+    title?: string;
     price: number;
     quantity: number;
     category: string;
@@ -56,6 +58,8 @@ export interface ActiveOrderInfo {
     }[];
     subtotal: number;
     grandTotal: number;
+    estimatedTime?: number | null;
+    currentTime?: string;
 }
 
 export interface SessionState {
@@ -273,6 +277,7 @@ function executeAddToCart(
         existing.quantity += quantity;
     } else {
         updatedCart.push({
+            cartId: Math.random().toString(36).substr(2, 9),
             menuItemId: matched.id,
             name: matched.name,
             price: effectivePrice,
@@ -357,7 +362,22 @@ function narrateOrderStatus(session: SessionState): string {
             return `${i.quantity}× ${i.itemName} — ${itemStatusMap[i.status] || i.status}`;
         });
 
-    return `Your order has been ${statusDesc}.\n\n${itemLines.join('\n')}\n\nOrder Total: ₹${order.grandTotal}`;
+    let response = `Your order has been ${statusDesc}.\n\n${itemLines.join('\n')}\n\nOrder Total: ₹${order.grandTotal}`;
+
+    if (order.estimatedTime) {
+        const created = new Date(order.createdAt).getTime();
+        const now = order.currentTime ? new Date(order.currentTime).getTime() : Date.now();
+        const elapsedMins = Math.floor((now - created) / 60000);
+        const timeLeft = Math.max(0, order.estimatedTime - elapsedMins);
+
+        if (timeLeft > 0) {
+            response += `\n\nEstimated time remaining: approximately ${timeLeft} minutes.`;
+        } else {
+            response += `\n\nYour order is slightly behind schedule but our chefs are working frantically to get it to you as quickly as possible!`;
+        }
+    }
+
+    return response;
 }
 
 // ============================================
@@ -389,7 +409,7 @@ export function buildSystemPrompt(session: SessionState): string {
         .join('\n\n');
 
     const cartText = session.cart.length > 0
-        ? session.cart.map(c => `  - ${c.quantity}× ${c.name} (₹${c.price * c.quantity})`).join('\n')
+        ? session.cart.map(c => `  - ${c.quantity}× ${c.name || c.title || 'Item'} (₹${c.price * c.quantity})`).join('\n')
         : '  (empty)';
 
     const cartTotal = session.cart.reduce((s, c) => s + c.price * c.quantity, 0);
@@ -409,7 +429,12 @@ export function buildSystemPrompt(session: SessionState): string {
             .filter(i => i.status !== 'CANCELLED')
             .map(i => `    ${i.quantity}× ${i.itemName} — ${i.status}`)
             .join('\n');
-        orderContext = `Active Order (${o.id.slice(0, 8)}):\n  Status: ${statusLabel[o.status] || o.status}\n  Items:\n${itemLines}\n  Total: ₹${o.grandTotal}`;
+        const created = new Date(o.createdAt).getTime();
+        const now = o.currentTime ? new Date(o.currentTime).getTime() : Date.now();
+        const elapsedMins = Math.floor((now - created) / 60000);
+        const timeLeft = o.estimatedTime ? Math.max(0, o.estimatedTime - elapsedMins) : null;
+
+        orderContext = `Active Order (${o.id.slice(0, 8)}):\n  Status: ${statusLabel[o.status] || o.status}\n  Items:\n${itemLines}\n  Total: ₹${o.grandTotal}${o.estimatedTime ? `\n  Initial ETA: ${o.estimatedTime} mins\n  Time Elapsed: ${elapsedMins} mins\n  TIME LEFT: ${timeLeft} mins` : ''}`;
     }
 
     return `You are "The Master Waiter", an elite AI dining concierge for "${session.hotelName}".
@@ -435,13 +460,15 @@ CRITICAL RULES:
 4. If the user asks for a recommendation, use "RECOMMEND" action.
 5. If the user wants to order, use "ADD_TO_CART" action.
 
-RESPONSE FORMAT:
+RESPONSE FORMAT (JSON ONLY):
 {
-  "message": "Your conversational response to the guest (keep it polite and brief)",
+  "message": "Conversational response",
   "actions": [
-    { "type": "ACTION_TYPE", "itemName": "Exact Name From Menu", "quantity": 1, "criteria": "search term" }
+    { "type": "ACTION_TYPE", "itemName": "Item Name", "quantity": 1, "criteria": "term" }
   ]
 }
+
+CRITICAL: Extract numeric quantity from natural language (e.g. "for 3 people" or "three plates" means quantity: 3). Always specify quantity in actions.
 
 ACTION TYPES:
 - "RECOMMEND": Suggest items (Use when user asks "what is good?", "suggest something", "show me menu", "what do you have?").
@@ -557,7 +584,6 @@ export function executeActions(
                         { ...session, cart }
                     );
                     cart = result.cart;
-                    uiCommands.push({ type: 'UPDATE_CART', data: cart });
                     actionResults.push(result.text);
                 }
                 break;
@@ -587,14 +613,12 @@ export function executeActions(
                 if (action.itemName) {
                     const result = executeRemoveFromCart(action.itemName, { ...session, cart });
                     cart = result.cart;
-                    uiCommands.push({ type: 'UPDATE_CART', data: cart });
                     actionResults.push(result.text);
                 }
                 break;
             }
             case 'SHOW_CART': {
                 const result = showCart({ ...session, cart });
-                uiCommands.push({ type: 'UPDATE_CART', data: cart });
                 actionResults.push(result.text);
                 break;
             }
@@ -618,6 +642,11 @@ export function executeActions(
             default:
                 break;
         }
+    }
+
+    // Add a single final cart update if it changed
+    if (JSON.stringify(cart) !== JSON.stringify(session.cart)) {
+        uiCommands.push({ type: 'UPDATE_CART', data: cart });
     }
 
     return { updatedCart: cart, uiCommands, actionResults };

@@ -225,6 +225,7 @@ export async function updateOrderStatus(
         serviceChargeAmount?: number;
         grandTotal?: number;
         appliedGstRate?: number;
+        estimatedTime?: number;
     }
 ): Promise<OrderWithItems> {
     return await db.$transaction(async (tx) => {
@@ -256,6 +257,7 @@ export async function updateOrderStatus(
                     serviceChargeAmount: overrides.serviceChargeAmount !== undefined ? overrides.serviceChargeAmount : order.serviceChargeAmount,
                     grandTotal: overrides.grandTotal !== undefined ? overrides.grandTotal : order.grandTotal,
                     appliedGstRate: overrides.appliedGstRate !== undefined ? overrides.appliedGstRate : order.appliedGstRate,
+                    estimatedTime: overrides.estimatedTime !== undefined ? overrides.estimatedTime : order.estimatedTime,
                 })
             },
             include: { items: true, table: { select: { id: true, tableCode: true, assignedWaiterId: true } } },
@@ -306,7 +308,8 @@ export async function updateOrderStatus(
         eventEmitter.emit('ORDER_UPDATED', {
             orderId: order.id,
             tableCode: updatedOrder.table.tableCode,
-            status: newStatus
+            status: newStatus,
+            estimatedTime: updatedOrder.estimatedTime
         });
 
         return updatedOrder as OrderWithItems;

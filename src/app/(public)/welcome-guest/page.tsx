@@ -579,18 +579,33 @@ function WelcomeGuestContent() {
                         </header>
 
                         <div className="grid grid-cols-1 gap-6 w-full max-w-sm">
+                            {claimError && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="bg-rose-50 border border-rose-100 p-4 rounded-3xl text-center"
+                                >
+                                    <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest">{claimError}</p>
+                                </motion.div>
+                            )}
+
                             <button
                                 onClick={() => {
                                     setOrderingMode('ai');
                                     claimTable(tableStatus?.tableCode || '', 'NEW', 'ai');
                                 }}
-                                className="bg-zinc-900 text-white rounded-5xl p-8 flex flex-col items-center gap-6 group hover:bg-[#D43425] transition-all shadow-2xl relative overflow-hidden"
+                                disabled={loadingTable}
+                                className="bg-zinc-900 text-white rounded-5xl p-8 flex flex-col items-center gap-6 group hover:bg-[#D43425] transition-all shadow-2xl relative overflow-hidden disabled:opacity-50"
                             >
                                 <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-150 transition-transform">
                                     <Sparkles size={100} />
                                 </div>
                                 <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center text-white group-hover:bg-white group-hover:text-[#D43425] transition-all">
-                                    <Sparkles size={32} />
+                                    {loadingTable && orderingMode === 'ai' ? (
+                                        <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        <Sparkles size={32} />
+                                    )}
                                 </div>
                                 <div className="text-center">
                                     <span className="text-[10px] font-black uppercase tracking-[0.3em] block mb-1">AI Waiter Concierge</span>
@@ -603,10 +618,15 @@ function WelcomeGuestContent() {
                                     setOrderingMode('manual');
                                     claimTable(tableStatus?.tableCode || '', 'NEW', 'manual');
                                 }}
-                                className="bg-white border-2 border-zinc-100 rounded-5xl p-8 flex flex-col items-center gap-6 group hover:border-[#D43425] transition-all shadow-sm"
+                                disabled={loadingTable}
+                                className="bg-white border-2 border-zinc-100 rounded-5xl p-8 flex flex-col items-center gap-6 group hover:border-[#D43425] transition-all shadow-sm disabled:opacity-50"
                             >
                                 <div className="w-16 h-16 bg-vellum rounded-2xl flex items-center justify-center text-ink group-hover:bg-[#D43425] group-hover:text-white transition-all">
-                                    <Utensils size={32} />
+                                    {loadingTable && orderingMode === 'manual' ? (
+                                        <div className="w-6 h-6 border-2 border-[#D43425] border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        <Utensils size={32} />
+                                    )}
                                 </div>
                                 <div className="text-center">
                                     <span className="text-[10px] font-black uppercase tracking-[0.3em] block mb-1 text-ink group-hover:text-[#D43425]">Visual Digital Menu</span>

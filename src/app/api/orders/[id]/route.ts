@@ -39,6 +39,7 @@ interface OrderResponse {
     createdAt: string;
     closedAt?: string;
     customerName: string | null;
+    estimatedTime?: number | null;
     sessionId: string | null;
 }
 
@@ -181,10 +182,12 @@ export async function PATCH(
             gstAmount,
             serviceChargeAmount,
             grandTotal,
-            appliedGstRate
+            appliedGstRate,
+            estimatedTime
         } = body;
 
-        console.log(`[ORDER API] Payload for ${id}:`, { status, subtotal, gstAmount, grandTotal });
+        // FORCE REBUILD: v2
+        console.log(`[ORDER API] Payload for ${id}:`, { status, subtotal, gstAmount, grandTotal, estimatedTime });
 
         // ...
 
@@ -204,7 +207,8 @@ export async function PATCH(
                 gstAmount,
                 serviceChargeAmount,
                 grandTotal,
-                appliedGstRate
+                appliedGstRate,
+                estimatedTime
             }
         );
 
