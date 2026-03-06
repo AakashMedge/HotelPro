@@ -11,8 +11,10 @@ import { useRouter } from 'next/navigation';
 // ============================================
 
 interface CartItem {
+    cartId?: string;
     menuItemId: string;
     name: string;
+    title?: string;
     price: number;
     quantity: number;
     category: string;
@@ -37,9 +39,44 @@ export default function AIAssistantPage() {
 
     // ── State ──
     const [phase, setPhase] = useState<AiPhase>('idle');
-    const [messages, setMessages] = useState<Message[]>([]);
+    const [messages, setMessages] = useState<Message[]>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('hp_ai_messages');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    return parsed.map((m: any, idx: number) => ({
+                        id: String(idx),
+                        role: m.role,
+                        content: m.content,
+                        timestamp: Date.now()
+                    }));
+                } catch { return []; }
+            }
+        }
+        return [];
+    });
+    const [cart, setCart] = useState<CartItem[]>(() => {
+        if (typeof window === 'undefined') return [];
+        try {
+            const raw = localStorage.getItem('hp_cart');
+            if (!raw) return [];
+            return JSON.parse(raw).map((i: any) => ({
+                cartId: i.cartId || i.id || Math.random().toString(36).substr(2, 9),
+                menuItemId: i.menuItemId || i.id,
+                name: i.title || i.name,
+                title: i.title || i.name,
+                price: Number(i.price) || 0,
+                quantity: Number(i.quantity) || 1,
+                category: i.category || '',
+                isVeg: i.isVeg || false,
+            }));
+        } catch { return []; }
+    });
+    const cartRef = useRef<CartItem[]>(cart);
+    useEffect(() => { cartRef.current = cart; }, [cart]);
+
     const [isLoading, setIsLoading] = useState(false);
-    const [cart, setCart] = useState<CartItem[]>([]);
     const [recommendedItems, setRecommendedItems] = useState<any[]>([]);
     const [guestName, setGuestName] = useState('');
     const [tableCode, setTableCode] = useState('');
@@ -47,6 +84,7 @@ export default function AIAssistantPage() {
     const [activeOrderId, setActiveOrderId] = useState('');
     const [liveTranscript, setLiveTranscript] = useState('');
     const [isExecutingOrder, setIsExecutingOrder] = useState(false);
+    const isLoadingRef = useRef(false);
 
     // ── Refs ──
     const recognitionRef = useRef<any>(null);
@@ -69,26 +107,11 @@ export default function AIAssistantPage() {
             return;
         }
 
+        // Initial Load of other metadata
         setGuestName(localStorage.getItem('hp_guest_name') || 'Guest');
         setTableCode(localStorage.getItem('hp_table_code') || '');
         setTableId(localStorage.getItem('hp_table_id') || '');
         setActiveOrderId(localStorage.getItem('hp_active_order_id') || '');
-
-        // Sync cart
-        try {
-            const raw = localStorage.getItem('hp_cart');
-            if (raw) {
-                const parsed = JSON.parse(raw);
-                setCart(parsed.map((i: any) => ({
-                    menuItemId: i.menuItemId || i.id,
-                    name: i.title || i.name,
-                    price: i.price,
-                    quantity: i.quantity,
-                    category: i.category || '',
-                    isVeg: i.isVeg || false,
-                })));
-            }
-        } catch { /* ignore */ }
 
         return () => {
             // Full cleanup on unmount
@@ -144,9 +167,13 @@ export default function AIAssistantPage() {
         return () => clearInterval(interval);
     }, [tableId, router]);
 
-    // Auto-scroll messages
+    // Auto-scroll messages + Persist
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (typeof window !== 'undefined' && messages.length > 0) {
+            const toSave = messages.map(m => ({ role: m.role, content: m.content }));
+            localStorage.setItem('hp_ai_messages', JSON.stringify(toSave));
+        }
     }, [messages]);
 
 
@@ -365,7 +392,9 @@ export default function AIAssistantPage() {
     // ============================================
 
     const handleSend = useCallback(async (text: string) => {
-        if (!text.trim() || isLoading) return;
+        if (!text.trim() || isLoadingRef.current) return;
+        isLoadingRef.current = true;
+        setIsLoading(true);
 
         // Detect language for TTS hint
         const hasMarathi = /[ळ]/.test(text);
@@ -404,7 +433,7 @@ export default function AIAssistantPage() {
                     guestName,
                     tableCode,
                     tableId,
-                    cart,
+                    cart: cartRef.current,
                     conversationHistory: history,
                     activeOrderId,
                 }),
@@ -463,10 +492,11 @@ export default function AIAssistantPage() {
                 };
                 setMessages(prev => [...prev, errMsg]);
             }
-            setPhase('idle');
+        } finally {
+            isLoadingRef.current = false;
             setIsLoading(false);
         }
-    }, [isLoading, messages, guestName, tableCode, tableId, cart, activeOrderId, killAllAudio, killMic, speak, placeOrder, addToExistingOrder, router]);
+    }, [messages, guestName, tableCode, tableId, activeOrderId, killAllAudio, killMic, speak, placeOrder, addToExistingOrder, router]);
 
     // ============================================
     // Speech Recognition (STT)
@@ -818,8 +848,8 @@ export default function AIAssistantPage() {
                             <div>
                                 <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#D43425]/60 mb-1">Current Selection</h3>
                                 <div className="space-y-1">
-                                    {cart.map(item => (
-                                        <div key={item.menuItemId} className="flex justify-between items-center text-xs">
+                                    {cart.map((item, idx) => (
+                                        <div key={item.cartId || `${item.menuItemId}-${idx}`} className="flex justify-between items-center text-xs">
                                             <span className="text-[#3D2329] font-medium">{item.quantity}× {item.name}</span>
                                             <span className="text-zinc-400 font-bold tabular-nums">₹{item.price * item.quantity}</span>
                                         </div>

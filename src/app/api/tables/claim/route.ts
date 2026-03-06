@@ -94,29 +94,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         if (table.qrCodes && table.qrCodes.length > 0) {
             const qrSessionToken = request.cookies.get("hp-qr-session")?.value;
 
-            if (!qrSessionToken) {
-                console.warn(`[TABLE_CLAIM] ✗ Missing QR session cookie for protected table ${table.tableCode}`);
-                return NextResponse.json(
-                    { success: false, error: "This table requires a QR scan. Please scan the physical code on the table." },
-                    { status: 403 }
-                );
-            }
+            if (qrSessionToken) {
+                const validSession = await (db as any).qRSession.findFirst({
+                    where: {
+                        sessionToken: qrSessionToken,
+                        tableId: table.id,
+                        isActive: true,
+                        expiresAt: { gt: new Date() }
+                    }
+                });
 
-            const validSession = await (db as any).qRSession.findFirst({
-                where: {
-                    sessionToken: qrSessionToken,
-                    tableId: table.id,
-                    isActive: true,
-                    expiresAt: { gt: new Date() }
+                if (validSession) {
+                    console.log(`[TABLE_CLAIM] ✓ Valid QR session found for ${table.tableCode}`);
+                } else {
+                    console.warn(`[TABLE_CLAIM] ! Stale/Invalid QR session cookie for ${table.tableCode} - Allowing Manual Claim`);
                 }
-            });
-
-            if (!validSession) {
-                console.warn(`[TABLE_CLAIM] ✗ Invalid or expired QR session for protected table ${table.tableCode}`);
-                return NextResponse.json(
-                    { success: false, error: "QR session expired or invalid. Please scan the table QR code again." },
-                    { status: 403 }
-                );
+            } else {
+                console.warn(`[TABLE_CLAIM] ! Manual claim for protected table ${table.tableCode} (No QR Session)`);
             }
         }
 
@@ -169,26 +163,31 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
                 }
             });
 
-            // 5. Audit log the claim
-            try {
-                await (db.auditLog as any).create({
-                    data: {
-                        clientId: tenant.id,
-                        action: "ORDER_CREATED",
-                        metadata: {
-                            type: "table_claimed",
-                            tableCode: table.tableCode,
-                            sessionId: sessionId || "anonymous",
-                            customerName: customerName || "Guest",
-                            partySize: partySize || 2,
-                            claimedAt: new Date().toISOString(),
-                        }
-                    }
-                });
-            } catch { /* non-blocking audit */ }
-
             const elapsed = Date.now() - startTime;
-            console.log(`[TABLE_CLAIM] ✓ ${table.tableCode} claimed ATOMICALLY | ${tenant.name} | ${elapsed}ms`);
+            console.log(`[TABLE_CLAIM] ✓ ${table.tableCode} status set to ACTIVE | ${tenant.name} | ${elapsed}ms`);
+
+            // 5. De-atomized Audit Log (Fire and forget-ish)
+            (async () => {
+                try {
+                    await (db.auditLog as any).create({
+                        data: {
+                            clientId: tenant.id,
+                            action: "ORDER_CREATED",
+                            metadata: {
+                                type: "table_claimed",
+                                tableCode: table.tableCode,
+                                sessionId: sessionId || "anonymous",
+                                customerName: customerName || "Guest",
+                                partySize: partySize || 2,
+                                claimedAt: new Date().toISOString(),
+                                isManualClaim: !request.cookies.get("hp-qr-session")?.value
+                            }
+                        }
+                    });
+                } catch (e: any) {
+                    console.error("[TABLE_CLAIM] Audit log failed:", e.message);
+                }
+            })();
 
             return NextResponse.json({
                 success: true,

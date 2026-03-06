@@ -114,6 +114,8 @@ export async function POST(req: Request) {
                         })),
                         subtotal: Number(order.subtotal || 0),
                         grandTotal: Number(order.grandTotal || 0),
+                        estimatedTime: order.estimatedTime,
+                        currentTime: new Date().toISOString(),
                     };
                 }
             } catch (e) {
@@ -168,10 +170,18 @@ export async function POST(req: Request) {
         const executionResult = executeActions(parsed.actions, session);
 
         // 11. Return structured response
-        // PRIORITIZE Tool Results over AI Chatter
+        // Deduplicate: If the AI already mentioned the action, don't append tool result
         let finalMessage = parsed.message;
         if (executionResult.actionResults.length > 0) {
-            finalMessage = executionResult.actionResults.join('\n');
+            const uniqueResults = executionResult.actionResults.filter(res => {
+                // If the tool result (e.g. "Added 1x Pasta") is already roughly in the AI message, skip it
+                const simpleRes = res.toLowerCase().replace(/[0-9x×₹()]/g, '').trim();
+                return !parsed.message.toLowerCase().includes(simpleRes);
+            });
+
+            if (uniqueResults.length > 0) {
+                finalMessage = `${parsed.message}\n\n${uniqueResults.join('\n')}`.trim();
+            }
         }
 
         return Response.json({

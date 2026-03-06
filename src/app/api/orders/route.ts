@@ -49,6 +49,7 @@ interface OrderResponse {
     gstAmount: number;
     serviceChargeAmount: number;
     grandTotal: number;
+    estimatedTime?: number | null;
     createdAt: string;
     closedAt?: string;
 }
@@ -207,6 +208,7 @@ export async function POST(
             gstAmount: Number((order as any).gstAmount || 0),
             serviceChargeAmount: Number((order as any).serviceChargeAmount || 0),
             grandTotal: Number((order as any).grandTotal || total),
+            estimatedTime: order.estimatedTime,
             createdAt: order.createdAt.toISOString(),
         };
 
@@ -294,6 +296,7 @@ export async function GET(
                 gstAmount: Number((o as any).gstAmount || 0),
                 serviceChargeAmount: Number((o as any).serviceChargeAmount || 0),
                 grandTotal: Number((o as any).grandTotal || total),
+                estimatedTime: o.estimatedTime,
                 createdAt: o.createdAt.toISOString(),
                 closedAt: o.closedAt?.toISOString(),
                 customerPhone: (o as any).customerPhone || null,

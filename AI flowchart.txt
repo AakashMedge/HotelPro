@@ -1,0 +1,483 @@
+# HotelPro – AI Waiter Concierge & Order Management System
+
+**Implementation Specification Document (For AI Agent / Developer Execution)**
+
+---
+
+# 1. Objective
+
+Implement a **voice-driven AI Waiter Concierge system** inside the HotelPro platform that behaves like a real restaurant waiter.
+
+The system must allow customers to:
+
+* Speak naturally to an AI waiter
+* Ask for menu suggestions
+* Place orders conversationally
+* Confirm orders manually
+* Ask for order status
+* Receive preparation time updates
+* Receive notification when order is ready
+
+The system must also integrate with the **Admin/Staff dashboard** where restaurant staff can manage orders in real time.
+
+---
+
+# 2. Technology Stack
+
+The system must integrate with the existing stack:
+
+### Frontend
+
+* Next.js 16
+* React 19
+* TypeScript
+* Tailwind CSS
+* Framer Motion
+* Lucide Icons
+
+### Backend
+
+* Next.js API Routes / Server Actions
+* Prisma ORM
+* PostgreSQL (Neon)
+
+### AI Systems
+
+* Groq (Llama 3 models)
+* Vercel AI SDK
+* ElevenLabs (voice output)
+
+### Real-Time
+
+* WebSockets (`ws`)
+
+### Security
+
+* Arcjet
+* bcryptjs
+* jose (JWT)
+
+---
+
+# 3. Core System Components
+
+The system consists of **five major subsystems**:
+
+1. AI Waiter Interface
+2. AI Reasoning Engine
+3. Order Management System
+4. Admin Order Dashboard
+5. Real-Time Order Updates
+
+Each subsystem must be implemented independently but integrated.
+
+---
+
+# 4. Customer Interface – AI Waiter Concierge
+
+### Route
+
+```
+/ai-assistant
+```
+
+### Interface Behaviour
+
+When the customer opens the page:
+
+The AI waiter greets the user and waits for voice input.
+
+Example greeting:
+
+> "Good afternoon. I am your AI waiter. Tell me what you would like or ask for recommendations."
+
+The interface must support:
+
+* Tap to Speak (voice input)
+* Suggested action buttons
+* Order cart preview
+* Confirm Order button
+
+---
+
+# 5. Voice Interaction Flow
+
+### Step 1 – Voice Input
+
+Customer taps microphone.
+
+Voice is converted to text.
+
+Flow:
+
+```
+Voice → Speech to Text → AI Processing
+```
+
+---
+
+### Step 2 – AI Intent Detection
+
+The AI must determine the **intent** of the user message.
+
+Supported intents:
+
+| Intent       | Example                            |
+| ------------ | ---------------------------------- |
+| recommend    | "What do you recommend?"           |
+| menu         | "Show me desserts"                 |
+| order        | "One paneer pizza and two coffees" |
+| modify_order | "Add fries"                        |
+| order_status | "How long for my order?"           |
+| bill_request | "I'm ready for the bill"           |
+
+The AI must return structured JSON.
+
+Example:
+
+```
+{
+  intent: "order",
+  items: [
+    { name: "Paneer Pizza", quantity: 1 }
+  ]
+}
+```
+
+---
+
+# 6. Menu Context for AI
+
+The AI must **never hallucinate menu items**.
+
+Menu must always be fetched from the database.
+
+Example query:
+
+```
+prisma.menuItem.findMany({
+  where: { active: true }
+})
+```
+
+Menu data must be injected into the AI prompt.
+
+---
+
+# 7. Order Cart System
+
+Orders are **not immediately placed**.
+
+The AI only **updates a temporary cart state**.
+
+Example cart:
+
+```
+Paneer Pizza x1
+Cold Coffee x2
+```
+
+Customer must press:
+
+```
+Confirm Order
+```
+
+Only after confirmation is the order saved to the database.
+
+---
+
+# 8. Database Schema (Prisma)
+
+Add the following models.
+
+```
+model Order {
+  id            String   @id @default(cuid())
+  tableId       String
+  status        OrderStatus @default(PENDING)
+  estimatedTime Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items         OrderItem[]
+}
+
+model OrderItem {
+  id        String @id @default(cuid())
+  orderId   String
+  menuItemId String
+  quantity  Int
+
+  order     Order @relation(fields: [orderId], references: [id])
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  SERVED
+  CLOSED
+}
+```
+
+---
+
+# 9. Order Lifecycle
+
+Every order must move through the following states:
+
+```
+PENDING → CONFIRMED → PREPARING → READY → SERVED → CLOSED
+```
+
+Lifecycle responsibilities:
+
+| Stage                   | Actor   |
+| ----------------------- | ------- |
+| Customer confirms order | System  |
+| Chef starts preparing   | Chef    |
+| Chef marks ready        | Chef    |
+| Food delivered          | Waiter  |
+| Bill paid               | Cashier |
+
+---
+
+# 10. Admin Order Dashboard
+
+Create a new page:
+
+```
+/admin/orders
+```
+
+This page displays **all active orders in real time**.
+
+Each order card must show:
+
+```
+Table ID
+Ordered Items
+Order Status
+Estimated Time
+Time Remaining
+```
+
+Example order card:
+
+```
+Table 12
+
+Paneer Pizza x1
+Cold Coffee x2
+
+Status: PREPARING
+ETA: 12 minutes
+
+Actions:
+[Set Preparation Time]
+[Mark Ready]
+[Cancel Order]
+```
+
+---
+
+# 11. Staff Roles and Permissions
+
+The system must enforce role-based access.
+
+Roles:
+
+```
+SUPER_ADMIN
+ADMIN
+MANAGER
+WAITER
+CHEF
+CASHIER
+```
+
+---
+
+# 12. Role Permissions
+
+| Action               | Admin | Manager | Waiter | Chef | Cashier |
+| -------------------- | ----- | ------- | ------ | ---- | ------- |
+| View Orders          | ✓     | ✓       | ✓      | ✓    | ✓       |
+| Modify Order         | ✓     | ✓       | ✓      | ✗    | ✗       |
+| Set Preparation Time | ✓     | ✓       |   ✓    | ✓    | ✗       |
+| Start Cooking        | ✓     | ✓       | ✗      | ✓    | ✗       |
+| Mark Ready           | ✓     | ✓       | ✓      | ✓    | ✗       |
+| Mark Served          | ✓     | ✓       | ✓      | ✗    | ✗       |
+| Generate Bill        | ✓     | ✓       | ✗      | ✗    | ✓       |
+| Close Order          | ✓     | ✓       | ✗      | ✗    | ✓       |
+
+Admin and Manager have **full operational control**.
+
+---
+
+# 13. Estimated Preparation Time
+
+Staff must be able to set preparation time.
+
+Example:
+
+```
+Set Time: 15 minutes
+```
+
+Saved to database:
+
+```
+estimatedTime: 15
+status: PREPARING
+```
+
+---
+
+# 14. Remaining Time Calculation
+
+Remaining time must be calculated dynamically.
+
+Formula:
+
+```
+remainingTime = estimatedTime - (currentTime - orderCreatedTime)
+```
+
+Example response from AI:
+
+> "Your order will be ready in approximately 6 minutes."
+
+---
+
+# 15. Order Ready Notification
+
+When the chef marks order as READY:
+
+```
+status = READY
+```
+
+A WebSocket event must be emitted.
+
+Customer UI must display:
+
+```
+🔔 Your order is ready and will be served shortly.
+```
+
+Optional: ElevenLabs voice notification.
+
+---
+
+# 16. Real-Time Updates
+
+Use WebSockets (`ws`) for real-time updates.
+
+Events:
+
+```
+order:new
+order:updated
+order:ready
+order:served
+```
+
+Admin dashboard and customer interface must update instantly.
+
+---
+
+# 17. AI Response Examples
+
+Example interaction:
+
+Customer:
+
+```
+What do you recommend?
+```
+
+AI:
+
+```
+Our chef recommends Burrata Pizza and Spicy Noodles.
+```
+
+Customer:
+
+```
+Add one spicy noodles.
+```
+
+Cart updated.
+
+Customer:
+
+```
+That's all.
+```
+
+User confirms order.
+
+---
+
+# 18. Security Constraints
+
+The AI **must never directly modify the database**.
+
+Correct flow:
+
+```
+AI Response → Backend Validation → Database Update
+```
+
+All menu items must be validated via Prisma.
+
+---
+
+# 19. Final System Architecture
+
+```
+Customer Voice
+      ↓
+Speech Recognition
+      ↓
+AI (Groq Llama)
+      ↓
+Intent Detection
+      ↓
+Cart State
+      ↓
+Confirm Order
+      ↓
+Prisma Database
+      ↓
+WebSocket Event
+      ↓
+Admin Dashboard
+      ↓
+Staff Updates Order
+      ↓
+Customer Receives Status
+```
+
+---
+
+# 20. Expected Outcome
+
+The completed system should behave like a **real AI-powered restaurant waiter** capable of:
+
+* Conversational ordering
+* Smart recommendations
+* Order lifecycle tracking
+* Real-time kitchen updates
+* Staff coordination
+* Voice interaction
+
+The system must be **production-grade, role-secured, and real-time**.
+
+---
+
+**End of Implementation Specification**

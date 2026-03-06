@@ -52,6 +52,7 @@ interface OrderData {
     serviceChargeAmount: number;
     grandTotal: number;
     createdAt: string;
+    estimatedTime?: number | null;
 }
 
 interface ComplaintData {
@@ -103,6 +104,12 @@ function OrderStatusContent() {
     const [feedback, setFeedback] = useState('');
     const [feedbackSent, setFeedbackSent] = useState(false);
     const [now, setNow] = useState(Date.now());
+    const remainingTime = useMemo(() => {
+        if (!order?.estimatedTime || !order?.createdAt) return null;
+        const created = new Date(order.createdAt).getTime();
+        const elapsedMins = Math.floor((now - created) / 60000);
+        return Math.max(0, order.estimatedTime - elapsedMins);
+    }, [order?.estimatedTime, order?.createdAt, now]);
 
     // Complaint system
     const [showComplaintPanel, setShowComplaintPanel] = useState(false);
@@ -119,7 +126,13 @@ function OrderStatusContent() {
     // AI Floating Chat
     const [aiOpen, setAiOpen] = useState(false);
     const [aiInput, setAiInput] = useState('');
-    const [aiMessages, setAiMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
+    const [aiMessages, setAiMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('hp_ai_messages');
+            return saved ? JSON.parse(saved) : [];
+        }
+        return [];
+    });
     const [aiLoading, setAiLoading] = useState(false);
     const [isStarter, setIsStarter] = useState(false);
     const aiChatEndRef = useRef<HTMLDivElement>(null);
@@ -180,6 +193,7 @@ function OrderStatusContent() {
                 serviceChargeAmount: o.serviceChargeAmount,
                 grandTotal: o.grandTotal,
                 createdAt: o.createdAt,
+                estimatedTime: o.estimatedTime,
                 items: o.items.map((item: any) => ({
                     id: item.id,
                     name: item.itemName || item.name,
@@ -433,6 +447,24 @@ function OrderStatusContent() {
         setServeConfirmDismissed(true);
     };
 
+    const handleCounterPayment = () => {
+        const keysToClear = [
+            'hp_active_order_id',
+            'hp_session_id',
+            'hp_table_id',
+            'hp_table_code',
+            'hp_party_size',
+            'hp_guest_name',
+            'hp_hotel_id',
+            'hp_hotel_name',
+            'hp_cart',
+            'hp_hotel_plan',
+            'hp_ai_messages'
+        ];
+        keysToClear.forEach(key => localStorage.removeItem(key));
+        router.replace('/welcome-guest?msg=counter_pay');
+    };
+
     const handleDisputeServed = () => {
         setShowServeConfirm(false);
         setServeConfirmDismissed(true);
@@ -501,6 +533,9 @@ function OrderStatusContent() {
 
     useEffect(() => {
         aiChatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('hp_ai_messages', JSON.stringify(aiMessages));
+        }
     }, [aiMessages]);
 
     if (!mounted || loading) return (
@@ -660,7 +695,15 @@ function OrderStatusContent() {
                             {/* ACTIVE ITEMS */}
                             {order.items.some(i => i.status !== 'SERVED' && i.status !== 'CANCELLED') && (
                                 <div>
-                                    <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-4">In Preparation</p>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none">In Preparation</p>
+                                        {remainingTime !== null && remainingTime > 0 && order.status === 'PREPARING' && (
+                                            <div className="bg-[#D43425]/5 px-3 py-1.5 rounded-full border border-[#D43425]/10 flex items-center gap-2">
+                                                <div className="w-1 h-1 bg-[#D43425] rounded-full animate-ping" />
+                                                <span className="text-[8px] font-black uppercase tracking-[0.1em] text-[#D43425]">ETA: ~{remainingTime} MINS</span>
+                                            </div>
+                                        )}
+                                    </div>
                                     <div className="space-y-4">
                                         {order.items.filter(i => i.status !== 'SERVED' && i.status !== 'CANCELLED').map((item) => (
                                             <div key={item.id} className="flex justify-between items-center group">
@@ -886,7 +929,13 @@ function OrderStatusContent() {
 
                         {order.status !== 'PAID' && (
                             <div className="px-8 pb-8 space-y-3">
-                                <button className="w-full py-5 bg-[#1A1A1A] text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.25em] shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">
+                                <button
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        handleCounterPayment();
+                                    }}
+                                    className="w-full py-5 bg-[#1A1A1A] text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.25em] shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2"
+                                >
                                     <Banknote size={14} /> Pay at Counter
                                 </button>
                                 <button
