@@ -82,61 +82,105 @@ export interface CurrentUser {
     clientStatus: ClientStatus;
 }
 
+export function getCookieNameForRole(role?: string): string {
+    if (!role) return "auth-token";
+    switch (role.toUpperCase()) {
+        case "SUPER_ADMIN":
+            return "hq-token";
+        case "ADMIN":
+        case "MANAGER":
+            return "auth-token-admin";
+        case "WAITER":
+            return "auth-token-waiter";
+        case "KITCHEN":
+            return "auth-token-kitchen";
+        case "CASHIER":
+            return "auth-token-cashier";
+        default:
+            return "auth-token";
+    }
+}
+
+export const ALL_AUTH_COOKIES = [
+    "auth-token-admin",
+    "auth-token-waiter",
+    "auth-token-kitchen",
+    "auth-token-cashier",
+    "auth-token",
+    "hq-token"
+];
+
 /**
  * Get the current authenticated user from cookies.
+ * Checks role-specific cookies first if roleHint is given, or candidate cookies in order.
  * Returns null if not authenticated or session is invalid.
  */
-export async function getCurrentUser(): Promise<CurrentUser | null> {
+export async function getCurrentUser(roleHint?: string): Promise<CurrentUser | null> {
     try {
         const cookieStore = await cookies();
-        const token = cookieStore.get("auth-token")?.value;
-
-        if (!token) {
-            return null;
+        
+        const candidateCookieNames: string[] = [];
+        if (roleHint) {
+            candidateCookieNames.push(getCookieNameForRole(roleHint));
         }
+        candidateCookieNames.push(
+            "auth-token-admin",
+            "auth-token-waiter",
+            "auth-token-kitchen",
+            "auth-token-cashier",
+            "auth-token"
+        );
 
-        const payload = await verifyToken(token);
+        // Deduplicate cookie names while maintaining priority order
+        const uniqueCookieNames = Array.from(new Set(candidateCookieNames));
 
-        const session = await validateSession(payload.sessionId);
-        if (!session) {
-            return null;
-        }
+        for (const cookieName of uniqueCookieNames) {
+            const token = cookieStore.get(cookieName)?.value;
+            if (!token) continue;
 
-        const user = await (prisma.user as any).findUnique({
-            where: { id: payload.sub },
-            select: {
-                id: true,
-                clientId: true,
-                username: true,
-                name: true,
-                role: true,
-                isActive: true,
-                client: {
+            try {
+                const payload = await verifyToken(token);
+                const session = await validateSession(payload.sessionId);
+                if (!session) continue;
+
+                const user = await (prisma.user as any).findUnique({
+                    where: { id: payload.sub },
                     select: {
-                        plan: true,
-                        status: true,
+                        id: true,
+                        clientId: true,
+                        username: true,
+                        name: true,
+                        role: true,
+                        isActive: true,
+                        client: {
+                            select: {
+                                plan: true,
+                                status: true,
+                            },
+                        },
                     },
-                },
-            },
-        });
+                });
 
-        if (!user || !user.isActive) {
-            return null;
+                if (!user || !user.isActive || user.clientId !== payload.clientId) {
+                    continue;
+                }
+
+                return {
+                    id: user.id,
+                    clientId: user.clientId,
+                    username: user.username,
+                    name: user.name,
+                    role: user.role,
+                    plan: user.client.plan,
+                    clientStatus: user.client.status,
+                };
+            } catch {
+                // Token invalid/expired for this cookie, try next candidate
+                continue;
+            }
         }
 
-        if (user.clientId !== payload.clientId) {
-            return null;
-        }
-
-        return {
-            id: user.id,
-            clientId: user.clientId,
-            username: user.username,
-            name: user.name,
-            role: user.role,
-            plan: user.client.plan,
-            clientStatus: user.client.status,
-        };
+        return null;
     } catch {
         return null;
     }
@@ -145,8 +189,8 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 /**
  * Require authentication - throws if not authenticated.
  */
-export async function requireAuth(): Promise<CurrentUser> {
-    const user = await getCurrentUser();
+export async function requireAuth(roleHint?: string): Promise<CurrentUser> {
+    const user = await getCurrentUser(roleHint);
     if (!user) {
         throw new AuthError("AUTH_REQUIRED", 401, "Authentication required");
     }
@@ -174,7 +218,8 @@ export async function requireAuth(): Promise<CurrentUser> {
  * Require specific role(s) - throws if not authenticated or wrong role.
  */
 export async function requireRole(allowedRoles: UserRole[]): Promise<CurrentUser> {
-    const user = await requireAuth();
+    const primaryRoleHint = allowedRoles && allowedRoles.length > 0 ? allowedRoles[0] : undefined;
+    const user = await requireAuth(primaryRoleHint);
     if (!allowedRoles.includes(user.role)) {
         console.warn(`[AUTH_GATE] Access denied for user ${user.username} (${user.id}) | role=${user.role} | allowed=${allowedRoles.join(",")}`);
         throw new AuthError(

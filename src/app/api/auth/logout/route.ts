@@ -28,27 +28,38 @@ interface LogoutErrorResponse {
     error: string;
 }
 
+import { ALL_AUTH_COOKIES } from "@/lib/auth/server";
+
 export async function POST(
     request: NextRequest
 ): Promise<NextResponse<LogoutSuccessResponse | LogoutErrorResponse>> {
     try {
-        // 1. Get token from cookie
-        const token = request.cookies.get("auth-token")?.value;
+        // 1. Get token from any role cookie
+        let token: string | undefined;
+        for (const cookieName of ALL_AUTH_COOKIES) {
+            const val = request.cookies.get(cookieName)?.value;
+            if (val) {
+                token = val;
+                break;
+            }
+        }
 
         if (!token) {
-            // No token = already logged out, still clear cookie and succeed
+            // No token = already logged out, still clear all cookies and succeed
             const response = NextResponse.json<LogoutSuccessResponse>(
                 { success: true },
                 { status: 200 }
             );
 
-            response.cookies.set("auth-token", "", {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === "production",
-                sameSite: "lax",
-                path: "/",
-                maxAge: 0, // Expire immediately
-            });
+            for (const cookieName of ALL_AUTH_COOKIES) {
+                response.cookies.set(cookieName, "", {
+                    httpOnly: true,
+                    secure: process.env.NODE_ENV === "production",
+                    sameSite: "lax",
+                    path: "/",
+                    maxAge: 0,
+                });
+            }
 
             return response;
         }
@@ -60,8 +71,7 @@ export async function POST(
             const payload = await verifyToken(token);
             sessionId = payload.sessionId;
         } catch {
-            // Token is invalid/expired, but we still want to clear the cookie
-            // This is not an error for logout - we're achieving the goal
+            // Token is invalid/expired, but we still want to clear the cookies
         }
 
         // 3. Delete session from database (if we have a valid session ID)
@@ -75,33 +85,37 @@ export async function POST(
             { status: 200 }
         );
 
-        // 5. Clear the auth cookie
-        response.cookies.set("auth-token", "", {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
-            path: "/",
-            maxAge: 0, // Expire immediately
-        });
+        // 5. Clear all auth cookies
+        for (const cookieName of ALL_AUTH_COOKIES) {
+            response.cookies.set(cookieName, "", {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                path: "/",
+                maxAge: 0,
+            });
+        }
 
         return response;
 
     } catch (error) {
         console.error("Logout error:", error);
 
-        // Even on error, try to clear the cookie
+        // Even on error, try to clear all cookies
         const response = NextResponse.json<LogoutErrorResponse>(
             { success: false, error: "An unexpected error occurred" },
             { status: 500 }
         );
 
-        response.cookies.set("auth-token", "", {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
-            path: "/",
-            maxAge: 0,
-        });
+        for (const cookieName of ALL_AUTH_COOKIES) {
+            response.cookies.set(cookieName, "", {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                path: "/",
+                maxAge: 0,
+            });
+        }
 
         return response;
     }

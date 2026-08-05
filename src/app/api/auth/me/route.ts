@@ -3,7 +3,20 @@ import { getCurrentUser, getAuthFailure } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
     try {
-        const user = await getCurrentUser();
+        const searchRole = request.nextUrl.searchParams.get("role");
+        const headerRole = request.headers.get("x-role-hint");
+        const referer = request.headers.get("referer") || "";
+
+        let roleHint = searchRole || headerRole || undefined;
+        if (!roleHint) {
+            if (referer.includes("/waiter")) roleHint = "WAITER";
+            else if (referer.includes("/admin") || referer.includes("/manager")) roleHint = "ADMIN";
+            else if (referer.includes("/kitchen")) roleHint = "KITCHEN";
+            else if (referer.includes("/cashier")) roleHint = "CASHIER";
+            else if (referer.includes("/hq")) roleHint = "SUPER_ADMIN";
+        }
+
+        const user = await getCurrentUser(roleHint);
 
         if (!user) {
             return NextResponse.json(

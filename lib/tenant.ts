@@ -92,8 +92,18 @@ export async function getTenantFromRequest(): Promise<TenantConfig | null> {
     const cookieStore = await cookies();
 
     // ─── Priority 1: Staff JWT (highest authority) ───
-    const authToken = cookieStore.get("auth-token")?.value;
-    if (authToken) {
+    const candidateCookieNames = [
+        "auth-token-admin",
+        "auth-token-waiter",
+        "auth-token-kitchen",
+        "auth-token-cashier",
+        "auth-token"
+    ];
+
+    for (const cookieName of candidateCookieNames) {
+        const authToken = cookieStore.get(cookieName)?.value;
+        if (!authToken) continue;
+
         try {
             // Import dynamically to avoid circular deps
             const { verifyToken } = await import("@/lib/auth/jwt");
@@ -114,7 +124,7 @@ export async function getTenantFromRequest(): Promise<TenantConfig | null> {
                         console.warn(`[TENANT] Blocked access to archived tenant: ${client.name}`);
                         return null;
                     }
-                    console.log(`[TENANT] Resolved via staff JWT: ${client.name} (${client.id})`);
+                    console.log(`[TENANT] Resolved via staff JWT (${cookieName}): ${client.name} (${client.id})`);
                     return {
                         id: client.id,
                         name: client.name,
@@ -125,7 +135,7 @@ export async function getTenantFromRequest(): Promise<TenantConfig | null> {
                 }
             }
         } catch {
-            // JWT invalid/expired — fall through to customer cookie
+            // JWT invalid/expired — check next candidate
         }
     }
 

@@ -156,7 +156,18 @@ export async function POST(
             { status: 200 }
         );
 
-        // 9. Set HttpOnly cookie
+        // 9. Set HttpOnly cookies (both role-scoped and fallback auth-token)
+        const { getCookieNameForRole } = await import("@/lib/auth/server");
+        const roleCookieName = getCookieNameForRole(user.role);
+
+        response.cookies.set(roleCookieName, token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            path: "/",
+            maxAge: SESSION_DURATION_SECONDS,
+        });
+
         response.cookies.set("auth-token", token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
