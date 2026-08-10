@@ -1,18 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
 /**
  * POST /api/orders/[id]/settle
  * Finalizes and closes an order when the cashier clicks 'Finish & Close'.
  * This is the ONLY trigger that persists Payment and registers revenue into Sales Ledger.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
         const user = await requireAuth();
-        const { id: orderId } = params;
+        const { id: orderId } = await params;
 
-        const order = await (prisma.order as any).findFirst({
+        if (!orderId) {
+            return NextResponse.json({ success: false, error: 'Order ID is required' }, { status: 400 });
+        }
+
+        const db = getDb();
+        const order = await (db.order as any).findFirst({
             where: { id: orderId, clientId: user.clientId },
         });
 
@@ -23,8 +28,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         const closedAt = new Date();
 
         // 1. Mark order as CLOSED
-        const updatedOrder = await (prisma.order as any).update({
-            where: { id: orderId },
+        const updatedOrder = await (db.order as any).update({
+            where: { id: order.id },
             data: {
                 status: 'CLOSED',
                 closedAt,
@@ -32,8 +37,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             },
         });
 
-        // 2. Create Payment record in DB (Security Check Passed!)
-        await (prisma.payment as any).create({
+        // 2. Create Payment record in DB (Persists revenue into Sales Ledger)
+        await (db.payment as any).create({
             data: {
                 clientId: user.clientId,
                 orderId: order.id,
@@ -45,7 +50,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
         // 3. Set table back to VACANT
         if (order.tableId) {
-            await (prisma.table as any).update({
+            await (db.table as any).update({
                 where: { id: order.tableId },
                 data: { status: 'VACANT' },
             });

@@ -25,21 +25,23 @@ export interface GhostTable {
  * Mutates the table objects in-place (sets status to VACANT).
  * Returns the list of ghost table IDs for DB cleanup.
  */
-export function detectGhostSessions(tables: any[]): GhostTable[] {
+export function detectGhostSessions(tables: Record<string, unknown>[]): GhostTable[] {
     const now = Date.now();
     const ghosts: GhostTable[] = [];
 
     for (const t of tables) {
         const isActive = t.status === "ACTIVE";
-        const hasNoOrders = !t.orders || t.orders.length === 0;
-        const updatedTime = t.updatedAt ? new Date(t.updatedAt).getTime() : now;
+        const orders = t.orders as Record<string, unknown>[] | undefined;
+        const firstOrderItems = (orders?.[0]?.items) as Record<string, unknown>[] | undefined;
+        const hasNoOrders = !orders || orders.length === 0 || (firstOrderItems && firstOrderItems.length === 0);
+        const updatedTime = t.updatedAt ? new Date(t.updatedAt as string | number | Date).getTime() : now;
         const idleMs = now - updatedTime;
         const isExpired = idleMs > GHOST_TIMEOUT_MS;
 
         if (isActive && hasNoOrders && isExpired) {
             ghosts.push({
-                id: t.id,
-                tableCode: t.tableCode || t.code || "??",
+                id: String(t.id || ''),
+                tableCode: String(t.tableCode || t.code || "??"),
                 idleMinutes: Math.floor(idleMs / 60000),
             });
             // Mutate in-memory for immediate response accuracy
@@ -54,18 +56,20 @@ export function detectGhostSessions(tables: any[]): GhostTable[] {
  * Resets ghost tables in the database (fire-and-forget).
  * Non-blocking — errors are logged but don't throw.
  */
-export function releaseGhostTables(db: PrismaClient | any, ghosts: GhostTable[]): void {
+export function releaseGhostTables(db: PrismaClient | Record<string, unknown>, ghosts: GhostTable[]): void {
     if (ghosts.length === 0) return;
 
     const ghostIds = ghosts.map(g => g.id);
     const ghostCodes = ghosts.map(g => `${g.tableCode}(${g.idleMinutes}m)`).join(", ");
 
-    (db.table as any).updateMany({
+    const dbTable = (db as Record<string, unknown>).table as { updateMany: (args: Record<string, unknown>) => Promise<{ count: number }> };
+
+    dbTable.updateMany({
         where: { id: { in: ghostIds } },
         data: { status: "VACANT", updatedAt: new Date() }
-    }).then((result: any) => {
+    }).then((result: { count: number }) => {
         console.log(`[GHOST_SESSION] ♻️ Auto-released ${result.count} abandoned tables: ${ghostCodes}`);
-    }).catch((err: any) => {
+    }).catch((err: Error) => {
         console.error("[GHOST_SESSION] ✗ Failed to release ghost tables:", err.message);
     });
 }
@@ -74,19 +78,22 @@ export function releaseGhostTables(db: PrismaClient | any, ghosts: GhostTable[])
  * One-call convenience: detect + release ghost sessions.
  * Returns the ghost table list for optional logging/alerts.
  */
-export function cleanupGhostSessions(tables: any[], db: PrismaClient | any): GhostTable[] {
+export function cleanupGhostSessions(tables: Record<string, unknown>[], db: PrismaClient | Record<string, unknown>): GhostTable[] {
     const ghosts = detectGhostSessions(tables);
     releaseGhostTables(db, ghosts);
 
     // Run parallel async cleanup for expired QR Sessions
-    (db as any).qRSession.updateMany({
-        where: { isActive: true, expiresAt: { lt: new Date() } },
-        data: { isActive: false }
-    }).then((result: any) => {
-        if (result.count > 0) console.log(`[QR_SESSION] 🧹 Auto-expired ${result.count} stale QR sessions.`);
-    }).catch((err: any) => {
-        console.error("[QR_SESSION] ✗ Failed to auto-expire sessions:", err.message);
-    });
+    const dbQrSession = (db as Record<string, unknown>).qRSession as { updateMany: (args: Record<string, unknown>) => Promise<{ count: number }> } | undefined;
+    if (dbQrSession?.updateMany) {
+        dbQrSession.updateMany({
+            where: { isActive: true, expiresAt: { lt: new Date() } },
+            data: { isActive: false }
+        }).then((result: { count: number }) => {
+            if (result.count > 0) console.log(`[QR_SESSION] 🧹 Auto-expired ${result.count} stale QR sessions.`);
+        }).catch((err: Error) => {
+            console.error("[QR_SESSION] ✗ Failed to auto-expire sessions:", err.message);
+        });
+    }
 
     return ghosts;
 }

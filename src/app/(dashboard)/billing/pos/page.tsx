@@ -13,6 +13,8 @@ interface TableData {
     tableCode: string;
     capacity: number;
     status: string;
+    section?: string;
+    draftCount?: number;
     activeOrder?: {
         id: string;
         grandTotal: number;
@@ -35,6 +37,7 @@ export default function BillingPOSPage() {
     const [tables, setTables] = useState<TableData[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeFilter, setActiveFilter] = useState<FilterType>('ALL');
+    const [activeSection, setActiveSection] = useState<string>('ALL');
     const [notification, setNotification] = useState<string | null>(null);
     const [mounted, setMounted] = useState(false);
     const [cleaningId, setCleaningId] = useState<string | null>(null);
@@ -49,13 +52,27 @@ export default function BillingPOSPage() {
 
             if (tablesData.success) {
                 const orders = ordersData.orders || [];
-                const mapped: TableData[] = tablesData.tables.map((t: any) => {
-                    const order = orders.find((o: any) => o.tableId === t.id || o.tableCode === t.tableCode);
+                const mapped: TableData[] = tablesData.tables.map((t: Record<string, unknown>) => {
+                    const order = orders.find((o: Record<string, unknown>) => o.tableId === t.id || o.tableCode === t.tableCode);
+                    let draftCount = 0;
+                    if (typeof window !== 'undefined') {
+                        try {
+                            const saved = localStorage.getItem(`hotelpro_draft_cart_${t.id}`);
+                            if (saved) {
+                                const parsed = JSON.parse(saved);
+                                if (Array.isArray(parsed) && parsed.length > 0) {
+                                    draftCount = parsed.reduce((sum: number, item: Record<string, unknown>) => sum + (Number(item.quantity) || 1), 0);
+                                }
+                            }
+                        } catch {}
+                    }
                     return {
                         id: t.id,
                         tableCode: t.tableCode,
                         capacity: t.capacity || 4,
                         status: t.status,
+                        section: t.section || 'Main Floor',
+                        draftCount,
                         activeOrder: order ? {
                             id: order.id,
                             grandTotal: Number(order.grandTotal || 0),
@@ -96,16 +113,40 @@ export default function BillingPOSPage() {
         }
     };
 
+    // Extract unique sections dynamically
+    const sections = useMemo(() => {
+        const set = new Set<string>();
+        tables.forEach(t => {
+            if (t.section) set.add(t.section);
+        });
+        const list = Array.from(set);
+        list.sort();
+        return ['ALL', ...list];
+    }, [tables]);
+
     const counts = useMemo(() => ({
         VACANT: tables.filter(t => !t.activeOrder && t.status !== 'DIRTY').length,
         ACTIVE: tables.filter(t => !!t.activeOrder).length,
     }), [tables]);
 
     const filtered = useMemo(() => {
-        if (activeFilter === 'VACANT') return tables.filter(t => !t.activeOrder && t.status !== 'DIRTY');
-        if (activeFilter === 'ACTIVE') return tables.filter(t => !!t.activeOrder);
-        return tables;
-    }, [tables, activeFilter]);
+        return tables.filter(t => {
+            const matchesStatus = activeFilter === 'ALL'
+                ? true
+                : activeFilter === 'VACANT'
+                ? (!t.activeOrder && t.status !== 'DIRTY')
+                : (!!t.activeOrder);
+
+            const matchesSection = activeSection === 'ALL' || (t.section || 'Main Floor') === activeSection;
+
+            return matchesStatus && matchesSection;
+        });
+    }, [tables, activeFilter, activeSection]);
+
+    const getCleanTableCode = (code?: string) => {
+        if (!code) return 'Table';
+        return String(code).replace(/\s*\([^)]*\)/g, '').trim();
+    };
 
     if (!mounted) return null;
 
@@ -147,20 +188,43 @@ export default function BillingPOSPage() {
                     </div>
                 </div>
 
-                {/* Filter Pills */}
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                    {filters.map(f => (
-                        <button
-                            key={f.key}
-                            onClick={() => setActiveFilter(f.key)}
-                            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${activeFilter === f.key
-                                ? 'bg-[#065F46] text-white font-semibold shadow-2xs'
-                                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200/80'
-                            }`}
-                        >
-                            {f.label} ({f.count})
-                        </button>
-                    ))}
+                {/* Section / Floor Filter Pills & Status Filter Pills */}
+                <div className="flex flex-col gap-2">
+                    {sections.length > 1 && (
+                        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+                            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider mr-1 shrink-0">Floor:</span>
+                            {sections.map(sec => (
+                                <button
+                                    key={sec}
+                                    onClick={() => setActiveSection(sec)}
+                                    className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                                        activeSection === sec
+                                            ? 'bg-zinc-900 text-white shadow-2xs'
+                                            : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200/80'
+                                    }`}
+                                >
+                                    {sec === 'ALL' ? 'All Floors' : sec}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                        <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider mr-1 shrink-0">Status:</span>
+                        {filters.map(f => (
+                            <button
+                                key={f.key}
+                                onClick={() => setActiveFilter(f.key)}
+                                className={`px-3.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                                    activeFilter === f.key
+                                        ? 'bg-[#065F46] text-white font-semibold shadow-2xs'
+                                        : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200/80'
+                                }`}
+                            >
+                                {f.label} ({f.count})
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 {/* Toast Notification */}
@@ -183,6 +247,7 @@ export default function BillingPOSPage() {
                         {filtered.map((table) => {
                             const isOccupied = !!table.activeOrder;
                             const isDirty = table.status === 'DIRTY';
+                            const hasDraft = !isOccupied && (table.draftCount || 0) > 0;
 
                             return (
                                 <motion.div
@@ -210,19 +275,23 @@ export default function BillingPOSPage() {
                                         </div>
                                     ) : (
                                         <Link
-                                            href={`/billing/pos/${table.id}`}
+                                            href={isOccupied && table.activeOrder ? `/billing/pos/${encodeURIComponent(table.tableCode)}/bill/${table.activeOrder.id}` : `/billing/pos/${encodeURIComponent(table.tableCode)}`}
                                             className={`p-4 rounded-xl border transition-all flex flex-col justify-between h-full shadow-2xs hover:border-zinc-300 ${
-                                                isOccupied ? 'border-emerald-200 bg-emerald-50/20' : 'border-zinc-200/80 bg-white'
+                                                isOccupied
+                                                    ? 'border-emerald-200 bg-emerald-50/20'
+                                                    : hasDraft
+                                                    ? 'border-amber-300 bg-amber-50/30'
+                                                    : 'border-zinc-200/80 bg-white'
                                             }`}
                                         >
                                             <div>
                                                 <div className="flex items-center justify-between mb-1.5">
-                                                    <span className="text-xl font-bold text-zinc-900">{table.tableCode}</span>
-                                                    <span className={`w-2 h-2 rounded-full ${isOccupied ? 'bg-emerald-600' : 'bg-zinc-300'}`} />
+                                                    <span className="text-xl font-bold text-zinc-900">{getCleanTableCode(table.tableCode)}</span>
+                                                    <span className={`w-2 h-2 rounded-full ${isOccupied ? 'bg-emerald-600' : hasDraft ? 'bg-amber-500' : 'bg-zinc-300'}`} />
                                                 </div>
 
-                                                <p className={`text-[10px] font-bold uppercase tracking-wider ${isOccupied ? 'text-emerald-700' : 'text-zinc-400'}`}>
-                                                    {isOccupied ? 'Occupied' : 'Available'}
+                                                <p className={`text-[10px] font-bold uppercase tracking-wider ${isOccupied ? 'text-emerald-700' : hasDraft ? 'text-amber-700' : 'text-zinc-400'}`}>
+                                                    {isOccupied ? 'Occupied' : hasDraft ? 'Draft Bill' : 'Available'}
                                                 </p>
 
                                                 {table.activeOrder && (
@@ -236,16 +305,26 @@ export default function BillingPOSPage() {
                                                     </div>
                                                 )}
 
-                                                {!isOccupied && (
-                                                    <p className="text-[11px] font-medium text-zinc-400 mt-1">{table.capacity} Seats</p>
+                                                {hasDraft && !table.activeOrder && (
+                                                    <div className="mt-2 space-y-0.5">
+                                                        <p className="text-[11px] font-semibold text-amber-800">
+                                                            {table.draftCount} items in draft
+                                                        </p>
+                                                    </div>
+                                                )}
+
+                                                {!isOccupied && !hasDraft && (
+                                                    <p className="text-[11px] font-medium text-zinc-400 mt-1 truncate">
+                                                        {table.section || 'Main Floor'} · {table.capacity} Seats
+                                                    </p>
                                                 )}
                                             </div>
 
                                             <div className="mt-3">
                                                 <div className={`w-full text-center text-xs font-semibold py-2 rounded-lg transition-all ${
-                                                    isOccupied ? 'bg-[#065F46] text-white' : 'bg-zinc-900 hover:bg-zinc-800 text-white'
+                                                    isOccupied ? 'bg-[#065F46] text-white' : hasDraft ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-zinc-900 hover:bg-zinc-800 text-white'
                                                 }`}>
-                                                    {isOccupied ? 'Bill Now' : '+ New Bill'}
+                                                    {isOccupied ? 'View / Settle Bill' : hasDraft ? 'Resume Bill' : '+ New Bill'}
                                                 </div>
                                             </div>
                                         </Link>

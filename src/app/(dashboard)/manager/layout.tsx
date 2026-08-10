@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import SidebarLogoutButton from '@/components/auth/SidebarLogoutButton';
+import ThemeToggle from '@/components/ThemeToggle';
 import { ChevronRight } from 'lucide-react';
 
 export default function ManagerLayout({
@@ -144,7 +145,8 @@ export default function ManagerLayout({
                     })}
                 </nav>
 
-                <div className="p-6 border-t border-white/5 mt-auto flex justify-center">
+                <div className="p-4 border-t border-white/5 mt-auto flex flex-col gap-2">
+                    <ThemeToggle isCollapsed={isCollapsed} />
                     <SidebarLogoutButton variant="desktop" isCollapsed={isCollapsed} />
                 </div>
             </aside>

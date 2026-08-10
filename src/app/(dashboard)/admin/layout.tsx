@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import SidebarLogoutButton from '@/components/auth/SidebarLogoutButton';
+import ThemeToggle from '@/components/ThemeToggle';
 import { LayoutDashboard, Users, BarChart3, Map, ShieldCheck, History, CreditCard, Settings, ChevronRight, MessageSquare, UtensilsCrossed, Receipt, ShoppingBag } from 'lucide-react';
 
 export default function AdminLayout({
@@ -13,19 +14,23 @@ export default function AdminLayout({
 }) {
     const router = useRouter();
     const pathname = usePathname();
-    const [mounted, setMounted] = useState(false);
+    const [mounted] = useState(() => typeof window !== 'undefined');
     const [authChecking, setAuthChecking] = useState(true);
-    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isCollapsed, setIsCollapsed] = useState(() => {
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('admin_sidebar_collapsed') === 'true';
+        }
+        return false;
+    });
     const [user, setUser] = useState<{ name: string; role: string; plan: string } | null>(null);
 
     useEffect(() => {
-        setMounted(true);
-        const saved = localStorage.getItem('admin_sidebar_collapsed');
-        if (saved === 'true') setIsCollapsed(true);
+        let isMounted = true;
 
         fetch('/api/auth/me')
             .then(async (res) => {
                 const data = await res.json();
+                if (!isMounted) return;
                 if (!res.ok || !data.success) {
                     router.replace('/login?redirect=/admin&error=AUTH_REQUIRED');
                     return;
@@ -35,7 +40,6 @@ export default function AdminLayout({
                 const role = data.user?.role as string | undefined;
                 const plan = data.user?.plan as string | undefined;
 
-                // BILLING_ONLY plan users are strictly locked to /billing terminal
                 if (plan === 'BILLING_ONLY') {
                     router.replace('/billing');
                     return;
@@ -52,8 +56,16 @@ export default function AdminLayout({
                     router.replace(roleRoute[role] || '/login');
                 }
             })
-            .catch(console.error)
-            .finally(() => setAuthChecking(false));
+            .catch((err) => {
+                console.error(err);
+            })
+            .finally(() => {
+                if (isMounted) setAuthChecking(false);
+            });
+
+        return () => {
+            isMounted = false;
+        };
     }, [router]);
 
     const isStarter = user?.plan === 'STARTER';
@@ -158,7 +170,8 @@ export default function AdminLayout({
                     })}
                 </nav>
 
-                <div className="p-4 border-t border-slate-100 flex justify-center">
+                <div className="p-4 border-t border-slate-100 flex flex-col gap-2">
+                    <ThemeToggle isCollapsed={isCollapsed} />
                     <SidebarLogoutButton variant="desktop" isCollapsed={isCollapsed} />
                 </div>
             </aside>

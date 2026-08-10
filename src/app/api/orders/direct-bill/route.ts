@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/server';
-import { prisma } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
 /**
  * POST /api/orders/direct-bill
@@ -26,8 +26,6 @@ export async function POST(req: NextRequest) {
             items,
             discountAmount = 0,
             taxAmount,
-            cgstAmount,
-            sgstAmount,
             grandTotal: clientGrandTotal
         } = body;
 
@@ -35,8 +33,24 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: false, error: 'tableId and items are required' }, { status: 400 });
         }
 
+        const db = getDb() as unknown as {
+            table: {
+                findFirst: (args: Record<string, unknown>) => Promise<Record<string, unknown> | null>;
+                update: (args: Record<string, unknown>) => Promise<Record<string, unknown>>;
+            };
+            menuItem: {
+                findMany: (args: Record<string, unknown>) => Promise<Array<{ id: string; name: string; price: unknown }>>;
+            };
+            restaurantSettings: {
+                findUnique: (args: Record<string, unknown>) => Promise<{ gstRate?: number; serviceChargeRate?: number } | null>;
+            };
+            order: {
+                create: (args: Record<string, unknown>) => Promise<{ id: string }>;
+            };
+        };
+
         // Validate table belongs to this client
-        const table = await (prisma.table as any).findFirst({
+        const table = await db.table.findFirst({
             where: { id: tableId, clientId: user.clientId },
         });
         if (!table) {
@@ -44,8 +58,8 @@ export async function POST(req: NextRequest) {
         }
 
         // Fetch menu items to get prices
-        const menuItemIds = items.map((i: any) => i.menuItemId);
-        const menuItems = await (prisma.menuItem as any).findMany({
+        const menuItemIds = items.map((i: { menuItemId: string }) => i.menuItemId);
+        const menuItems = await db.menuItem.findMany({
             where: { id: { in: menuItemIds }, clientId: user.clientId },
             select: { id: true, name: true, price: true },
         });
@@ -54,7 +68,7 @@ export async function POST(req: NextRequest) {
         for (const m of menuItems) menuMap[m.id] = { name: m.name, price: Number(m.price) };
 
         // Compute billing
-        const settings = await (prisma.restaurantSettings as any).findUnique({
+        const settings = await db.restaurantSettings.findUnique({
             where: { clientId: user.clientId },
             select: { gstRate: true, serviceChargeRate: true },
         });
@@ -62,7 +76,7 @@ export async function POST(req: NextRequest) {
         const serviceRate = Number(settings?.serviceChargeRate ?? 5);
 
         let subtotal = 0;
-        const orderItems = items.map((i: any) => {
+        const orderItems = items.map((i: { menuItemId: string; quantity: number }) => {
             const menuItem = menuMap[i.menuItemId];
             if (!menuItem) throw new Error(`Menu item not found: ${i.menuItemId}`);
             const lineTotal = menuItem.price * i.quantity;
@@ -76,15 +90,25 @@ export async function POST(req: NextRequest) {
             };
         });
 
-        const calculatedGst = taxAmount !== undefined ? Number(taxAmount) : Math.round(subtotal * gstRate) / 100;
+        if (Number(discountAmount || 0) < 0) {
+            return NextResponse.json({ success: false, error: 'Discount amount cannot be negative' }, { status: 400 });
+        }
+        if (Number(discountAmount || 0) > subtotal) {
+            return NextResponse.json({ success: false, error: 'Discount amount cannot exceed subtotal' }, { status: 400 });
+        }
+        if (taxAmount !== undefined && Number(taxAmount) < 0) {
+            return NextResponse.json({ success: false, error: 'Tax amount cannot be negative' }, { status: 400 });
+        }
+
+        const calculatedGst = taxAmount !== undefined ? Math.max(0, Number(taxAmount)) : Math.round(subtotal * gstRate) / 100;
         const serviceAmount = Math.round(subtotal * serviceRate) / 100;
-        const calculatedDiscount = Number(discountAmount || 0);
+        const calculatedDiscount = Math.max(0, Number(discountAmount || 0));
         const calculatedGrandTotal = clientGrandTotal !== undefined 
-            ? Number(clientGrandTotal) 
+            ? Math.max(0, Number(clientGrandTotal)) 
             : Math.round(subtotal - calculatedDiscount + calculatedGst + serviceAmount);
 
         // Create order in BILL_REQUESTED state (Preview state, NOT closed yet!)
-        const order = await (prisma.order as any).create({
+        const order = await db.order.create({
             data: {
                 clientId: user.clientId,
                 tableId,
@@ -106,16 +130,17 @@ export async function POST(req: NextRequest) {
             },
         });
 
-        // Set table to OCCUPIED during draft preview
-        await (prisma.table as any).update({
+        // Set table to ACTIVE when bill is generated
+        await db.table.update({
             where: { id: tableId },
-            data: { status: 'OCCUPIED' },
+            data: { status: 'ACTIVE' },
         });
 
         return NextResponse.json({ success: true, orderId: order.id, grandTotal: calculatedGrandTotal });
 
-    } catch (err: any) {
-        console.error('[DIRECT_BILL]', err);
-        return NextResponse.json({ success: false, error: err.message || 'Internal error' }, { status: 500 });
+    } catch (err: unknown) {
+        const error = err as Error;
+        console.error('[DIRECT_BILL]', error);
+        return NextResponse.json({ success: false, error: error.message || 'Internal error' }, { status: 500 });
     }
 }

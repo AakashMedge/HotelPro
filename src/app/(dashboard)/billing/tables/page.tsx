@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -94,6 +94,44 @@ export default function BillingTablesPage() {
         }
     };
 
+    const handleResetTable = async (id: string, code: string) => {
+        try {
+            const res = await fetch(`/api/tables/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'VACANT', reset: true }),
+            });
+            if (res.ok) {
+                if (typeof window !== 'undefined') {
+                    localStorage.removeItem(`hotelpro_draft_cart_${id}`);
+                    localStorage.removeItem(`hotelpro_draft_cust_${id}`);
+                    localStorage.removeItem(`hotelpro_draft_cart_${code}`);
+                    localStorage.removeItem(`hotelpro_draft_cust_${code}`);
+                }
+                setNotification(`Table ${code} reset to Available`);
+                fetchTables();
+            } else {
+                setNotification('Failed to reset table');
+            }
+        } catch {
+            setNotification('Error resetting table');
+        }
+    };
+
+    const getCleanTableCode = (code: string) => {
+        return code.replace(/\s*\([^)]*\)/g, '').trim();
+    };
+
+    const groupedTables = useMemo(() => {
+        const groups: Record<string, TableItem[]> = {};
+        tables.forEach(t => {
+            const sec = t.section || 'Main Floor';
+            if (!groups[sec]) groups[sec] = [];
+            groups[sec].push(t);
+        });
+        return groups;
+    }, [tables]);
+
     if (!mounted) return null;
 
     const vacantCount = tables.filter(t => t.status === 'VACANT').length;
@@ -163,53 +201,96 @@ export default function BillingTablesPage() {
                         </button>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
-                        {tables.map((table) => {
-                            const isVacant = table.status === 'VACANT';
+                    <div className="space-y-8">
+                        {Object.entries(groupedTables).map(([sectionName, sectionTables]) => {
+                            const vacantSec = sectionTables.filter(t => t.status === 'VACANT').length;
+                            const occupiedSec = sectionTables.length - vacantSec;
+
                             return (
-                                <div
-                                    key={table.id}
-                                    className={`bg-white border rounded-xl p-4 flex flex-col justify-between transition-all hover:border-zinc-300 shadow-2xs ${
-                                        isVacant ? 'border-zinc-200/80' : 'border-amber-200 bg-amber-50/20'
-                                    }`}
-                                >
-                                    <div>
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                                                {table.section || 'Floor'}
+                                <div key={sectionName} className="space-y-3">
+                                    {/* Section Header */}
+                                    <div className="flex items-center justify-between border-b border-zinc-200/80 pb-2">
+                                        <div className="flex items-center gap-2.5">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-[#065F46]" />
+                                            <h2 className="text-sm font-bold text-zinc-900 uppercase tracking-wider">
+                                                {sectionName}
+                                            </h2>
+                                            <span className="px-2 py-0.5 bg-zinc-100 text-zinc-600 text-xs font-semibold rounded-md border border-zinc-200">
+                                                {sectionTables.length} {sectionTables.length === 1 ? 'Table' : 'Tables'}
                                             </span>
-                                            <span className={`w-2 h-2 rounded-full ${isVacant ? 'bg-emerald-500' : 'bg-amber-500'}`} />
                                         </div>
 
-                                        <h3 className="text-xl font-bold text-zinc-900 tracking-tight leading-none mb-1">
-                                            {table.tableCode}
-                                        </h3>
-                                        <p className="text-[11px] font-medium text-zinc-400">
-                                            {table.capacity} Seats
-                                        </p>
+                                        <span className="text-xs font-normal text-zinc-500">
+                                            {vacantSec} Available · {occupiedSec} Occupied
+                                        </span>
                                     </div>
 
-                                    <div className="mt-4 pt-3 border-t border-zinc-100 flex items-center justify-between">
-                                        <Link
-                                            href={`/billing/pos/${table.id}`}
-                                            className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md transition-all ${
-                                                isVacant
-                                                    ? 'bg-zinc-100 hover:bg-zinc-900 hover:text-white text-zinc-700'
-                                                    : 'bg-[#065F46] text-white hover:bg-[#044E39]'
-                                            }`}
-                                        >
-                                            {isVacant ? 'Bill Table' : 'View Bill'}
-                                        </Link>
+                                    {/* Section Tables Grid */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+                                        {sectionTables.map((table) => {
+                                            const isVacant = table.status === 'VACANT';
+                                            const displayCode = getCleanTableCode(table.tableCode);
 
-                                        <button
-                                            onClick={() => handleDeleteTable(table.id, table.tableCode)}
-                                            className="w-6 h-6 rounded-md hover:bg-rose-50 flex items-center justify-center text-zinc-400 hover:text-rose-600 transition-colors"
-                                            title="Delete Table"
-                                        >
-                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                            </svg>
-                                        </button>
+                                            return (
+                                                <div
+                                                    key={table.id}
+                                                    className={`bg-white border rounded-xl p-4 flex flex-col justify-between transition-all hover:border-zinc-300 shadow-2xs ${
+                                                        isVacant ? 'border-zinc-200/80' : 'border-amber-200 bg-amber-50/20'
+                                                    }`}
+                                                >
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                                                                {sectionName}
+                                                            </span>
+                                                            <span className={`w-2 h-2 rounded-full ${isVacant ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                        </div>
+
+                                                        <h3 className="text-xl font-bold text-zinc-900 tracking-tight leading-none mb-1">
+                                                            {displayCode}
+                                                        </h3>
+                                                        <p className="text-[11px] font-medium text-zinc-400">
+                                                            {table.capacity} Seats
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="mt-4 pt-3 border-t border-zinc-100 flex items-center justify-between">
+                                                        <Link
+                                                            href={`/billing/pos/${encodeURIComponent(table.tableCode)}`}
+                                                            className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md transition-all ${
+                                                                isVacant
+                                                                    ? 'bg-zinc-100 hover:bg-zinc-900 hover:text-white text-zinc-700'
+                                                                    : 'bg-[#065F46] text-white hover:bg-[#044E39]'
+                                                            }`}
+                                                        >
+                                                            {isVacant ? 'Bill Table' : 'View Bill'}
+                                                        </Link>
+
+                                                        <div className="flex items-center gap-1">
+                                                            <button
+                                                                onClick={() => handleResetTable(table.id, table.tableCode)}
+                                                                className="w-6 h-6 rounded-md hover:bg-amber-50 flex items-center justify-center text-zinc-400 hover:text-amber-600 transition-colors"
+                                                                title="Reset Table to Available"
+                                                            >
+                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                                                </svg>
+                                                            </button>
+
+                                                            <button
+                                                                onClick={() => handleDeleteTable(table.id, table.tableCode)}
+                                                                className="w-6 h-6 rounded-md hover:bg-rose-50 flex items-center justify-center text-zinc-400 hover:text-rose-600 transition-colors"
+                                                                title="Delete Table"
+                                                            >
+                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                                </svg>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             );

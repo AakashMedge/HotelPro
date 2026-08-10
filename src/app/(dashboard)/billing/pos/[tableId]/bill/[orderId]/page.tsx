@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface BillItem {
     id: string;
@@ -47,6 +47,8 @@ export default function BillReceiptPage() {
     const [bill, setBill] = useState<BillData | null>(null);
     const [loading, setLoading] = useState(true);
     const [mounted, setMounted] = useState(false);
+    const [isSettling, setIsSettling] = useState(false);
+    const [toastMessage, setToastMessage] = useState<string | null>(null);
 
     const fetchBill = useCallback(async () => {
         try {
@@ -58,9 +60,9 @@ export default function BillReceiptPage() {
 
             if (orderData.success && orderData.order) {
                 const o = orderData.order;
-                const itemsList: BillItem[] = (o.items || []).map((i: any) => ({
-                    id: i.id || i.menuItemId,
-                    itemName: i.itemName || i.name || 'Item',
+                const itemsList: BillItem[] = (o.items || []).map((i: Record<string, unknown>) => ({
+                    id: String(i.id || i.menuItemId || ''),
+                    itemName: String(i.itemName || i.name || 'Item'),
                     quantity: Number(i.quantity || 1),
                     priceSnapshot: Number(i.price || i.priceSnapshot || 0),
                 }));
@@ -127,14 +129,37 @@ export default function BillReceiptPage() {
     };
 
     const handleFinishAndClose = async () => {
+        if (isSettling) return;
+        setIsSettling(true);
         try {
-            await fetch(`/api/orders/${orderId}/settle`, {
+            const res = await fetch(`/api/orders/${orderId}/settle`, {
                 method: 'POST',
             });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                if (typeof window !== 'undefined') {
+                    if (tableId) {
+                        localStorage.removeItem(`hotelpro_draft_cart_${tableId}`);
+                        localStorage.removeItem(`hotelpro_draft_cust_${tableId}`);
+                    }
+                    if (bill?.tableId) {
+                        localStorage.removeItem(`hotelpro_draft_cart_${bill.tableId}`);
+                        localStorage.removeItem(`hotelpro_draft_cust_${bill.tableId}`);
+                    }
+                }
+                setToastMessage('Order Saved & Settled to Sales Ledger!');
+                setTimeout(() => {
+                    router.push('/billing/pos');
+                }, 800);
+            } else {
+                setToastMessage(data.error || 'Failed to settle order');
+                setIsSettling(false);
+            }
         } catch (e) {
             console.error('[FINISH_SETTLE_ERROR]', e);
+            setToastMessage('Failed to settle order. Please try again.');
+            setIsSettling(false);
         }
-        router.push('/billing/pos');
     };
 
     if (!mounted) return null;
@@ -171,7 +196,22 @@ export default function BillReceiptPage() {
     const roundOff = Math.round((bill.grandTotal - rawTotal) * 100) / 100;
 
     return (
-        <div className="min-h-full bg-[#F8F9FA] flex flex-col overflow-y-auto font-sans text-zinc-800 pb-12">
+        <div className="min-h-full bg-[#F8F9FA] flex flex-col overflow-y-auto font-sans text-zinc-800 pb-12 relative">
+
+            {/* CONFIRMATION TOAST BANNER */}
+            <AnimatePresence>
+                {toastMessage && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+                        className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-emerald-900 text-white px-5 py-3 rounded-xl shadow-2xl text-xs font-semibold flex items-center gap-2.5 border border-emerald-700"
+                    >
+                        <svg className="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span>{toastMessage}</span>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* ══════════════════════════════════════════════════════════ */}
             {/* 1. ON-SCREEN PREVIEW UI (Hidden when printing)           */}
@@ -337,12 +377,22 @@ export default function BillReceiptPage() {
 
                         <button
                             onClick={handleFinishAndClose}
-                            className="py-2.5 px-3 bg-zinc-900 hover:bg-black text-white rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-2xs col-span-1 sm:col-span-1"
+                            disabled={isSettling}
+                            className="py-2.5 px-3 bg-zinc-900 hover:bg-black disabled:bg-zinc-800 text-white rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 shadow-2xs col-span-1 sm:col-span-1"
                         >
-                            <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
-                            </svg>
-                            <span>Finish & Next</span>
+                            {isSettling ? (
+                                <>
+                                    <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                                    <span>Saving to Ledger...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                    <span>Finish & Next</span>
+                                </>
+                            )}
                         </button>
                     </div>
 

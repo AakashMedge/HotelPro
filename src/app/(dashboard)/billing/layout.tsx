@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import SidebarLogoutButton from '@/components/auth/SidebarLogoutButton';
+import ThemeToggle from '@/components/ThemeToggle';
 import { motion } from 'framer-motion';
 
 export default function BillingLayout({ children }: { children: React.ReactNode }) {
@@ -185,7 +186,8 @@ export default function BillingLayout({ children }: { children: React.ReactNode 
                 </nav>
 
                 {/* USER & LOGOUT FOOTER */}
-                <div className="mt-auto px-3 pt-4 border-t border-zinc-100">
+                <div className="mt-auto px-3 pt-4 border-t border-zinc-100 space-y-2">
+                    <ThemeToggle isCollapsed={isCollapsed} />
                     <div className={`flex items-center gap-3 ${isCollapsed ? 'justify-center' : ''}`}>
                         <SidebarLogoutButton variant="desktop" />
                     </div>

@@ -29,6 +29,61 @@
   }
 }
 
+html.dark {
+  --background: #212121;
+  --foreground: #ffffff;
+  --accent: #2c2c2c;
+  --border: #333333;
+}
+
+html.dark body {
+  background-color: #212121 !important;
+  color: #ffffff !important;
+}
+
+/* Global Dark Mode High-Contrast Overrides (#212121 Base) */
+html.dark .bg-\[\#F8F9FA\],
+html.dark .bg-white {
+  background-color: #212121 !important;
+  color: #ffffff !important;
+}
+
+html.dark .border-zinc-200,
+html.dark .border-zinc-200\/80,
+html.dark .border-zinc-100 {
+  border-color: #333333 !important;
+}
+
+html.dark .text-zinc-900,
+html.dark .text-zinc-800,
+html.dark .text-zinc-700 {
+  color: #ffffff !important;
+}
+
+html.dark .text-zinc-500,
+html.dark .text-zinc-400 {
+  color: #a1a1aa !important;
+}
+
+html.dark .bg-zinc-100,
+html.dark .bg-zinc-50 {
+  background-color: #2c2c2c !important;
+  color: #ffffff !important;
+}
+
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: #2c2c2c !important;
+  color: #ffffff !important;
+  border-color: #444444 !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #71717a !important;
+}
+
 body {
   color: var(--foreground);
   background: var(--background);

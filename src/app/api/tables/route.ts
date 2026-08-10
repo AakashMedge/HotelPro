@@ -10,7 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma, getDb, ensureClientSynced } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import { getTenantFromRequest } from "@/lib/tenant";
 import { requireRole } from "@/lib/auth";
 import { hasReachedLimit, PLAN_LIMITS } from "@/lib/subscription";
@@ -39,36 +39,39 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         const db = getDb();
         const { searchParams } = new URL(request.url);
         const tableCode = searchParams.get("code");
+        const sectionParam = searchParams.get("section");
 
         // 2. Build tenant-scoped query
-        let where: any = { clientId: tenant.id, deletedAt: null };
+        const where: Record<string, unknown> = { clientId: tenant.id, deletedAt: null };
+
+        if (sectionParam) {
+            where.section = { equals: sectionParam.trim(), mode: 'insensitive' };
+        }
 
         if (tableCode) {
             // Smart Matching: Handle "4", "04", "T-04", "T04"
             const raw = tableCode.trim();
             const paddedCode = raw.padStart(2, '0');
-            where = {
-                clientId: tenant.id,    // ← ALWAYS tenant-scoped
-                deletedAt: null,
-                OR: [
-                    { tableCode: { equals: raw, mode: 'insensitive' } },
-                    { tableCode: { equals: `T-${raw}`, mode: 'insensitive' } },
-                    { tableCode: { equals: `T-${paddedCode}`, mode: 'insensitive' } },
-                    { tableCode: { equals: paddedCode, mode: 'insensitive' } },
-                    { tableCode: { equals: `T${raw}`, mode: 'insensitive' } },
-                    { tableCode: { equals: `T${paddedCode}`, mode: 'insensitive' } },
-                ]
-            };
+            where.OR = [
+                { tableCode: { equals: raw, mode: 'insensitive' } },
+                { tableCode: { equals: `T-${raw}`, mode: 'insensitive' } },
+                { tableCode: { equals: `T-${paddedCode}`, mode: 'insensitive' } },
+                { tableCode: { equals: paddedCode, mode: 'insensitive' } },
+                { tableCode: { equals: `T${raw}`, mode: 'insensitive' } },
+                { tableCode: { equals: `T${paddedCode}`, mode: 'insensitive' } },
+            ];
         }
 
         // 3. Optimized query — only select what we need
-        const tables = await (db.table as any).findMany({
+        const dbClient = db as unknown as { table: { findMany: (args: Record<string, unknown>) => Promise<Record<string, unknown>[]> } };
+        const tables = await dbClient.table.findMany({
             where,
             select: {
                 id: true,
                 tableCode: true,
                 capacity: true,
                 status: true,
+                section: true,
                 assignedWaiterId: true,
                 updatedAt: true,
                 orders: {
@@ -78,7 +81,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
                     select: {
                         id: true,
                         customerName: true,
+                        customerPhone: true,
                         status: true,
+                        createdAt: true,
+                        items: {
+                            select: {
+                                id: true,
+                                menuItemId: true,
+                                itemName: true,
+                                priceSnapshot: true,
+                                quantity: true,
+                            }
+                        }
                     },
                     take: 1,
                     orderBy: { createdAt: 'desc' }
@@ -92,14 +106,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         cleanupGhostSessions(tables, db);
 
         // 4. Format response (minimal payload for speed)
-        const formattedTables = tables.map((t: any) => ({
+        const formattedTables = tables.map((t: Record<string, unknown>) => ({
             id: t.id,
             tableCode: t.tableCode,
             capacity: t.capacity ?? 4,
             status: t.status,
-            activeOrder: t.orders[0] || null,
+            section: t.section || "Main Floor",
+            activeOrder: (t.orders as Record<string, unknown>[])?.[0] || null,
             assignedWaiterId: t.assignedWaiterId,
-            claimedAt: t.status === "ACTIVE" && (!t.orders || t.orders.length === 0) ? t.updatedAt : null,
+            claimedAt: t.status === "ACTIVE" && (!t.orders || (t.orders as Record<string, unknown>[]).length === 0) ? t.updatedAt : null,
         }));
 
 
@@ -118,9 +133,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
         return response;
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const err = error as Error;
         const elapsed = Date.now() - startTime;
-        console.error(`[TABLES_GET] ✗ Error after ${elapsed}ms:`, error.message);
+        console.error(`[TABLES_GET] ✗ Error after ${elapsed}ms:`, err.message);
         return NextResponse.json(
             { success: false, error: "Failed to fetch tables. Please try again." },
             { status: 500 }
@@ -134,11 +150,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
 export async function POST(request: NextRequest) {
     const startTime = Date.now();
+    let inputTableCode = '';
 
     try {
         // 1. Auth gate — only Manager/Admin can create tables
         const user = await requireRole(["MANAGER", "ADMIN"]);
         const { tableCode, capacity, floorId, section } = await request.json();
+        inputTableCode = tableCode ? String(tableCode).trim() : '';
 
         if (!tableCode || !capacity) {
             return NextResponse.json(
@@ -148,14 +166,24 @@ export async function POST(request: NextRequest) {
         }
 
         const db = getDb();
-
+        const dbClient = db as unknown as {
+            table: {
+                count: (args: Record<string, unknown>) => Promise<number>;
+                findFirst: (args: Record<string, unknown>) => Promise<Record<string, unknown> | null>;
+                create: (args: Record<string, unknown>) => Promise<Record<string, unknown>>;
+            };
+            qRCode: {
+                findUnique: (args: Record<string, unknown>) => Promise<Record<string, unknown> | null>;
+                create: (args: Record<string, unknown>) => Promise<Record<string, unknown>>;
+            };
+        };
 
         // 3. Subscription limit check
-        const tableCount = await (db.table as any).count({
+        const tableCount = await dbClient.table.count({
             where: { clientId: user.clientId, deletedAt: null }
         });
 
-        if (hasReachedLimit(user.plan as any, 'maxTables', tableCount)) {
+        if (hasReachedLimit(user.plan as ClientPlan, 'maxTables', tableCount)) {
             return NextResponse.json({
                 success: false,
                 error: "Plan Limit Reached",
@@ -163,27 +191,52 @@ export async function POST(request: NextRequest) {
             }, { status: 403 });
         }
 
-        // 4. Duplicate check (tenant-scoped)
-        const existing = await (db.table as any).findFirst({
+        // 4. Duplicate & Section-disambiguation check
+        const targetSection = section?.trim() || 'Main Floor';
+        const rawCode = tableCode.trim();
+
+        // Check if exact same code exists in the SAME section
+        const sameSectionDuplicate = await dbClient.table.findFirst({
             where: {
                 clientId: user.clientId,
-                tableCode: { equals: tableCode, mode: 'insensitive' }
+                deletedAt: null,
+                section: { equals: targetSection, mode: 'insensitive' },
+                OR: [
+                    { tableCode: { equals: rawCode, mode: 'insensitive' } },
+                    { tableCode: { equals: `${rawCode} (${targetSection})`, mode: 'insensitive' } },
+                ]
             }
         });
 
-        if (existing) {
+        if (sameSectionDuplicate) {
             return NextResponse.json(
-                { success: false, error: `Table "${tableCode}" already exists.` },
+                { success: false, error: `Table "${rawCode}" already exists in ${targetSection}.` },
                 { status: 409 }
             );
         }
 
-        // 5. Create table (with optional floor assignment)
-        const table = await (db.table as any).create({
+        // Check if rawCode exists anywhere for this client (due to DB unique constraint on clientId + tableCode)
+        let finalTableCode = rawCode;
+        const globalDuplicate = await dbClient.table.findFirst({
+            where: {
+                clientId: user.clientId,
+                deletedAt: null,
+                tableCode: { equals: rawCode, mode: 'insensitive' }
+            }
+        });
+
+        if (globalDuplicate) {
+            // Disambiguate for DB unique constraint while keeping clear section context
+            finalTableCode = `${rawCode} (${targetSection})`;
+        }
+
+        // 5. Create table (with section and optional floor assignment)
+        const table = await dbClient.table.create({
             data: {
                 clientId: user.clientId,
-                tableCode: tableCode.trim(),
+                tableCode: finalTableCode,
                 capacity: Number(capacity),
+                section: targetSection,
                 status: "VACANT",
                 ...(floorId ? { floorId } : {}),
             },
@@ -193,17 +246,18 @@ export async function POST(request: NextRequest) {
         });
 
         // 6. Automatically generate a QR Code for this new table
-        const prefix = table.floor?.prefix || 'TB';
+        const tableObj = table as { id: string; tableCode: string; floor?: { prefix?: string } };
+        const prefix = tableObj.floor?.prefix || 'TB';
         const secretToken = generateSecretToken();
-        let shortCode = generateShortCode(prefix, table.tableCode);
+        let shortCode = generateShortCode(prefix, String(tableObj.tableCode || inputTableCode));
 
         // Ensure shortCode uniqueness
-        const existingShort = await (db as any).qRCode.findUnique({ where: { shortCode } });
+        const existingShort = await dbClient.qRCode.findUnique({ where: { shortCode } });
         if (existingShort) {
             shortCode = `${shortCode}-${Date.now().toString(36).slice(-4).toUpperCase()}`;
         }
 
-        const qrCode = await (db as any).qRCode.create({
+        const qrCode = await dbClient.qRCode.create({
             data: {
                 clientId: user.clientId,
                 tableId: table.id,
@@ -220,7 +274,7 @@ export async function POST(request: NextRequest) {
         const qrUrl = buildQrUrl(baseUrl, shortCode, secretToken, 1, signature);
 
         const elapsed = Date.now() - startTime;
-        console.log(`[TABLES_CREATE] ✓ ${tableCode} created with Auto-QR | ${elapsed}ms`);
+        console.log(`[TABLES_CREATE] ✓ ${finalTableCode} created with Auto-QR | ${elapsed}ms`);
 
         return NextResponse.json({
             success: true,
@@ -230,11 +284,18 @@ export async function POST(request: NextRequest) {
             }
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const err = error as Error & { code?: string };
         const elapsed = Date.now() - startTime;
-        console.error(`[TABLES_CREATE] ✗ Error after ${elapsed}ms:`, error.message);
+        console.error(`[TABLES_CREATE] ✗ Error after ${elapsed}ms:`, err.message);
+        if (err?.code === 'P2002') {
+            return NextResponse.json(
+                { success: false, error: `Table "${inputTableCode || 'code'}" already exists. Please enter a unique table code.` },
+                { status: 409 }
+            );
+        }
         return NextResponse.json(
-            { success: false, error: error.message || "Failed to create table" },
+            { success: false, error: err.message || "Failed to create table" },
             { status: 500 }
         );
     }

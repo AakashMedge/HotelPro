@@ -16,8 +16,12 @@ export async function GET(
         const tenant = await getTenantFromRequest();
         if (!tenant) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
 
-        const db = getDb();
-        const table = await (db.table as any).findFirst({
+        const db = getDb() as unknown as {
+            table: {
+                findFirst: (args: Record<string, unknown>) => Promise<Record<string, unknown> | null>;
+            };
+        };
+        const table = await db.table.findFirst({
             where: { id, clientId: tenant.id, deletedAt: null },
             select: { id: true, tableCode: true, status: true }
         });
@@ -25,8 +29,9 @@ export async function GET(
         if (!table) return NextResponse.json({ success: false, error: "Table not found" }, { status: 404 });
 
         return NextResponse.json({ success: true, table });
-    } catch (e: any) {
-        return NextResponse.json({ success: false, error: e.message }, { status: 500 });
+    } catch (e: unknown) {
+        const err = e as Error;
+        return NextResponse.json({ success: false, error: err.message }, { status: 500 });
     }
 }
 
@@ -49,10 +54,18 @@ export async function PATCH(
         const { clientId } = user;
         const { status, assignedWaiterId } = await request.json();
 
-        const db = getDb();
+        const db = getDb() as unknown as {
+            table: {
+                findFirst: (args: Record<string, unknown>) => Promise<Record<string, unknown> | null>;
+                update: (args: Record<string, unknown>) => Promise<Record<string, unknown>>;
+            };
+            order: {
+                updateMany: (args: Record<string, unknown>) => Promise<{ count: number }>;
+            };
+        };
 
         // SECURITY: Verify this table belongs to the staff's hotel
-        const existingTable = await (db.table as any).findFirst({
+        const existingTable = await db.table.findFirst({
             where: { id, clientId },
             select: { id: true, tableCode: true, status: true }
         });
@@ -66,13 +79,26 @@ export async function PATCH(
         }
 
         // Build update payload
-        const updateData: any = {};
+        const updateData: Record<string, unknown> = {};
         if (status) updateData.status = status;
         if (assignedWaiterId !== undefined) {
             updateData.assignedWaiterId = assignedWaiterId === "" ? null : assignedWaiterId;
         }
 
-        const table = await (db.table as any).update({
+        if (status === "VACANT") {
+            await db.order.updateMany({
+                where: {
+                    tableId: id,
+                    clientId,
+                    status: { notIn: ["CLOSED", "CANCELLED"] }
+                },
+                data: {
+                    status: "CANCELLED"
+                }
+            });
+        }
+
+        const table = await db.table.update({
             where: { id },
             data: updateData
         });
@@ -82,19 +108,20 @@ export async function PATCH(
 
         return NextResponse.json({ success: true, table });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const err = error as Error & { code?: string; status?: number };
         const elapsed = Date.now() - startTime;
 
         // Handle AuthError with proper status codes
-        if (error?.name === 'AuthError' || error?.code === 'AUTH_REQUIRED' || error?.code === 'ROLE_FORBIDDEN' || error?.code === 'TENANT_INACTIVE') {
-            console.warn(`[TABLE_UPDATE] ✗ Auth error after ${elapsed}ms:`, error.message);
+        if (err?.name === 'AuthError' || err?.code === 'AUTH_REQUIRED' || err?.code === 'ROLE_FORBIDDEN' || err?.code === 'TENANT_INACTIVE') {
+            console.warn(`[TABLE_UPDATE] ✗ Auth error after ${elapsed}ms:`, err.message);
             return NextResponse.json(
-                { success: false, error: error.message, code: error.code },
-                { status: error.status || 401 }
+                { success: false, error: err.message, code: err.code },
+                { status: err.status || 401 }
             );
         }
 
-        console.error(`[TABLE_UPDATE] ✗ Error after ${elapsed}ms:`, error.message);
+        console.error(`[TABLE_UPDATE] ✗ Error after ${elapsed}ms:`, err.message);
         return NextResponse.json(
             { success: false, error: "Failed to update table" },
             { status: 500 }

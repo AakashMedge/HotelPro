@@ -30,6 +30,7 @@ interface TableInfo {
     tableCode: string;
     capacity: number;
     status: string;
+    section?: string;
 }
 
 interface RestaurantSettings {
@@ -79,13 +80,13 @@ export default function BillingTablePage() {
 
             if (menuData.success && menuData.items) {
                 const items: MenuItem[] = menuData.items
-                    .filter((i: any) => i.isAvailable)
-                    .map((i: any) => ({
-                        id: i.id,
-                        name: i.name,
+                    .filter((i: Record<string, unknown>) => i.isAvailable)
+                    .map((i: Record<string, unknown>) => ({
+                        id: String(i.id),
+                        name: String(i.name),
                         price: Number(i.price),
-                        category: typeof i.category === 'object' ? (i.category?.name || 'General') : (i.category || 'General'),
-                        isAvailable: i.isAvailable,
+                        category: typeof i.category === 'object' ? (i.category as { name?: string })?.name || 'General' : String(i.category || 'General'),
+                        isAvailable: Boolean(i.isAvailable),
                         isVeg: Boolean(i.isVeg),
                     }));
                 setMenuItems(items);
@@ -94,9 +95,19 @@ export default function BillingTablePage() {
                 setCategories(cats);
             }
 
+            let matchedTable: Record<string, unknown> | null = null;
             if (tablesData.success) {
-                const t = tablesData.tables?.find((tb: any) => tb.id === tableId);
-                if (t) setTable({ id: t.id, tableCode: t.tableCode, capacity: t.capacity, status: t.status });
+                const rawParam = decodeURIComponent((tableId as string) || '').trim();
+                const t = tablesData.tables?.find((tb: Record<string, unknown>) => 
+                    tb.id === tableId || 
+                    tb.tableCode === tableId || 
+                    tb.tableCode === rawParam || 
+                    (tb.tableCode as string)?.toLowerCase() === rawParam.toLowerCase()
+                );
+                if (t) {
+                    matchedTable = t;
+                    setTable({ id: String(t.id), tableCode: String(t.tableCode), capacity: Number(t.capacity), status: String(t.status), section: t.section as string | undefined });
+                }
             }
 
             if (settingsData.settings) {
@@ -110,11 +121,13 @@ export default function BillingTablePage() {
                 setCustomGstRate(Number(s.gstRate || 5));
             }
 
-            // Check if URL has ?orderId=... (Edit Bill Workflow)
+            // Order & Draft Restoration Workflow
             if (typeof window !== 'undefined') {
                 const urlParams = new URLSearchParams(window.location.search);
                 const editOrderId = urlParams.get('orderId');
+
                 if (editOrderId) {
+                    // Explicit order edit request
                     const orderRes = await fetch(`/api/orders/${editOrderId}`);
                     const orderData = await orderRes.json();
                     if (orderData.success && orderData.order) {
@@ -122,15 +135,50 @@ export default function BillingTablePage() {
                         if (o.customerName) setCustomerName(o.customerName);
                         if (o.customerPhone) setCustomerPhone(o.customerPhone);
                         if (o.items && o.items.length > 0) {
-                            const preloadedCart = o.items.map((i: any) => ({
-                                menuItemId: i.menuItemId,
-                                name: i.itemName || i.name,
-                                price: Number(i.price || i.priceSnapshot || 0),
+                            const preloadedCart = o.items.map((i: Record<string, unknown>) => ({
+                                menuItemId: String(i.menuItemId),
+                                name: String(i.itemName || i.name || 'Menu Item'),
+                                price: Number(i.priceSnapshot || i.price || 0),
                                 quantity: Number(i.quantity || 1),
                                 isVeg: true,
                             }));
                             setCart(preloadedCart);
                         }
+                    }
+                } else if (matchedTable && matchedTable.orders && (matchedTable.orders as Record<string, unknown>[]).length > 0) {
+                    // Table has an active DB order ("View Bill" scenario) — load order snapshot items
+                    const activeOrder = (matchedTable.orders as Record<string, unknown>[])[0];
+                    if (activeOrder.customerName) setCustomerName(String(activeOrder.customerName));
+                    if (activeOrder.customerPhone) setCustomerPhone(String(activeOrder.customerPhone));
+                    if (activeOrder.items && (activeOrder.items as Record<string, unknown>[]).length > 0) {
+                        const preloadedCart = (activeOrder.items as Record<string, unknown>[]).map((i: Record<string, unknown>) => ({
+                            menuItemId: String(i.menuItemId),
+                            name: String(i.itemName || i.name || 'Menu Item'),
+                            price: Number(i.priceSnapshot || i.price || 0),
+                            quantity: Number(i.quantity || 1),
+                            isVeg: true,
+                        }));
+                        setCart(preloadedCart);
+                    }
+                } else if (tableId) {
+                    // Load persistent table draft if available
+                    try {
+                        const effectiveId = matchedTable?.id || tableId;
+                        const savedCart = localStorage.getItem(`hotelpro_draft_cart_${effectiveId}`) || localStorage.getItem(`hotelpro_draft_cart_${tableId}`);
+                        if (savedCart) {
+                            const parsed = JSON.parse(savedCart);
+                            if (Array.isArray(parsed) && parsed.length > 0) {
+                                setCart(parsed);
+                            }
+                        }
+                        const savedCust = localStorage.getItem(`hotelpro_draft_cust_${effectiveId}`) || localStorage.getItem(`hotelpro_draft_cust_${tableId}`);
+                        if (savedCust) {
+                            const parsedCust = JSON.parse(savedCust);
+                            if (parsedCust.customerName) setCustomerName(parsedCust.customerName);
+                            if (parsedCust.customerPhone) setCustomerPhone(parsedCust.customerPhone);
+                        }
+                    } catch (e) {
+                        console.error('Failed to load table draft', e);
                     }
                 }
             }
@@ -145,6 +193,39 @@ export default function BillingTablePage() {
         setMounted(true);
         fetchData();
     }, [fetchData]);
+
+    // Auto-save table draft whenever cart or customer details change
+    useEffect(() => {
+        if (!mounted || !tableId || loading) return;
+        try {
+            if (cart.length > 0) {
+                localStorage.setItem(`hotelpro_draft_cart_${tableId}`, JSON.stringify(cart));
+                localStorage.setItem(`hotelpro_draft_cust_${tableId}`, JSON.stringify({ customerName, customerPhone }));
+            } else {
+                localStorage.removeItem(`hotelpro_draft_cart_${tableId}`);
+                localStorage.removeItem(`hotelpro_draft_cust_${tableId}`);
+            }
+        } catch (e) {
+            console.error('Failed to save table draft', e);
+        }
+    }, [cart, customerName, customerPhone, tableId, mounted, loading]);
+
+    // Handler to clear and reset the current table bill
+    const handleResetCart = () => {
+        if (cart.length === 0) return;
+        if (typeof window !== 'undefined' && window.confirm('Are you sure you want to reset and clear this table bill?')) {
+            setCart([]);
+            setCustomerName('');
+            setCustomerPhone('');
+            setDiscountType('NONE');
+            setDiscountVal('');
+            if (tableId) {
+                localStorage.removeItem(`hotelpro_draft_cart_${tableId}`);
+                localStorage.removeItem(`hotelpro_draft_cust_${tableId}`);
+            }
+            setNotification('Table bill cleared and reset.');
+        }
+    };
 
     // ── Cart Logic (Smart Merging: No Duplicates!) ──
 
@@ -176,20 +257,28 @@ export default function BillingTablePage() {
 
     const subtotal = cart.reduce((sum, c) => sum + c.price * c.quantity, 0);
 
+    const parsedDiscountVal = parseFloat(discountVal);
+    const isNegativeDiscount = discountType !== 'NONE' && (parsedDiscountVal < 0);
+    const isInvalidPercent = discountType === 'PERCENT' && (parsedDiscountVal > 100);
+    const isExcessFlatDiscount = discountType === 'FLAT' && (parsedDiscountVal > subtotal);
+    const isNegativeGst = enableGst && (customGstRate < 0);
+
     const discountAmount = useMemo(() => {
         const val = parseFloat(discountVal) || 0;
+        if (val < 0) return 0; // Negative discount cannot increase bill or alter subtotal
         if (discountType === 'PERCENT') {
-            return Math.round((subtotal * Math.min(100, val) / 100) * 100) / 100;
+            const pct = Math.min(100, Math.max(0, val));
+            return Math.round((subtotal * pct / 100) * 100) / 100;
         }
         if (discountType === 'FLAT') {
-            return Math.min(subtotal, val);
+            return Math.min(subtotal, Math.max(0, val));
         }
         return 0;
     }, [subtotal, discountType, discountVal]);
 
     const afterDiscountSubtotal = Math.max(0, subtotal - discountAmount);
 
-    const gstRate = enableGst ? customGstRate : 0;
+    const gstRate = (enableGst && customGstRate >= 0) ? customGstRate : 0;
     const gstAmount = Math.round((afterDiscountSubtotal * gstRate / 100) * 100) / 100;
     const cgstAmount = Math.round((gstAmount / 2) * 100) / 100;
     const sgstAmount = Math.round((gstAmount / 2) * 100) / 100;
@@ -217,11 +306,30 @@ export default function BillingTablePage() {
 
     const generateBill = useCallback(async () => {
         if (cart.length === 0 || billingRef.current) return;
+
+        if (isNegativeDiscount) {
+            setNotification('Error: Discount amount cannot be negative');
+            return;
+        }
+        if (isInvalidPercent) {
+            setNotification('Error: Discount percentage cannot exceed 100%');
+            return;
+        }
+        if (isExcessFlatDiscount) {
+            setNotification(`Error: Discount cannot exceed subtotal (${sym}${subtotal})`);
+            return;
+        }
+        if (isNegativeGst) {
+            setNotification('Error: GST rate cannot be negative');
+            return;
+        }
+
         billingRef.current = true;
         setBilling(true);
         try {
+            const effectiveId = table?.id || tableId;
             const payload = {
-                tableId,
+                tableId: effectiveId,
                 customerName: customerName || 'Walk-in Guest',
                 customerPhone: customerPhone || undefined,
                 paymentMethod,
@@ -245,7 +353,13 @@ export default function BillingTablePage() {
             const data = await res.json();
 
             if (data.success) {
-                router.push(`/billing/pos/${tableId}/bill/${data.orderId}`);
+                if (typeof window !== 'undefined') {
+                    if (tableId) localStorage.removeItem(`hotelpro_draft_cart_${tableId}`);
+                    if (table?.id) localStorage.removeItem(`hotelpro_draft_cart_${table.id}`);
+                    if (tableId) localStorage.removeItem(`hotelpro_draft_cust_${tableId}`);
+                    if (table?.id) localStorage.removeItem(`hotelpro_draft_cust_${table.id}`);
+                }
+                router.push(`/billing/pos/${effectiveId}/bill/${data.orderId}`);
             } else {
                 setNotification(data.error || 'Failed to generate bill');
                 billingRef.current = false;
@@ -256,7 +370,7 @@ export default function BillingTablePage() {
         } finally {
             setBilling(false);
         }
-    }, [cart, tableId, customerName, customerPhone, paymentMethod, discountAmount, gstAmount, cgstAmount, sgstAmount, grandTotal, router]);
+    }, [cart, tableId, table?.id, customerName, customerPhone, paymentMethod, discountAmount, gstAmount, cgstAmount, sgstAmount, grandTotal, router, isNegativeDiscount, isInvalidPercent, isExcessFlatDiscount, isNegativeGst, subtotal, sym]);
 
     // ── Option 5: Keyboard Shortcuts (Enter / Ctrl+P to Print & Direct Bill) ──
 
@@ -326,9 +440,16 @@ export default function BillingTablePage() {
                             </div>
                         </div>
 
-                        <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-md border border-emerald-200/60">
-                            Table {table?.tableCode}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                            {table?.section && (
+                                <span className="px-2 py-1 bg-zinc-100 text-zinc-700 text-xs font-semibold rounded-md border border-zinc-200">
+                                    {table.section}
+                                </span>
+                            )}
+                            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-md border border-emerald-200/60">
+                                Table {table?.tableCode}
+                            </span>
+                        </div>
                     </div>
 
                     {/* Search & Category Filter */}
@@ -446,11 +567,26 @@ export default function BillingTablePage() {
 
             {/* ── RIGHT: BILL SUMMARY & CART (DESKTOP) ── */}
             <aside className="hidden md:flex flex-col w-80 lg:w-96 bg-white border-l border-zinc-200/80 shrink-0">
-                <div className="px-5 py-4 border-b border-zinc-200/80">
-                    <h2 className="text-sm font-bold text-zinc-900 uppercase tracking-wide">Current Bill</h2>
-                    <p className="text-xs text-zinc-500 font-normal mt-0.5">
-                        Table {table?.tableCode} · {cartCount} items selected
-                    </p>
+                <div className="px-5 py-4 border-b border-zinc-200/80 flex items-center justify-between gap-2">
+                    <div>
+                        <h2 className="text-sm font-bold text-zinc-900 uppercase tracking-wide">Current Bill</h2>
+                        <p className="text-xs text-zinc-500 font-normal mt-0.5">
+                            Table {table?.tableCode} · {cartCount} items selected
+                        </p>
+                    </div>
+
+                    {cart.length > 0 && (
+                        <button
+                            onClick={handleResetCart}
+                            className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold rounded-lg border border-rose-200/80 transition-all flex items-center gap-1 shrink-0"
+                            title="Reset and clear all items for this table bill"
+                        >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            <span>Reset Bill</span>
+                        </button>
+                    )}
                 </div>
 
                 {/* CART ITEMS LIST */}
@@ -515,9 +651,12 @@ export default function BillingTablePage() {
                                         <span>Rate:</span>
                                         <input
                                             type="number"
+                                            min="0"
                                             value={customGstRate}
                                             onChange={(e) => setCustomGstRate(Number(e.target.value))}
-                                            className="w-12 h-6 border border-zinc-200 rounded px-1 text-center font-bold"
+                                            className={`w-12 h-6 border rounded px-1 text-center font-bold outline-none ${
+                                                isNegativeGst ? 'border-rose-500 bg-rose-50 text-rose-700' : 'border-zinc-200'
+                                            }`}
                                         />
                                         <span>%</span>
                                     </div>
@@ -550,13 +689,36 @@ export default function BillingTablePage() {
                             </div>
 
                             {discountType !== 'NONE' && (
-                                <input
-                                    type="number"
-                                    placeholder={discountType === 'PERCENT' ? 'Discount % (e.g. 10)' : 'Flat Discount ₹ (e.g. 50)'}
-                                    value={discountVal}
-                                    onChange={(e) => setDiscountVal(e.target.value)}
-                                    className="w-full h-8 bg-zinc-50 border border-zinc-200 rounded-lg px-2.5 text-xs font-medium outline-none focus:border-zinc-300"
-                                />
+                                <div>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max={discountType === 'PERCENT' ? '100' : subtotal}
+                                        placeholder={discountType === 'PERCENT' ? 'Discount % (e.g. 10)' : 'Flat Discount ₹ (e.g. 50)'}
+                                        value={discountVal}
+                                        onChange={(e) => setDiscountVal(e.target.value)}
+                                        className={`w-full h-8 bg-zinc-50 border rounded-lg px-2.5 text-xs font-medium outline-none transition-all ${
+                                            isNegativeDiscount || isInvalidPercent || isExcessFlatDiscount
+                                                ? 'border-rose-500 text-rose-700 bg-rose-50/40 focus:border-rose-600'
+                                                : 'border-zinc-200 focus:border-zinc-300'
+                                        }`}
+                                    />
+                                    {isNegativeDiscount && (
+                                        <p className="text-[11px] font-semibold text-rose-600 mt-1 flex items-center gap-1">
+                                            <span></span> Discount cannot be negative
+                                        </p>
+                                    )}
+                                    {isInvalidPercent && !isNegativeDiscount && (
+                                        <p className="text-[11px] font-semibold text-rose-600 mt-1 flex items-center gap-1">
+                                            <span></span> Discount percentage cannot exceed 100%
+                                        </p>
+                                    )}
+                                    {isExcessFlatDiscount && !isNegativeDiscount && (
+                                        <p className="text-[11px] font-semibold text-rose-600 mt-1 flex items-center gap-1">
+                                            <span></span> Discount cannot exceed subtotal ({sym}{subtotal.toLocaleString('en-IN')})
+                                        </p>
+                                    )}
+                                </div>
                             )}
                         </div>
 
@@ -638,7 +800,7 @@ export default function BillingTablePage() {
                         {/* Direct Bill & Print Button */}
                         <button
                             onClick={generateBill}
-                            disabled={billing || cart.length === 0}
+                            disabled={billing || cart.length === 0 || isNegativeDiscount || isInvalidPercent || isExcessFlatDiscount || isNegativeGst}
                             className="w-full py-3 bg-[#065F46] hover:bg-[#044E39] text-white font-bold text-xs rounded-lg tracking-wide transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-2xs"
                         >
                             {billing ? 'Generating Bill...' : `Print & Direct Bill (${sym}${grandTotal.toLocaleString('en-IN')})`}
@@ -654,13 +816,21 @@ export default function BillingTablePage() {
                         <p className="text-xs font-bold">{cartCount} Items Selected</p>
                         <p className="text-base font-bold text-emerald-400">{sym}{grandTotal.toLocaleString('en-IN')}</p>
                     </div>
-                    <button
-                        onClick={generateBill}
-                        disabled={billing}
-                        className="px-4 py-2.5 bg-[#065F46] text-white text-xs font-bold rounded-xl"
-                    >
-                        {billing ? 'Processing...' : 'Direct Bill'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleResetCart}
+                            className="px-3 py-2 bg-rose-900/80 hover:bg-rose-900 text-rose-200 text-xs font-bold rounded-xl border border-rose-700/50"
+                        >
+                            Reset
+                        </button>
+                        <button
+                            onClick={generateBill}
+                            disabled={billing || isNegativeDiscount || isInvalidPercent || isExcessFlatDiscount || isNegativeGst}
+                            className="px-4 py-2.5 bg-[#065F46] text-white text-xs font-bold rounded-xl disabled:opacity-50"
+                        >
+                            {billing ? 'Processing...' : 'Direct Bill'}
+                        </button>
+                    </div>
                 </div>
             )}
 
