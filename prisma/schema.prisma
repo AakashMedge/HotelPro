@@ -470,6 +470,7 @@ enum ClientPlan {
   STARTER
   GROWTH
   ELITE
+  BILLING_ONLY
 }
 
 enum ClientStatus {

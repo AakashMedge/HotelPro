@@ -22,7 +22,7 @@ interface Broadcast {
     content: string;
     type: 'ANNOUNCEMENT' | 'UPDATE' | 'ALERT';
     priority: 'LOW' | 'MEDIUM' | 'HIGH';
-    target: 'ALL' | 'STARTER' | 'GROWTH' | 'ELITE';
+    target: 'ALL' | 'BILLING_ONLY' | 'STARTER' | 'GROWTH' | 'ELITE';
     sentBy: string;
     createdAt: string;
 }
@@ -285,6 +285,7 @@ export default function BroadcastsPage() {
                                             onChange={(e) => setNewBroadcast({ ...newBroadcast, target: e.target.value as any })}
                                         >
                                             <option value="ALL">All Clients</option>
+                                            <option value="BILLING_ONLY">Billing Only Tier</option>
                                             <option value="STARTER">Starter Tier only</option>
                                             <option value="GROWTH">Growth Tier only</option>
                                             <option value="ELITE">Elite Tier only</option>

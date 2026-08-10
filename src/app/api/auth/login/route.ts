@@ -42,6 +42,7 @@ interface LoginSuccessResponse {
     user: {
         name: string;
         role: string;
+        plan: string;
     };
 }
 
@@ -97,7 +98,8 @@ export async function POST(
                 client: {
                     select: {
                         status: true,
-                        name: true
+                        name: true,
+                        plan: true
                     }
                 }
             },
@@ -145,20 +147,30 @@ export async function POST(
         const token = await signToken(user.id, user.role, user.clientId, session.id);
 
         // 9. Build response with user info
-        const response = NextResponse.json<LoginSuccessResponse>(
-            {
-                success: true,
-                user: {
-                    name: user.name,
-                    role: user.role,
-                },
+        const successBody: LoginSuccessResponse = {
+            success: true,
+            user: {
+                name: user.name,
+                role: user.role,
+                plan: user.client.plan,
             },
+        };
+
+        const response = NextResponse.json<LoginSuccessResponse>(
+            successBody,
             { status: 200 }
         );
 
-        // 9. Set HttpOnly cookies (both role-scoped and fallback auth-token)
-        const { getCookieNameForRole } = await import("@/lib/auth/server");
+        // 10. Set HttpOnly cookies (both role-scoped and fallback auth-token)
+        const { getCookieNameForRole, ALL_AUTH_COOKIES } = await import("@/lib/auth/server");
         const roleCookieName = getCookieNameForRole(user.role);
+
+        // Clear all obsolete role cookies to avoid cross-role cookie collision
+        for (const cookieName of ALL_AUTH_COOKIES) {
+            if (cookieName !== roleCookieName && cookieName !== "auth-token") {
+                response.cookies.delete(cookieName);
+            }
+        }
 
         response.cookies.set(roleCookieName, token, {
             httpOnly: true,

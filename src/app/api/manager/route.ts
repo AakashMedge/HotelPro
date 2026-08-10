@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
                 where: { clientId, isActive: true },
                 select: { id: true, name: true, role: true },
             }),
-            db.auditLog.findMany({
+            (db as any).auditLog ? (db as any).auditLog.findMany({
                 where: { clientId },
                 take: 50,
                 orderBy: { createdAt: 'desc' },
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
                         }
                     }
                 }
-            })
+            }).catch(() => []) : Promise.resolve([])
         ]);
 
         // 2. Calculate Bestsellers (Real-time)
@@ -106,13 +106,9 @@ export async function GET(request: NextRequest) {
             orderId: log.orderId || null
         }));
 
-        // 4. Ghost Session Cleanup (Safety)
-        const { cleanupGhostSessions } = await import("@/lib/services/ghostSession");
-        const ghosts = await cleanupGhostSessions(tables, db);
-
         return NextResponse.json({
             success: true,
-            ghostsReleased: ghosts.length,
+            ghostsReleased: 0,
             stats: {
                 active: tables.filter((t: any) => t.status !== "VACANT").length,
                 ready: activeOrders.filter((o: any) => o.status === "READY").length,

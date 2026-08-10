@@ -74,10 +74,10 @@ export async function POST(request: NextRequest) {
         }
 
         // 5. Validate plan
-        const validPlans: any[] = ['STARTER', 'GROWTH', 'ELITE'];
+        const validPlans: any[] = ['BILLING_ONLY', 'STARTER', 'GROWTH', 'ELITE'];
         if (!validPlans.includes(body.plan)) {
             return NextResponse.json<HQApiResponse>(
-                { success: false, error: "Invalid plan. Choose from: STARTER, GROWTH, ELITE" },
+                { success: false, error: "Invalid plan. Choose from: BILLING_ONLY, STARTER, GROWTH, ELITE" },
                 { status: 400 }
             );
         }

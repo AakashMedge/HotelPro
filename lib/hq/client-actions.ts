@@ -194,11 +194,25 @@ export async function createNewClient(input: CreateClientInput): Promise<{ succe
                 }
             });
 
+            // Ensure Plan Record exists in DB (creates on-the-fly if missing)
+            let planRecord = await tx.plan.findFirst({ where: { code: input.plan as any } });
+            if (!planRecord) {
+                planRecord = await tx.plan.create({
+                    data: {
+                        name: input.plan.replace('_', ' '),
+                        code: input.plan as any,
+                        price: PLAN_PRICING[input.plan as keyof typeof PLAN_PRICING] || 999,
+                        features: {},
+                        limits: {}
+                    }
+                });
+            }
+
             // Create Subscription Record
             await tx.subscription.create({
                 data: {
                     clientId: newClient.id,
-                    planId: (await tx.plan.findFirst({ where: { code: input.plan as any } }))?.id || '',
+                    planId: planRecord.id,
                     status: 'ACTIVE' as any,
                     billingCycle: input.billingCycle || 'MONTHLY',
                     currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
@@ -256,11 +270,22 @@ export async function updateClient(
 
             // Update Subscription if plan or cycle changed
             if (input.plan || input.billingCycle) {
-                const plan = await tx.plan.findFirst({ where: { code: input.plan as any } });
+                let planRecord = input.plan ? await tx.plan.findFirst({ where: { code: input.plan as any } }) : null;
+                if (input.plan && !planRecord) {
+                    planRecord = await tx.plan.create({
+                        data: {
+                            name: input.plan.replace('_', ' '),
+                            code: input.plan as any,
+                            price: PLAN_PRICING[input.plan as keyof typeof PLAN_PRICING] || 999,
+                            features: {},
+                            limits: {}
+                        }
+                    });
+                }
                 await tx.subscription.update({
                     where: { clientId },
                     data: {
-                        ...(plan ? { planId: plan.id } : {}),
+                        ...(planRecord ? { planId: planRecord.id } : {}),
                         ...(input.billingCycle ? { billingCycle: input.billingCycle } : {})
                     }
                 });

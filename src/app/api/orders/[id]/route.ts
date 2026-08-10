@@ -39,6 +39,7 @@ interface OrderResponse {
     createdAt: string;
     closedAt?: string;
     customerName: string | null;
+    customerPhone?: string | null;
     estimatedTime?: number | null;
     sessionId: string | null;
 }
@@ -111,6 +112,7 @@ export async function GET(
             createdAt: order.createdAt.toISOString(),
             closedAt: order.closedAt?.toISOString(),
             customerName: order.customerName,
+            customerPhone: (order as any).customerPhone || null,
             sessionId: order.sessionId,
         };
 
@@ -239,6 +241,7 @@ export async function PATCH(
             createdAt: order.createdAt.toISOString(),
             closedAt: order.closedAt?.toISOString(),
             customerName: order.customerName,
+            customerPhone: (order as any).customerPhone || null,
             sessionId: order.sessionId,
         };
 

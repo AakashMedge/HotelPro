@@ -33,6 +33,14 @@ export default function AdminLayout({
                 if (data.user) setUser(data.user);
 
                 const role = data.user?.role as string | undefined;
+                const plan = data.user?.plan as string | undefined;
+
+                // BILLING_ONLY plan users are strictly locked to /billing terminal
+                if (plan === 'BILLING_ONLY') {
+                    router.replace('/billing');
+                    return;
+                }
+
                 if (role && !['ADMIN', 'MANAGER'].includes(role)) {
                     const roleRoute: Record<string, string> = {
                         WAITER: '/waiter',

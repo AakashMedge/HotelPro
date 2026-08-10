@@ -28,16 +28,21 @@ export async function GET() {
             }
         });
 
-        // ─── Fetch Access Code from Client model ───
+        // ─── Fetch Client Name & Access Code ───
         const client = await (prisma.client as any).findUnique({
             where: { id: session.clientId },
-            select: { accessCode: true }
+            select: { name: true, accessCode: true }
         });
+
+        const effectiveBusinessName = settings.businessName && settings.businessName !== "HotelPro Royal" 
+            ? settings.businessName 
+            : (client?.name || "My Hotel");
 
         return NextResponse.json({
             success: true,
             settings: {
                 ...settings,
+                businessName: effectiveBusinessName,
                 gstRate: Number(settings.gstRate),
                 serviceChargeRate: Number(settings.serviceChargeRate),
                 accessCode: client?.accessCode || ""

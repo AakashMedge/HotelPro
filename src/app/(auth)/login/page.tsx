@@ -12,6 +12,8 @@ const ROLE_DASHBOARDS: Record<string, string> = {
     CASHIER: '/cashier',
 };
 
+const BILLING_ONLY_DASHBOARD = '/billing';
+
 function LoginContent({ isOpened }: { isOpened: boolean }) {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -45,13 +47,26 @@ function LoginContent({ isOpened }: { isOpened: boolean }) {
                 return;
             }
 
-            const dashboard = ROLE_DASHBOARDS[data.user.role] || '/';
-            if (redirectTo && redirectTo.startsWith(dashboard)) {
-                router.push(redirectTo);
+            // After login, check plan to decide where to redirect
+            let dashboard = ROLE_DASHBOARDS[data.user.role] || '/';
+
+            if (data.user?.plan === 'BILLING_ONLY' && ['ADMIN', 'MANAGER', 'CASHIER'].includes(data.user.role)) {
+                dashboard = BILLING_ONLY_DASHBOARD;
             } else {
-                router.push(dashboard);
+                try {
+                    const meRes = await fetch('/api/auth/me');
+                    const meData = await meRes.json();
+                    if (meData.success && meData.user?.plan === 'BILLING_ONLY') {
+                        dashboard = BILLING_ONLY_DASHBOARD;
+                    }
+                } catch { /* ignore, use default dashboard */ }
             }
-            router.refresh();
+
+            if (redirectTo && redirectTo.startsWith(dashboard)) {
+                window.location.href = redirectTo;
+            } else {
+                window.location.href = dashboard;
+            }
         } catch {
             setError('System connectivity issue. Please retry.');
             setIsLoading(false);

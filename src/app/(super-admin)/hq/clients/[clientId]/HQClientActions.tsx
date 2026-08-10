@@ -117,7 +117,7 @@ export default function HQClientActions({ clientId, currentStatus, currentPlan }
         }
     };
 
-    const plans: ClientPlan[] = ['STARTER', 'GROWTH', 'ELITE'];
+    const plans: ClientPlan[] = ['BILLING_ONLY', 'STARTER', 'GROWTH', 'ELITE'];
 
     return (
         <div className="space-y-3">

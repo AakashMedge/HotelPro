@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const validCodes = ['STARTER', 'GROWTH', 'ELITE'];
+        const validCodes = ['BILLING_ONLY', 'STARTER', 'GROWTH', 'ELITE'];
         if (!validCodes.includes(code)) {
             return NextResponse.json(
                 { error: `Invalid plan code. Must be one of: ${validCodes.join(', ')}` },

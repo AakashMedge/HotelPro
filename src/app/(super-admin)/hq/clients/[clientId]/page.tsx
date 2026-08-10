@@ -74,6 +74,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
 
     // Pricing mapping
     const PLAN_PRICING: Record<string, number> = {
+        BILLING_ONLY: 999,
         STARTER: 1999,
         GROWTH: 4999,
         ELITE: 19999

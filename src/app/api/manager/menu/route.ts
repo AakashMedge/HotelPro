@@ -91,6 +91,24 @@ export async function POST(request: NextRequest) {
 
         const db = prisma;
 
+        // Check for duplicate name for this tenant
+        const trimmedName = (name || '').trim();
+        if (trimmedName) {
+            const existing = await (db.menuItem as any).findFirst({
+                where: {
+                    clientId,
+                    deletedAt: null,
+                    name: { equals: trimmedName, mode: 'insensitive' }
+                }
+            });
+            if (existing) {
+                return NextResponse.json({
+                    success: false,
+                    error: `A menu item named "${trimmedName}" already exists!`
+                }, { status: 400 });
+            }
+        }
+
         const newItem = await (db.menuItem as any).create({
             data: {
                 clientId,

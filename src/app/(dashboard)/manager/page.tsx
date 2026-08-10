@@ -67,7 +67,7 @@ export default function ManagerDashboard() {
             if (!res.ok || !result.success) {
                 const message = result?.error || 'Service currently unavailable.';
                 setError(message);
-                if (result?.code === 'AUTH_REQUIRED') router.replace('/login?redirect=/manager&error=AUTH_REQUIRED');
+                if (result?.code === 'AUTH_REQUIRED') window.location.href = '/login?redirect=/billing';
                 return;
             }
 

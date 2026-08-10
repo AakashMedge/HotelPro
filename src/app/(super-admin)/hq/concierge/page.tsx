@@ -93,6 +93,7 @@ export default function HQConciergeHub() {
                         className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-600 outline-none hover:bg-slate-50 transition-all"
                     >
                         <option value="">All Plans</option>
+                        <option value="BILLING_ONLY">Billing Only</option>
                         <option value="STARTER">Starter</option>
                         <option value="GROWTH">Growth</option>
                         <option value="ELITE">Elite</option>

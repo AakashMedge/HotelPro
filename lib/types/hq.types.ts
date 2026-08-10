@@ -6,7 +6,7 @@
 
 // We use string literals here instead of importing from @prisma/client 
 // to avoid build breakages when the generated client is out of sync.
-export type ClientPlan = 'STARTER' | 'GROWTH' | 'ELITE';
+export type ClientPlan = 'STARTER' | 'GROWTH' | 'ELITE' | 'BILLING_ONLY';
 export type ClientStatus = 'ACTIVE' | 'SUSPENDED' | 'TRIAL' | 'ARCHIVED' | 'PROVISIONING' | 'PROVISIONING_FAILED';
 export type BillingCycle = 'MONTHLY' | 'ANNUAL';
 
@@ -79,6 +79,7 @@ export const PLAN_PRICING: Record<string, number> = {
     STARTER: 1999,    // ₹1,999/month - Starter
     GROWTH: 4999,     // ₹4,999/month - Growth
     ELITE: 19999,     // ₹19,999/month - Elite
+    BILLING_ONLY: 999, // ₹999/month - Billing Only (entry plan)
 };
 
 // Trial period in days

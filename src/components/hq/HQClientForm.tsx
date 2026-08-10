@@ -170,18 +170,18 @@ export default function HQClientForm({ mode, initialData }: HQClientFormProps) {
                     <div className="space-y-4">
                         <div>
                             <label className="block text-sm font-bold text-slate-700 mb-1">Service Plan</label>
-                            <div className="grid grid-cols-3 gap-3">
-                                {['STARTER', 'GROWTH', 'ELITE'].map((plan) => (
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                {['BILLING_ONLY', 'STARTER', 'GROWTH', 'ELITE'].map((plan) => (
                                     <button
                                         key={plan}
                                         type="button"
                                         onClick={() => setFormData({ ...formData, plan: plan as ClientPlan })}
-                                        className={`px-3 py-3 rounded-xl border-2 text-[10px] font-black tracking-widest transition-all ${formData.plan === plan
+                                        className={`px-3 py-3 rounded-xl border-2 text-[9px] font-black tracking-wider transition-all ${formData.plan === plan
                                             ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
                                             : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200'
                                             }`}
                                     >
-                                        {plan}
+                                        {plan.replace('_', ' ')}
                                     </button>
                                 ))}
                             </div>

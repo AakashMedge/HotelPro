@@ -15,6 +15,9 @@ export enum Feature {
  * Defines which plans have access to which platform features.
  */
 export const PLAN_FEATURES: Record<ClientPlan, Feature[]> = {
+    [ClientPlan.BILLING_ONLY]: [
+        Feature.MULTI_SECTION_TABLES,
+    ],
     [ClientPlan.STARTER]: [
         Feature.MULTI_SECTION_TABLES,
     ],
@@ -37,6 +40,7 @@ export const PLAN_FEATURES: Record<ClientPlan, Feature[]> = {
 
 // Plan-based resource limits
 export const PLAN_LIMITS = {
+    [ClientPlan.BILLING_ONLY]: { maxTables: 50, maxMenuItems: 150 },
     [ClientPlan.STARTER]: { maxTables: 100, maxMenuItems: 300 },
     [ClientPlan.GROWTH]: { maxTables: 250, maxMenuItems: 1000 },
     [ClientPlan.ELITE]: { maxTables: 9999, maxMenuItems: 9999 },
@@ -54,6 +58,6 @@ export function isFeatureEnabled(plan: ClientPlan, feature: Feature): boolean {
  * Check if a client has reached their record limits.
  */
 export function hasReachedLimit(plan: ClientPlan, type: 'maxTables' | 'maxMenuItems', currentCount: number): boolean {
-    const limits = PLAN_LIMITS[plan];
+    const limits = PLAN_LIMITS[plan] || { maxTables: 50, maxMenuItems: 150 };
     return currentCount >= (limits as any)[type];
 }

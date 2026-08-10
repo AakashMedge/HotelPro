@@ -80,6 +80,7 @@ export interface CurrentUser {
     role: UserRole;
     plan: ClientPlan;
     clientStatus: ClientStatus;
+    restaurantName?: string;
 }
 
 export function getCookieNameForRole(role?: string): string {
@@ -173,6 +174,7 @@ export async function getCurrentUser(roleHint?: string): Promise<CurrentUser | n
                     role: user.role,
                     plan: user.client.plan,
                     clientStatus: user.client.status,
+                    restaurantName: user.client.name,
                 };
             } catch {
                 // Token invalid/expired for this cookie, try next candidate

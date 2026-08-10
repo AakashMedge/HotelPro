@@ -13,7 +13,8 @@ export default function ManagerLayout({
 }) {
     const router = useRouter();
     const pathname = usePathname();
-    const [mounted, setMounted] = useState(false);
+    const mountedRef = useState(false);
+    const [mounted, setMounted] = mountedRef;
     const [user, setUser] = useState<{ name: string, plan: string } | null>(null);
     const [authChecking, setAuthChecking] = useState(true);
     const [isCollapsed, setIsCollapsed] = useState(false);
@@ -24,7 +25,13 @@ export default function ManagerLayout({
             .then(async (res) => {
                 const data = await res.json();
                 if (!res.ok || !data.success) {
-                    router.replace('/login?redirect=/manager&error=AUTH_REQUIRED');
+                    window.location.href = '/login?redirect=/billing';
+                    return;
+                }
+
+                // If hotel is on BILLING_ONLY plan, redirect MANAGER directly to /billing POS
+                if (data.user?.plan === 'BILLING_ONLY') {
+                    window.location.href = '/billing';
                     return;
                 }
 
@@ -37,7 +44,7 @@ export default function ManagerLayout({
                         ADMIN: '/admin',
                         MANAGER: '/manager',
                     };
-                    router.replace(roleRoute[role] || '/login');
+                    window.location.href = roleRoute[role] || '/login';
                     return;
                 }
 
@@ -45,7 +52,7 @@ export default function ManagerLayout({
             })
             .catch(console.error)
             .finally(() => setAuthChecking(false));
-    }, [router]);
+    }, [router, setMounted]);
 
     const allNavItems = [
         { label: 'DIRECTOR', path: '/manager', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z', starterVisible: true },
@@ -61,7 +68,6 @@ export default function ManagerLayout({
 
     const isStarter = user?.plan === 'STARTER';
 
-    // Show all items until user loaded; once loaded filter by plan
     const navItems = !user
         ? allNavItems
         : isStarter
@@ -143,12 +149,8 @@ export default function ManagerLayout({
                 </div>
             </aside>
 
-            {/* MOBILE NAVIGATION - REMOVED AS PER REQUEST */}
-            {/* ... */}
-
             {/* MAIN OPERATIONS FRAME */}
             <div className="grow flex flex-col min-w-0 h-full overflow-hidden">
-                {/* REFINED HEADER */}
                 <header className="h-14 md:h-16 lg:h-20 bg-white border-b border-zinc-200 flex items-center justify-between px-4 md:px-6 lg:px-8 shrink-0 shadow-sm relative z-40">
                     <div className="flex flex-col">
                         <h2 className="text-[7px] md:text-[8px] lg:text-[10px] font-bold text-zinc-400 uppercase tracking-[0.4em] leading-none mb-1 md:mb-1.5 lg:mb-2 italic font-playfair">Floor Intelligence</h2>
