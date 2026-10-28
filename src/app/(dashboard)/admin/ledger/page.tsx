@@ -12,7 +12,9 @@ import {
     DollarSign,
     ShieldCheck,
     History,
-    Clock
+    Clock,
+    Eye,
+    Edit
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -345,12 +347,15 @@ export default function AdminLedgerPage() {
                                 </section>
                             </div>
 
-                            <div className="p-8 border-t border-slate-100 grid grid-cols-2 gap-4 shrink-0 bg-white">
-                                <button onClick={() => window.print()} className="py-4 bg-slate-50 text-slate-900 rounded-3xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-slate-100 transition-all">
-                                    <Printer size={16} /> Print Master
-                                </button>
+                            <div className="p-8 border-t border-slate-100 grid grid-cols-3 gap-3 shrink-0 bg-white">
+                                <a href={`/billing/pos/${encodeURIComponent(selectedBill.table)}?orderId=${selectedBill.id}`} className="py-4 bg-amber-600 hover:bg-amber-700 text-white rounded-3xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg text-center">
+                                    <Edit size={16} /> Edit
+                                </a>
+                                <a href={`/billing/pos/${encodeURIComponent(selectedBill.table)}/bill/${selectedBill.id}`} className="py-4 bg-[#065F46] text-white rounded-3xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#044E39] transition-all shadow-lg text-center">
+                                    <Eye size={16} /> View
+                                </a>
                                 <button className="py-4 bg-slate-900 text-white rounded-3xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 shadow-xl shadow-slate-200 hover:scale-[1.02] active:scale-95 transition-all">
-                                    <ShieldCheck size={16} /> Verify Entry
+                                    <ShieldCheck size={16} /> Verify
                                 </button>
                             </div>
                         </motion.div>

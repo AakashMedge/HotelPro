@@ -3,6 +3,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PrintingService } from '@/lib/printing/service';
+import PrinterConnectModal from '@/components/PrinterConnectModal';
 
 // ============================================
 // Types
@@ -40,10 +42,10 @@ export default function CashierTerminal() {
     const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
     const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'CARD' | 'CASH' | null>(null);
     const [showConfirm, setShowConfirm] = useState(false);
-    const [loading, setLoading] = useState(true);
     const [isMobileDetailView, setIsMobileDetailView] = useState(false);
     const [committing, setCommitting] = useState(false);
     const [showReceipt, setShowReceipt] = useState(false);
+    const [showPrinterModal, setShowPrinterModal] = useState(false);
 
     const fetchPendingOrders = useCallback(async () => {
         try {
@@ -51,7 +53,7 @@ export default function CashierTerminal() {
             const data = await res.json();
             if (!data.success) return;
 
-            const pending = data.orders.map((o: any) => ({
+            const pending = data.orders.map((o: { id: string; tableCode: string; customerName?: string; updatedAt: string; version: number; subtotal: number; gstAmount: number; serviceChargeAmount: number; grandTotal: number; items: Array<{ id: string; itemName: string; quantity: number; price: number }> }) => ({
                 id: o.id,
                 shortId: o.id.slice(0, 8).toUpperCase(),
                 tableCode: o.tableCode.replace('T-', ''),
@@ -63,7 +65,7 @@ export default function CashierTerminal() {
                 serviceChargeAmount: o.serviceChargeAmount,
                 grandTotal: o.grandTotal,
                 total: o.grandTotal,
-                items: o.items.map((item: any) => ({
+                items: o.items.map((item) => ({
                     id: item.id, name: item.itemName, qty: item.quantity, price: item.price
                 }))
             }));
@@ -72,7 +74,6 @@ export default function CashierTerminal() {
                 setSelectedOrderId(pending[0].id);
             }
         } catch (err) { console.error(err); }
-        finally { setLoading(false); }
     }, [selectedOrderId]);
 
     useEffect(() => {
@@ -94,6 +95,23 @@ export default function CashierTerminal() {
             });
             const data = await res.json();
             if (res.ok) {
+                // 1-Click Hardware Direct Print immediately on settlement
+                PrintingService.printReceipt({
+                    businessName: 'HOTELPRO ROYAL',
+                    invoiceNo: order.shortId,
+                    tableNo: `T-${order.tableCode}`,
+                    items: order.items.map(i => ({
+                        name: i.name,
+                        qty: i.qty,
+                        price: i.price
+                    })),
+                    subtotal: order.subtotal,
+                    gstAmount: order.gstAmount,
+                    serviceCharge: order.serviceChargeAmount,
+                    grandTotal: order.grandTotal,
+                    paymentMethod: paymentMethod || 'CASH'
+                }).catch(err => console.warn('Direct print error:', err));
+
                 setSelectedOrderId(null);
                 setShowConfirm(false);
                 setPaymentMethod(null);
@@ -109,8 +127,23 @@ export default function CashierTerminal() {
         } finally { setCommitting(false); }
     };
 
-    const handlePrint = () => {
-        window.print();
+    const handlePrint = async () => {
+        if (!currentOrder) return;
+        await PrintingService.printReceipt({
+            businessName: 'HOTELPRO ROYAL',
+            invoiceNo: currentOrder.shortId,
+            tableNo: `T-${currentOrder.tableCode}`,
+            items: currentOrder.items.map(i => ({
+                name: i.name,
+                qty: i.qty,
+                price: i.price
+            })),
+            subtotal: currentOrder.subtotal,
+            gstAmount: currentOrder.gstAmount,
+            serviceCharge: currentOrder.serviceChargeAmount,
+            grandTotal: currentOrder.grandTotal,
+            paymentMethod: paymentMethod || 'CASH'
+        });
     };
 
     if (!mounted) return null;
@@ -121,7 +154,7 @@ export default function CashierTerminal() {
         <div className="h-full bg-white flex flex-col lg:flex-row overflow-hidden relative font-sans">
 
             {/* PRINTER FRIENDLY LAYER (Only visible during print) */}
-            <div className="hidden print:block fixed inset-0 bg-white z-999 p-10 text-black font-mono">
+            <div id="cashier-print-receipt" className="hidden print:block font-mono">
                 {currentOrder && (
                     <div className="max-w-xs mx-auto border border-zinc-200 p-6 space-y-4">
                         <div className="text-center border-b pb-4">
@@ -167,12 +200,22 @@ export default function CashierTerminal() {
 
             {/* INGRESS QUEUE */}
             <aside className={`w-full lg:w-96 border-r border-zinc-100 flex flex-col shrink-0 transition-all duration-300 ${isMobileDetailView ? '-translate-x-full lg:translate-x-0' : 'translate-x-0'} absolute lg:relative inset-0 lg:inset-auto z-20 bg-[#FDFCF9]`}>
-                <div className="p-8 border-b border-zinc-100 shrink-0 bg-white">
-                    <h1 className="text-3xl font-black text-[#111111] tracking-tighter uppercase">Settlements</h1>
-                    <div className="flex items-center gap-2 mt-2">
-                        <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                        <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">{orders.length} In-Queue</p>
+                <div className="p-8 border-b border-zinc-100 shrink-0 bg-white flex justify-between items-center">
+                    <div>
+                        <h1 className="text-3xl font-black text-[#111111] tracking-tighter uppercase">Settlements</h1>
+                        <div className="flex items-center gap-2 mt-2">
+                            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                            <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">{orders.length} In-Queue</p>
+                        </div>
                     </div>
+                    <button
+                        onClick={() => setShowPrinterModal(true)}
+                        className="py-2.5 px-3 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200/60 rounded-2xl text-zinc-700 transition-all flex items-center gap-2 text-xs font-bold"
+                        title="Configure Thermal Hardware (USB / Bluetooth)"
+                    >
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="hidden sm:inline">Printer</span>
+                    </button>
                 </div>
                 <div className="grow overflow-y-auto p-4 space-y-3 no-scrollbar pb-32">
                     {orders.map(order => (
@@ -191,7 +234,7 @@ export default function CashierTerminal() {
                             <div className="flex justify-between items-end">
                                 <div>
                                     <p className={`text-[10px] font-bold uppercase tracking-widest ${selectedOrderId === order.id ? 'text-white/40' : 'text-zinc-300'}`}>Guest Identity</p>
-                                    <p className={`font-black text-sm uppercase truncate max-w-[150px] ${selectedOrderId === order.id ? 'text-white' : 'text-zinc-700'}`}>{order.guestName}</p>
+                                    <p className={`font-black text-sm uppercase truncate max-w-37.5 ${selectedOrderId === order.id ? 'text-white' : 'text-zinc-700'}`}>{order.guestName}</p>
                                 </div>
                                 <div className="text-right">
                                     <span className={`text-2xl font-black tabular-nums ${selectedOrderId === order.id ? 'text-[#D43425]' : 'text-[#111111]'}`}>₹{order.total}</span>
@@ -221,7 +264,19 @@ export default function CashierTerminal() {
                                     <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-[0.2em] mt-1 italic">Verified session: {currentOrder.id}</p>
                                 </div>
                             </div>
-                            <button onClick={handlePrint} className="p-4 bg-zinc-50 rounded-2xl hover:bg-zinc-100 transition-all font-black text-[10px] uppercase tracking-widest">Print Ticket</button>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={() => setShowPrinterModal(true)}
+                                    className="p-4 bg-zinc-50 border border-zinc-200/60 rounded-2xl hover:bg-zinc-100 transition-all font-black text-[10px] uppercase tracking-widest flex items-center gap-2"
+                                    title="Connect USB or Bluetooth thermal printer for 1-click silent printing"
+                                >
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                    Hardware
+                                </button>
+                                <button onClick={handlePrint} className="p-4 bg-[#111111] text-white rounded-2xl hover:bg-black transition-all font-black text-[10px] uppercase tracking-widest shadow-lg">
+                                    Print Bill
+                                </button>
+                            </div>
                         </header>
 
                         <div className="grow overflow-y-auto lg:flex">
@@ -271,7 +326,7 @@ export default function CashierTerminal() {
                                     ].map(method => (
                                         <button
                                             key={method.id}
-                                            onClick={() => setPaymentMethod(method.id as any)}
+                                            onClick={() => setPaymentMethod(method.id as 'UPI' | 'CARD' | 'CASH')}
                                             className={`relative p-6 rounded-4xl border-2 flex items-center gap-6 transition-all ${paymentMethod === method.id ? 'bg-white border-[#111111] shadow-2xl -translate-y-1' : 'bg-white border-zinc-50 text-zinc-300'}`}
                                         >
                                             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white ${paymentMethod === method.id ? method.color : 'bg-zinc-100'}`}>
@@ -310,7 +365,7 @@ export default function CashierTerminal() {
                             <div className="w-2 h-2 rounded-full bg-zinc-200 animate-pulse" />
                         </div>
                         <h3 className="text-xl font-black text-zinc-300 uppercase tracking-tighter">Quantum Ingress Empty</h3>
-                        <p className="text-[10px] font-bold text-zinc-300 uppercase tracking-widest mt-2 max-w-[200px]">Waiting for staff to signal bill requests.</p>
+                        <p className="text-[10px] font-bold text-zinc-300 uppercase tracking-widest mt-2 max-w-50">Waiting for staff to signal bill requests.</p>
                     </div>
                 )}
             </main>
@@ -361,11 +416,48 @@ export default function CashierTerminal() {
             </AnimatePresence>
 
             <style jsx global>{`
+                @page {
+                    size: 80mm auto !important;
+                    margin: 0 !important;
+                }
                 @media print {
-                    body * { visibility: hidden; }
-                    .print\:block, .print\:block * { visibility: visible; }
+                    body * {
+                        visibility: hidden !important;
+                    }
+                    #cashier-print-receipt, #cashier-print-receipt * {
+                        visibility: visible !important;
+                        color: #000000 !important;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+                    #cashier-print-receipt {
+                        display: block !important;
+                        position: absolute !important;
+                        left: 0 !important;
+                        top: 0 !important;
+                        width: 80mm !important;
+                        max-width: 80mm !important;
+                        margin: 0 !important;
+                        padding: 4mm 3mm !important;
+                        background: #ffffff !important;
+                        color: #000000 !important;
+                    }
+                    html, body {
+                        width: 80mm !important;
+                        height: auto !important;
+                        min-height: 0 !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: #ffffff !important;
+                        overflow: visible !important;
+                    }
                 }
             `}</style>
+
+            <PrinterConnectModal
+                isOpen={showPrinterModal}
+                onClose={() => setShowPrinterModal(false)}
+            />
         </div>
     );
 }

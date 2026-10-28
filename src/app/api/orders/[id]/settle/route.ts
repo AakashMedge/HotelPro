@@ -37,9 +37,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             },
         });
 
-        // 2. Create Payment record in DB (Persists revenue into Sales Ledger)
-        await (db.payment as any).create({
-            data: {
+        // 2. Create or Update Payment record in DB (Persists revenue into Sales Ledger)
+        await (db.payment as any).upsert({
+            where: { orderId: order.id },
+            update: {
+                method: order.paymentMethod || 'CASH',
+                amount: Number(order.grandTotal || 0),
+                status: 'PAID',
+            },
+            create: {
                 clientId: user.clientId,
                 orderId: order.id,
                 method: order.paymentMethod || 'CASH',

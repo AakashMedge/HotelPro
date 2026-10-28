@@ -6,9 +6,9 @@ async function check() {
     try {
         // @ts-ignore
         const dmmf = prisma._dmmf;
-        const orderModel = dmmf.datamodel.models.find(m => m.name === 'Order');
+        const orderModel = dmmf.datamodel.models.find((m: any) => m.name === 'Order');
         if (orderModel) {
-            console.log("Fields in Order model:", orderModel.fields.map(f => f.name).join(", "));
+            console.log("Fields in Order model:", orderModel.fields.map((f: any) => f.name).join(", "));
         } else {
             console.log("Order model not found in DMMF");
         }

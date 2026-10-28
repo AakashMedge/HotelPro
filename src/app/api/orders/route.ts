@@ -49,6 +49,7 @@ interface OrderResponse {
     gstAmount: number;
     serviceChargeAmount: number;
     grandTotal: number;
+    paymentMethod?: string | null;
     estimatedTime?: number | null;
     createdAt: string;
     closedAt?: string;
@@ -299,6 +300,7 @@ export async function GET(
                 estimatedTime: o.estimatedTime,
                 createdAt: o.createdAt.toISOString(),
                 closedAt: o.closedAt?.toISOString(),
+                paymentMethod: (o as any).paymentMethod || null,
                 customerPhone: (o as any).customerPhone || null,
             };
             return mapped;

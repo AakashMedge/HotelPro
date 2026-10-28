@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ============================================
@@ -43,6 +43,8 @@ interface RestaurantSettings {
 export default function BillingTablePage() {
     const { tableId } = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const editOrderId = searchParams?.get('orderId');
 
     const [table, setTable] = useState<TableInfo | null>(null);
     const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -134,6 +136,13 @@ export default function BillingTablePage() {
                         const o = orderData.order;
                         if (o.customerName) setCustomerName(o.customerName);
                         if (o.customerPhone) setCustomerPhone(o.customerPhone);
+                        if (o.paymentMethod) {
+                            setPaymentMethod(o.paymentMethod as 'CASH' | 'UPI' | 'CARD');
+                        }
+                        if (o.discountAmount && Number(o.discountAmount) > 0) {
+                            setDiscountType('FLAT');
+                            setDiscountVal(String(o.discountAmount));
+                        }
                         if (o.items && o.items.length > 0) {
                             const preloadedCart = o.items.map((i: Record<string, unknown>) => ({
                                 menuItemId: String(i.menuItemId),
@@ -150,6 +159,11 @@ export default function BillingTablePage() {
                     const activeOrder = (matchedTable.orders as Record<string, unknown>[])[0];
                     if (activeOrder.customerName) setCustomerName(String(activeOrder.customerName));
                     if (activeOrder.customerPhone) setCustomerPhone(String(activeOrder.customerPhone));
+                    if (activeOrder.paymentMethod) setPaymentMethod(activeOrder.paymentMethod as 'CASH' | 'UPI' | 'CARD');
+                    if (activeOrder.discountAmount && Number(activeOrder.discountAmount) > 0) {
+                        setDiscountType('FLAT');
+                        setDiscountVal(String(activeOrder.discountAmount));
+                    }
                     if (activeOrder.items && (activeOrder.items as Record<string, unknown>[]).length > 0) {
                         const preloadedCart = (activeOrder.items as Record<string, unknown>[]).map((i: Record<string, unknown>) => ({
                             menuItemId: String(i.menuItemId),
@@ -343,6 +357,7 @@ export default function BillingTablePage() {
                 sgstAmount,
                 grandTotal,
                 directBill: true,
+                existingOrderId: editOrderId || undefined,
             };
 
             const res = await fetch('/api/orders/direct-bill', {

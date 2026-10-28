@@ -1,25 +1,22 @@
 
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
     Search,
     ChevronLeft,
     ChevronRight,
-    Receipt,
     X,
     Printer,
     FileDown,
-    User,
-    Calendar,
     ArrowUpRight,
-    Filter,
     Clock,
     CreditCard,
     DollarSign,
-    Percent,
     History,
-    ShieldCheck
+    ShieldCheck,
+    Eye,
+    Edit
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -28,6 +25,24 @@ type AuditLog = {
     time: string;
     user: string;
     role: string;
+};
+
+type LedgerItem = {
+    itemName: string;
+    priceSnapshot: number;
+    quantity: number;
+    selectedVariant?: { name: string };
+};
+
+type PaginationInfo = {
+    page: number;
+    pages: number;
+    total: number;
+};
+
+type HospitalitySettings = {
+    businessName?: string;
+    gstin?: string;
 };
 
 type LedgerEntry = {
@@ -42,8 +57,9 @@ type LedgerEntry = {
     total: number;
     date: string;
     status: string;
+    version?: number;
     paymentMethod: string;
-    itemsList: any[];
+    itemsList: LedgerItem[];
     auditTrail: AuditLog[];
 };
 
@@ -58,15 +74,15 @@ type Analytics = {
 export default function LedgerPage() {
     const [entries, setEntries] = useState<LedgerEntry[]>([]);
     const [analytics, setAnalytics] = useState<Analytics | null>(null);
-    const [pagination, setPagination] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
+    const [pagination, setPagination] = useState<PaginationInfo | null>(null);
+    const [, setLoading] = useState(true);
 
     // Filters
     const [search, setSearch] = useState('');
     const [dateRange, setDateRange] = useState('all'); // today, yesterday, week, all
     const [payMethod, setPayMethod] = useState(''); // CASH, UPI, CARD
     const [page, setPage] = useState(1);
-    const [hospitalitySettings, setHospitalitySettings] = useState<any>(null);
+    const [hospitalitySettings, setHospitalitySettings] = useState<HospitalitySettings | null>(null);
 
     const [selectedBill, setSelectedBill] = useState<LedgerEntry | null>(null);
 
@@ -89,9 +105,10 @@ export default function LedgerPage() {
             } else {
                 alert("Error loading ledger: " + (data.details || data.error));
             }
-        } catch (e: any) {
-            console.error(e);
-            alert("Connection error: " + e.message);
+        } catch (e) {
+            const err = e as Error;
+            console.error(err);
+            alert("Connection error: " + err.message);
         }
         finally { setLoading(false); }
     }, [page, search, dateRange, payMethod]);
@@ -138,7 +155,7 @@ export default function LedgerPage() {
 
     return (
         <div className="h-full overflow-y-auto bg-zinc-50/50 hide-scrollbar font-sans">
-            <div className="max-w-[1440px] mx-auto p-6 lg:p-10 space-y-8 pb-32">
+            <div className="max-w-360 mx-auto p-6 lg:p-10 space-y-8 pb-32">
 
                 {/* 1. ANALYTICS STRIP (Premium Cards) */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -285,12 +302,19 @@ export default function LedgerPage() {
                                             <span className="text-sm font-bold text-zinc-900 tabular-nums">₹{entry.total.toLocaleString()}</span>
                                         </td>
                                         <td className="px-8 py-5 text-right">
-                                            <span className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-xl ${entry.status === 'CLOSED'
-                                                ? 'bg-emerald-50 text-emerald-700'
-                                                : 'bg-amber-50 text-amber-700 animate-pulse'
-                                                }`}>
-                                                {entry.status === 'CLOSED' ? 'Settled' : 'Pending'}
-                                            </span>
+                                            <div className="flex items-center justify-end gap-1.5">
+                                                {entry.version && entry.version > 1 && (
+                                                    <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200">
+                                                        v{entry.version} Edit
+                                                    </span>
+                                                )}
+                                                <span className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-xl ${entry.status === 'CLOSED'
+                                                    ? 'bg-emerald-50 text-emerald-700'
+                                                    : 'bg-amber-50 text-amber-700 animate-pulse'
+                                                    }`}>
+                                                    {entry.status === 'CLOSED' ? 'Settled' : 'Pending'}
+                                                </span>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -398,7 +422,7 @@ export default function LedgerPage() {
 
                                         {/* Itemized Loop */}
                                         <div className="space-y-6 mb-8">
-                                            {selectedBill.itemsList.map((item: any, i: number) => (
+                                            {selectedBill.itemsList.map((item: LedgerItem, i: number) => (
                                                 <div key={i} className="flex justify-between items-start group">
                                                     <div className="flex-1 pr-4">
                                                         <p className="text-xs font-black text-zinc-900 uppercase leading-none mb-1">{item.itemName}</p>
@@ -454,7 +478,7 @@ export default function LedgerPage() {
                                         <div className="relative space-y-8 pl-8 border-l border-zinc-200 ml-2">
                                             {selectedBill.auditTrail?.map((log, i) => (
                                                 <div key={i} className="relative">
-                                                    <div className="absolute -left-[41px] top-1.5 w-4 h-4 rounded-full bg-white border-4 border-zinc-900" />
+                                                    <div className="absolute -left-10.25 top-1.5 w-4 h-4 rounded-full bg-white border-4 border-zinc-900" />
                                                     <div className="flex justify-between items-start">
                                                         <div>
                                                             <p className="text-xs font-bold text-zinc-900 uppercase tracking-tight">{log.action.replace(/_/g, ' ')}</p>
@@ -471,18 +495,24 @@ export default function LedgerPage() {
                                 </section>
 
                                 {/* ACTIONS */}
-                                <div className="grid grid-cols-2 gap-4 pt-8">
-                                    <button
-                                        onClick={() => window.print()}
-                                        className="py-4 bg-zinc-50 text-zinc-900 rounded-3xl text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-100 transition-all flex items-center justify-center gap-2"
+                                <div className="grid grid-cols-3 gap-3 pt-8">
+                                    <a
+                                        href={`/billing/pos/${encodeURIComponent(selectedBill.table)}?orderId=${selectedBill.id}`}
+                                        className="py-4 bg-amber-600 hover:bg-amber-700 text-white rounded-3xl text-[10px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg text-center"
                                     >
-                                        <Printer size={16} /> Print Bill
-                                    </button>
+                                        <Edit size={16} /> Edit Bill
+                                    </a>
+                                    <a
+                                        href={`/billing/pos/${encodeURIComponent(selectedBill.table)}/bill/${selectedBill.id}`}
+                                        className="py-4 bg-[#065F46] text-white rounded-3xl text-[10px] font-bold uppercase tracking-widest hover:bg-[#044E39] transition-all flex items-center justify-center gap-2 shadow-lg text-center"
+                                    >
+                                        <Eye size={16} /> View Bill
+                                    </a>
                                     <button
                                         onClick={handleExport}
                                         className="py-4 bg-zinc-900 text-white rounded-3xl text-[10px] font-bold uppercase tracking-widest shadow-xl shadow-zinc-200 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
                                     >
-                                        <FileDown size={16} /> Export Data
+                                        <FileDown size={16} /> Export
                                     </button>
                                 </div>
                             </div>
@@ -528,7 +558,7 @@ export default function LedgerPage() {
                         <div className="h-[0.5px] grow bg-zinc-900 ml-4" />
                     </div>
                     <div className="space-y-5">
-                        {selectedBill?.itemsList.map((item: any, i: number) => (
+                        {selectedBill?.itemsList.map((item: LedgerItem, i: number) => (
                             <div key={i} className="flex justify-between items-start">
                                 <div className="flex-1 pr-4">
                                     <div className="flex items-start gap-3">
@@ -599,7 +629,7 @@ export default function LedgerPage() {
                 .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
                 @media print {
                     @page { 
-                        size: 80mm auto; 
+                        size: auto; 
                         margin: 0; 
                     }
                     body { 

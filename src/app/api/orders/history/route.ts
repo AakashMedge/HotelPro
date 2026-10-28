@@ -12,18 +12,38 @@ export async function GET(req: NextRequest) {
 
         const url = new URL(req.url);
         const search = url.searchParams.get('search') || '';
+        const paymentMethod = url.searchParams.get('paymentMethod') || '';
+        const range = url.searchParams.get('range') || 'all';
+
+        // Date calculation
+        let dateFilter: any = {};
+        const now = new Date();
+        if (range === 'today') {
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            dateFilter = { gte: todayStart };
+        } else if (range === 'yesterday') {
+            const yestStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+            const yestEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            dateFilter = { gte: yestStart, lt: yestEnd };
+        } else if (range === 'week') {
+            const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+            dateFilter = { gte: weekStart };
+        }
 
         // Fetch closed orders for tenant
         const orders = await (prisma.order as any).findMany({
             where: {
                 clientId: user.clientId,
                 status: 'CLOSED',
+                ...(paymentMethod ? { paymentMethod } : {}),
+                ...(Object.keys(dateFilter).length > 0 ? { closedAt: dateFilter } : {}),
                 ...(search
                     ? {
                         OR: [
                             { customerName: { contains: search, mode: 'insensitive' } },
                             { customerPhone: { contains: search, mode: 'insensitive' } },
                             { id: { contains: search, mode: 'insensitive' } },
+                            { table: { tableCode: { contains: search, mode: 'insensitive' } } },
                         ],
                     }
                     : {}),
@@ -33,7 +53,7 @@ export async function GET(req: NextRequest) {
                 items: { select: { id: true, itemName: true, quantity: true, priceSnapshot: true } },
             },
             orderBy: { closedAt: 'desc' },
-            take: 100,
+            take: 300,
         });
 
         let totalRevenue = 0;
@@ -41,7 +61,8 @@ export async function GET(req: NextRequest) {
         let upiRevenue = 0;
         let cardRevenue = 0;
 
-        const formattedOrders = orders.map((o: any) => {
+        const totalCount = orders.length;
+        const formattedOrders = orders.map((o: any, idx: number) => {
             const grandTotal = Number(o.grandTotal || 0);
             totalRevenue += grandTotal;
             if (o.paymentMethod === 'CASH') cashRevenue += grandTotal;
@@ -53,10 +74,13 @@ export async function GET(req: NextRequest) {
             const yr = String(d.getFullYear()).slice(-2);
             const mo = String(d.getMonth() + 1).padStart(2, '0');
             const dy = String(d.getDate()).padStart(2, '0');
-            const invoiceNo = `INV-${yr}${mo}${dy}-${String(o.id).slice(-4).toUpperCase()}`;
+            const seqNum = totalCount - idx;
+            const billNo = `#${seqNum}`;
+            const invoiceNo = `INV-${yr}${mo}${dy}-${String(seqNum).padStart(3, '0')}`;
 
             return {
                 id: o.id,
+                billNo,
                 invoiceNo,
                 tableId: o.tableId,
                 tableCode: o.table?.tableCode || 'T-01',
@@ -68,6 +92,7 @@ export async function GET(req: NextRequest) {
                 discountAmount: Number(o.discountAmount || 0),
                 gstAmount: Number(o.gstAmount || 0),
                 grandTotal,
+                version: Number(o.version || 1),
                 itemsCount: (o.items || []).reduce((acc: number, item: any) => acc + item.quantity, 0),
             };
         });

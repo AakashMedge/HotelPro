@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import { Wallet, Flame } from 'lucide-react';
 
 type TimeRange = 'TODAY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 
@@ -13,6 +14,9 @@ interface StatsData {
     cashRevenue: number;
     upiRevenue: number;
     cardRevenue: number;
+    totalDiscount: number;
+    totalTax: number;
+    topDishes: { name: string; qty: number; revenue: number }[];
     chartData: { label: string; count: number; revenue: number }[];
     recentBills: {
         id: string;
@@ -176,6 +180,28 @@ export default function BillingDashboard() {
                 }));
             }
 
+            // Compute Top Selling Dishes
+            const dishMap: Record<string, { name: string; qty: number; revenue: number }> = {};
+            filteredOrders.forEach((o: any) => {
+                (o.items || []).forEach((item: any) => {
+                    const name = item.itemName || item.name || 'Menu Dish';
+                    const qty = Number(item.quantity || 1);
+                    const price = Number(item.price || item.priceSnapshot || 0);
+                    if (!dishMap[name]) {
+                        dishMap[name] = { name, qty: 0, revenue: 0 };
+                    }
+                    dishMap[name].qty += qty;
+                    dishMap[name].revenue += price * qty;
+                });
+            });
+
+            const topDishes = Object.values(dishMap)
+                .sort((a, b) => b.qty - a.qty)
+                .slice(0, 5);
+
+            const totalDiscount = filteredOrders.reduce((sum: number, o: any) => sum + Number(o.discountAmount || 0), 0);
+            const totalTax = filteredOrders.reduce((sum: number, o: any) => sum + Number(o.gstAmount || 0), 0);
+
             setStats({
                 totalBills: count,
                 totalRevenue: totalRev,
@@ -183,6 +209,9 @@ export default function BillingDashboard() {
                 cashRevenue: cashRev,
                 upiRevenue: upiRev,
                 cardRevenue: cardRev,
+                totalDiscount,
+                totalTax,
+                topDishes,
                 chartData: chartArr,
                 recentBills: orders.slice(0, 6).map((o: any) => ({
                     id: o.id,
@@ -325,57 +354,141 @@ export default function BillingDashboard() {
                 {/* BUSINESS ANALYTICS: SALES TREND & PAYMENT DISTRIBUTION */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-                    {/* DYNAMIC SALES TREND BAR CHART */}
-                    <div className="lg:col-span-2 bg-white border border-zinc-200/80 rounded-2xl p-6 shadow-2xs flex flex-col justify-between">
-                        <div>
-                            <div className="flex items-center justify-between mb-4">
-                                <div>
-                                    <h3 className="text-sm font-bold text-zinc-900">
-                                        {timeRange === 'TODAY' ? 'Hourly Sales Trend' : timeRange === 'WEEKLY' ? 'Daily Sales Pattern' : timeRange === 'MONTHLY' ? 'Weekly Sales Breakdown' : 'Monthly Sales Trend'}
-                                    </h3>
-                                    <p className="text-xs text-zinc-500 font-normal mt-0.5">
-                                        Revenue distribution for selected period ({timeRange.toLowerCase()})
-                                    </p>
-                                </div>
-                                <span className="px-2.5 py-1 bg-emerald-50 text-[#065F46] rounded-md text-[11px] font-bold">
-                                    {timeRange}
-                                </span>
-                            </div>
+                    {/* DUAL WIDGET: LIVE CASH DRAWER TALLY + TOP DISHES LEADERBOARD */}
+                    <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                            {/* BAR CHART GRAPH */}
-                            <div className="h-48 flex items-end gap-2 pt-6 pb-2 px-2 border-b border-zinc-100 overflow-x-auto no-scrollbar">
-                                {loading ? (
-                                    <div className="w-full h-full flex items-center justify-center">
-                                        <div className="w-6 h-6 border-2 border-zinc-200 border-t-[#065F46] rounded-full animate-spin" />
+                        {/* 1. LIVE CASH DRAWER & TALLY CARD */}
+                        <div className="bg-white border border-zinc-200/80 rounded-2xl p-6 shadow-2xs flex flex-col justify-between">
+                            <div>
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-200/60 shadow-2xs">
+                                            <Wallet className="w-4 h-4 text-emerald-600" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-bold text-zinc-900">Cash Drawer & Shift Tally</h3>
+                                            <p className="text-[11px] text-zinc-400">Live physical counter reconciliation</p>
+                                        </div>
                                     </div>
-                                ) : (
-                                    stats?.chartData.map((item, idx) => {
-                                        const heightPct = maxRevenueInChart > 0 ? Math.max(8, (item.revenue / maxRevenueInChart) * 100) : 8;
-                                        return (
-                                            <div key={idx} className="flex-1 min-w-6 flex flex-col items-center gap-2 group relative">
-                                                {/* Tooltip */}
-                                                <div className="absolute -top-8 opacity-0 group-hover:opacity-100 bg-zinc-900 text-white text-[10px] font-bold py-1 px-2 rounded pointer-events-none transition-all z-20 whitespace-nowrap shadow-md">
-                                                    ₹{item.revenue} ({item.count} bills)
-                                                </div>
+                                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-md flex items-center gap-1.5 border border-emerald-200/60">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                        In Sync
+                                    </span>
+                                </div>
 
-                                                <div className="w-full bg-zinc-100 rounded-t-md relative overflow-hidden flex items-end h-32">
-                                                    <div
-                                                        className="w-full bg-[#065F46] rounded-t-md transition-all duration-500 group-hover:bg-emerald-600"
-                                                        style={{ height: `${heightPct}%` }}
-                                                    />
-                                                </div>
-                                                <span className="text-[10px] font-medium text-zinc-400 truncate max-w-full">{item.label}</span>
-                                            </div>
-                                        );
-                                    })
-                                )}
+                                {/* EXPECTED CASH IN HAND (BIG NUMBER) */}
+                                <div className="p-4 bg-zinc-50 border border-zinc-100 rounded-xl space-y-1 mb-4">
+                                    <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider block">
+                                        Expected Cash in Drawer
+                                    </span>
+                                    <div className="text-2xl font-black text-zinc-900 flex items-baseline gap-2">
+                                        <span>₹{((stats?.cashRevenue ?? 0) + 2000).toLocaleString('en-IN')}</span>
+                                        <span className="text-xs font-normal text-zinc-400">(with ₹2,000 float)</span>
+                                    </div>
+                                </div>
+
+                                {/* AUDIT COUNTERS */}
+                                <div className="space-y-2.5 text-xs">
+                                    <div className="flex justify-between items-center text-zinc-600">
+                                        <span className="flex items-center gap-1.5">
+                                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                            Cash Received Today:
+                                        </span>
+                                        <span className="font-bold text-zinc-900">₹{(stats?.cashRevenue ?? 0).toLocaleString('en-IN')}</span>
+                                    </div>
+
+                                    <div className="flex justify-between items-center text-zinc-600">
+                                        <span className="flex items-center gap-1.5">
+                                            <span className="w-2 h-2 rounded-full bg-amber-500" />
+                                            Discounts Waived:
+                                        </span>
+                                        <span className="font-bold text-amber-700">₹{(stats?.totalDiscount ?? 0).toLocaleString('en-IN')}</span>
+                                    </div>
+
+                                    <div className="flex justify-between items-center text-zinc-600">
+                                        <span className="flex items-center gap-1.5">
+                                            <span className="w-2 h-2 rounded-full bg-blue-500" />
+                                            GST Tax Collected:
+                                        </span>
+                                        <span className="font-bold text-zinc-900">₹{(stats?.totalTax ?? 0).toLocaleString('en-IN')}</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="pt-3 flex items-center justify-between text-xs text-zinc-500 font-medium">
-                            <span>Interactive hover tooltips active</span>
-                            <span className="font-bold text-zinc-800">Peak Collection: ₹{maxRevenueInChart.toLocaleString('en-IN')}</span>
+                        {/* 2. TODAY'S TOP 5 BESTSELLERS (KITCHEN LEADERBOARD) */}
+                        <div className="bg-white border border-zinc-200/80 rounded-2xl p-6 shadow-2xs flex flex-col justify-between">
+                            <div>
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-200/60 shadow-2xs">
+                                            <Flame className="w-4 h-4 text-amber-600" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-bold text-zinc-900">Top Selling Dishes</h3>
+                                            <p className="text-[11px] text-zinc-400">Fastest-moving items today</p>
+                                        </div>
+                                    </div>
+                                    <span className="px-2 py-0.5 bg-zinc-100 text-zinc-600 text-[10px] font-bold rounded-md">
+                                        {stats?.topDishes.length || 0} active
+                                    </span>
+                                </div>
+
+                                <div className="space-y-3">
+                                    {(!stats?.topDishes || stats.topDishes.length === 0) ? (
+                                        <div className="h-36 flex flex-col items-center justify-center text-center text-zinc-400 text-xs">
+                                            <span>No dish orders settled yet</span>
+                                            <span className="text-[10px] text-zinc-300 mt-1">Items will appear here as bills are closed</span>
+                                        </div>
+                                    ) : (
+                                        stats.topDishes.map((dish, i) => {
+                                            const maxQty = stats.topDishes[0]?.qty || 1;
+                                            const pct = Math.min(100, Math.round((dish.qty / maxQty) * 100));
+                                            return (
+                                                <div key={i} className="space-y-1">
+                                                    <div className="flex justify-between items-center text-xs">
+                                                        <span className="font-semibold text-zinc-800 flex items-center gap-2 truncate max-w-[170px]">
+                                                            <span className={`font-mono text-[10px] font-bold w-5 h-5 rounded flex items-center justify-center shrink-0 border ${
+                                                                i === 0
+                                                                    ? 'bg-amber-100/80 text-amber-900 border-amber-300'
+                                                                    : i === 1
+                                                                    ? 'bg-zinc-200 text-zinc-800 border-zinc-300'
+                                                                    : i === 2
+                                                                    ? 'bg-orange-100 text-orange-950 border-orange-200'
+                                                                    : 'bg-zinc-100 text-zinc-600 border-zinc-200'
+                                                            }`}>
+                                                                0{i + 1}
+                                                            </span>
+                                                            <span className="truncate">{dish.name}</span>
+                                                        </span>
+                                                        <div className="flex items-center gap-2 text-right">
+                                                            <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                                                                {dish.qty} sold
+                                                            </span>
+                                                            <span className="font-bold text-zinc-900">₹{dish.revenue.toLocaleString('en-IN')}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="w-full h-1.5 bg-zinc-100 rounded-full overflow-hidden">
+                                                        <div
+                                                            className={`h-full rounded-full transition-all duration-500 ${
+                                                                i === 0 ? 'bg-amber-500' : i === 1 ? 'bg-zinc-400' : i === 2 ? 'bg-amber-700' : 'bg-emerald-600'
+                                                            }`}
+                                                            style={{ width: `${pct}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="pt-3 border-t border-zinc-100 mt-4 flex items-center justify-between text-[11px] text-zinc-400 font-medium">
+                                <span>Kitchen volume ranking</span>
+                                <span className="font-bold text-zinc-700">Live Updates</span>
+                            </div>
                         </div>
+
                     </div>
 
                     {/* PAYMENT METHOD BREAKDOWN */}

@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PrintingService } from '@/lib/printing/service';
+import PrinterConnectModal from '@/components/PrinterConnectModal';
 
 interface BillItem {
     id: string;
@@ -13,6 +15,7 @@ interface BillItem {
 
 interface BillData {
     id: string;
+    billNo: string;
     invoiceNo: string;
     tableId: string;
     tableCode: string;
@@ -48,7 +51,12 @@ export default function BillReceiptPage() {
     const [loading, setLoading] = useState(true);
     const [mounted, setMounted] = useState(false);
     const [isSettling, setIsSettling] = useState(false);
-    const [toastMessage, setToastMessage] = useState<string | null>(null);
+    const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+    useEffect(() => {
+        if (!toast) return;
+        const timer = setTimeout(() => setToast(null), 4500);
+        return () => clearTimeout(timer);
+    }, [toast]);
 
     const fetchBill = useCallback(async () => {
         try {
@@ -72,7 +80,9 @@ export default function BillReceiptPage() {
                 const yr = String(d.getFullYear()).slice(-2);
                 const mo = String(d.getMonth() + 1).padStart(2, '0');
                 const dy = String(d.getDate()).padStart(2, '0');
-                const invoiceNo = `INV-${yr}${mo}${dy}-${String(o.id).slice(-4).toUpperCase()}`;
+                const orderNum = Number((o as any).orderNumber || 1);
+                const billNo = `#${orderNum}`;
+                const invoiceNo = `INV-${yr}${mo}${dy}-${String(orderNum).padStart(3, '0')}`;
 
                 const computedSubtotal = Number(o.subtotal || itemsList.reduce((sum, item) => sum + (item.priceSnapshot * item.quantity), 0));
                 const computedGst = Number(o.gstAmount || 0);
@@ -80,8 +90,20 @@ export default function BillReceiptPage() {
                 const computedDiscount = Number(o.discountAmount || 0);
                 const computedGrandTotal = Number(o.grandTotal || Math.round(computedSubtotal - computedDiscount + computedGst + computedService));
 
+                if (o.status === 'CLOSED' && typeof window !== 'undefined') {
+                    if (tableId) {
+                        localStorage.removeItem(`hotelpro_draft_cart_${tableId}`);
+                        localStorage.removeItem(`hotelpro_draft_cust_${tableId}`);
+                    }
+                    if (o.tableId) {
+                        localStorage.removeItem(`hotelpro_draft_cart_${o.tableId}`);
+                        localStorage.removeItem(`hotelpro_draft_cust_${o.tableId}`);
+                    }
+                }
+
                 setBill({
                     id: o.id,
+                    billNo,
                     invoiceNo,
                     tableId: o.tableId || (tableId as string),
                     tableCode: o.tableCode || o.table?.tableCode || 'T-01',
@@ -120,18 +142,40 @@ export default function BillReceiptPage() {
         fetchBill();
     }, [fetchBill]);
 
-    const handlePrint = () => {
-        window.print();
-    };
+    const [showPrinterModal, setShowPrinterModal] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
-    const handleEditBill = () => {
-        router.push(`/billing/pos/${tableId}?orderId=${orderId}`);
-    };
-
-    const handleFinishAndClose = async () => {
-        if (isSettling) return;
-        setIsSettling(true);
+    const handlePrintAndSettle = async () => {
+        if (!bill || isGenerating) return;
+        setIsGenerating(true);
         try {
+            // 1. Instant 0.05s Direct Thermal Print (Zero Dialogs)
+            await PrintingService.printReceipt({
+                businessName: bill.settings?.businessName || 'HOTELPRO ROYAL',
+                gstin: bill.settings?.gstin,
+                billNo: bill.billNo || '#1',
+                invoiceNo: bill.invoiceNo,
+                tableNo: bill.tableCode,
+                waiterName: bill.cashierName,
+                customerName: bill.customerName,
+                customerPhone: bill.customerPhone,
+                items: bill.items.map(item => ({
+                    name: item.itemName,
+                    qty: item.quantity,
+                    price: item.priceSnapshot
+                })),
+                subtotal: bill.subtotal,
+                discount: bill.discountAmount,
+                gstAmount: bill.gstAmount,
+                gstRate: bill.appliedGstRate,
+                serviceCharge: bill.serviceChargeAmount,
+                grandTotal: bill.grandTotal,
+                paymentMethod: bill.paymentMethod,
+                qrLink: 'https://hotel-pro-devionx.vercel.app'
+            });
+
+            // 2. Settle & Save Bill to Database
             const res = await fetch(`/api/orders/${orderId}/settle`, {
                 method: 'POST',
             });
@@ -147,19 +191,23 @@ export default function BillReceiptPage() {
                         localStorage.removeItem(`hotelpro_draft_cust_${bill.tableId}`);
                     }
                 }
-                setToastMessage('Order Saved & Settled to Sales Ledger!');
+                setSuccessBanner('✨ Bill Generated & Printed Successfully! Redirecting...');
                 setTimeout(() => {
-                    router.push('/billing/pos');
-                }, 800);
+                    router.push('/billing/tables');
+                }, 1200);
             } else {
-                setToastMessage(data.error || 'Failed to settle order');
-                setIsSettling(false);
+                setToast({ type: 'error', message: data.error || 'Failed to save bill' });
+                setIsGenerating(false);
             }
-        } catch (e) {
-            console.error('[FINISH_SETTLE_ERROR]', e);
-            setToastMessage('Failed to settle order. Please try again.');
-            setIsSettling(false);
+        } catch (err: any) {
+            console.error(err);
+            setToast({ type: 'error', message: err?.message || 'Error settling order' });
+            setIsGenerating(false);
         }
+    };
+
+    const handleEditBill = () => {
+        router.push(`/billing/pos/${tableId}?orderId=${orderId}`);
     };
 
     if (!mounted) return null;
@@ -198,17 +246,48 @@ export default function BillReceiptPage() {
     return (
         <div className="min-h-full bg-[#F8F9FA] flex flex-col overflow-y-auto font-sans text-zinc-800 pb-12 relative">
 
-            {/* CONFIRMATION TOAST BANNER */}
+            {/* SUCCESS BANNER OVERLAY */}
             <AnimatePresence>
-                {toastMessage && (
+                {successBanner && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+                    >
+                        <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl space-y-4 border border-emerald-100">
+                            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-2xl font-black">
+                                ✓
+                            </div>
+                            <h3 className="text-lg font-bold text-zinc-900">Bill Generated & Printed!</h3>
+                            <p className="text-xs text-zinc-500 font-medium">Order settled in Ledger. Returning to tables...</p>
+                            <div className="w-8 h-1 bg-emerald-500 rounded-full mx-auto animate-pulse" />
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* CONFIRMATION / ERROR TOAST BANNER */}
+            <AnimatePresence>
+                {toast && (
                     <motion.div
                         initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-                        className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-emerald-900 text-white px-5 py-3 rounded-xl shadow-2xl text-xs font-semibold flex items-center gap-2.5 border border-emerald-700"
+                        className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 text-white px-5 py-3 rounded-xl shadow-2xl text-xs font-semibold flex items-center gap-2.5 border ${
+                            toast.type === 'error'
+                                ? 'bg-rose-900 border-rose-700'
+                                : 'bg-emerald-900 border-emerald-700'
+                        }`}
                     >
-                        <svg className="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span>{toastMessage}</span>
+                        {toast.type === 'error' ? (
+                            <svg className="w-4 h-4 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        ) : (
+                            <svg className="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                            </svg>
+                        )}
+                        <span>{toast.message}</span>
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -224,14 +303,17 @@ export default function BillReceiptPage() {
                     className="w-full max-w-lg bg-white rounded-2xl border border-zinc-200/80 shadow-xs p-6 md:p-8 space-y-6"
                 >
 
-                    {/* TAX INVOICE TITLE */}
+                    {/* RESTAURANT HEADER & BILL NO */}
                     <div className="text-center space-y-1">
-                        <h2 className="text-xl font-bold tracking-tight text-zinc-900 uppercase">TAX INVOICE</h2>
-                        <p className="text-xs font-semibold text-zinc-700">{bill.settings.businessName}</p>
+                        <h2 className="text-lg font-bold tracking-tight text-zinc-900 uppercase">{bill.settings.businessName}</h2>
                         {bill.settings.gstin && (
                             <p className="text-[11px] text-zinc-500 font-mono">GSTIN: {bill.settings.gstin}</p>
                         )}
-                        <p className="text-xs font-medium text-zinc-500 font-mono">Invoice No: {bill.invoiceNo}</p>
+                        <div className="flex justify-center items-center gap-2 pt-1">
+                            <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200">
+                                Bill No: {bill.billNo}
+                            </span>
+                        </div>
                     </div>
 
                     {/* METADATA GRID (2 COLUMNS) */}
@@ -353,11 +435,12 @@ export default function BillReceiptPage() {
                         </div>
                     </div>
 
-                    {/* ACTION BUTTONS */}
+                    {/* ACTION BUTTONS: Single Primary Action */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2">
                         <button
                             onClick={handleEditBill}
-                            className="py-2.5 px-3 bg-white border border-zinc-300 hover:bg-zinc-50 text-zinc-800 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-2xs"
+                            disabled={isGenerating}
+                            className="py-3 px-3 bg-white border border-zinc-300 hover:bg-zinc-50 text-zinc-800 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
                         >
                             <svg className="w-4 h-4 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -366,33 +449,34 @@ export default function BillReceiptPage() {
                         </button>
 
                         <button
-                            onClick={handlePrint}
-                            className="py-2.5 px-3 bg-[#065F46] hover:bg-[#044E39] text-white rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-2xs"
+                            onClick={handlePrintAndSettle}
+                            disabled={isGenerating}
+                            className="sm:col-span-2 py-3 px-4 bg-[#065F46] hover:bg-[#044E39] disabled:bg-zinc-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-lg group cursor-pointer"
                         >
-                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                            </svg>
-                            <span>Print</span>
-                        </button>
-
-                        <button
-                            onClick={handleFinishAndClose}
-                            disabled={isSettling}
-                            className="py-2.5 px-3 bg-zinc-900 hover:bg-black disabled:bg-zinc-800 text-white rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 shadow-2xs col-span-1 sm:col-span-1"
-                        >
-                            {isSettling ? (
+                            {isGenerating ? (
                                 <>
-                                    <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-                                    <span>Saving to Ledger...</span>
+                                    <div className="w-4 h-4 border-2 border-emerald-300 border-t-transparent rounded-full animate-spin" />
+                                    <span>Generating & Printing Bill...</span>
                                 </>
                             ) : (
                                 <>
-                                    <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                                    <svg className="w-4 h-4 text-emerald-300 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                                     </svg>
-                                    <span>Finish & Next</span>
+                                    <span>Print & Settle Bill</span>
                                 </>
                             )}
+                        </button>
+                    </div>
+
+                    {/* HARDWARE PRINTER QUICK CONFIG */}
+                    <div className="flex items-center justify-center pt-1 border-t border-zinc-100">
+                        <button
+                            onClick={() => setShowPrinterModal(true)}
+                            className="text-[11px] font-bold text-zinc-500 hover:text-zinc-900 flex items-center gap-1.5 py-1 px-3 rounded-lg hover:bg-zinc-100 transition-colors"
+                        >
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span>1-Click Thermal Hardware (USB / Bluetooth)</span>
                         </button>
                     </div>
 
@@ -413,9 +497,17 @@ export default function BillReceiptPage() {
                             <span className="text-[10px] font-mono text-zinc-500 mt-1 tracking-widest">{bill.invoiceNo}</span>
                         </div>
 
-                        <p className="text-[10px] text-zinc-400 font-medium">
-                            HotelPro &nbsp;|&nbsp; Made with ❤️ &nbsp;|&nbsp; Help us improve
+                        <p className="text-[10px] text-zinc-500 font-medium">
+                            HotelPro POS &nbsp;|&nbsp; Visit Again
                         </p>
+                        <div className="flex flex-col items-center pt-2">
+                            <img
+                                src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://hotel-pro-devionx.vercel.app"
+                                alt="HotelPro QR"
+                                className="w-20 h-20 rounded-md border border-zinc-200 p-1"
+                            />
+                            <span className="text-[9px] font-mono text-zinc-500 mt-1">www.devionx.com</span>
+                        </div>
                     </div>
 
                 </motion.div>
@@ -425,7 +517,7 @@ export default function BillReceiptPage() {
             {/* 2. AUTHENTIC 80mm THERMAL RECEIPT (PRINT OUTPUT ONLY)      */}
             {/* ══════════════════════════════════════════════════════════ */}
             <div id="thermal-print-receipt" className="hidden print:block font-mono">
-                <div className="text-center font-bold text-base uppercase mb-0.5">
+                <div className="text-center font-bold text-sm uppercase mb-0.5">
                     {bill.settings.businessName}
                 </div>
                 {bill.settings.gstin && (
@@ -435,32 +527,30 @@ export default function BillReceiptPage() {
                 )}
                 
                 <div className="text-center text-[10px] font-mono overflow-hidden whitespace-nowrap my-0.5">
-                    --------------------------------------------------
-                </div>
-                <div className="text-center font-bold text-sm tracking-wider uppercase mb-0.5">
-                    *** TAX INVOICE ***
-                </div>
-                <div className="text-center text-[10px] font-mono overflow-hidden whitespace-nowrap my-0.5">
-                    --------------------------------------------------
+                    ==================================================
                 </div>
 
                 {/* RECEIPT HEADER DETAILS */}
                 <div className="text-xs space-y-0.5">
                     <div className="flex justify-between">
-                        <span>INV NO: {bill.invoiceNo}</span>
+                        <span className="font-bold">BILL NO: {bill.billNo || '#1'}</span>
                         <span>TBL: {bill.tableCode}</span>
                     </div>
                     <div className="flex justify-between">
                         <span>DATE: {dateFormatted}</span>
                         <span>TIME: {timeFormatted}</span>
                     </div>
-                    <div className="flex justify-between">
-                        <span>CASHIER: {bill.cashierName}</span>
-                        <span>CUST: {bill.customerName}</span>
+                    {bill.cashierName && (
+                        <div>
+                            <span>CASHIER: {bill.cashierName}</span>
+                        </div>
+                    )}
+                    <div>
+                        <span>CUSTOMER: {bill.customerName}</span>
                     </div>
                     {bill.customerPhone && (
-                        <div className="flex justify-between">
-                            <span>MOB: {bill.customerPhone}</span>
+                        <div>
+                            <span>PHONE: {bill.customerPhone}</span>
                         </div>
                     )}
                 </div>
@@ -481,7 +571,7 @@ export default function BillReceiptPage() {
                                 <span className="uppercase">{item.itemName}</span>
                                 <span>{(item.quantity * item.priceSnapshot).toFixed(2)}</span>
                             </div>
-                            <div className="text-[10px] text-zinc-700 pl-2">
+                            <div className="text-[10px] text-black font-normal pl-2">
                                 {item.quantity} x {sym}{item.priceSnapshot.toFixed(2)}
                             </div>
                         </div>
@@ -569,9 +659,17 @@ export default function BillReceiptPage() {
                         <span className="text-[9px] font-mono mt-0.5">{bill.invoiceNo}</span>
                     </div>
 
-                    <p className="text-[8px] text-zinc-500 uppercase tracking-widest pt-0.5">
-                        HotelPro | Made with ❤️ | Help us improve
+                    <p className="text-[8px] text-black font-normal uppercase tracking-widest pt-0.5">
+                        HotelPro POS | Visit Again
                     </p>
+                    <div className="flex flex-col items-center pt-1">
+                        <img
+                            src="https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=https://hotel-pro-devionx.vercel.app"
+                            alt="HotelPro QR"
+                            className="w-16 h-16"
+                        />
+                        <span className="text-[7px] font-mono text-black mt-0.5">www.devionx.com</span>
+                    </div>
                 </div>
             </div>
 
@@ -580,35 +678,51 @@ export default function BillReceiptPage() {
             {/* ══════════════════════════════════════════════════════════ */}
             <style jsx global>{`
                 @page {
-                    margin: 0mm !important;
                     size: 80mm auto !important;
+                    margin: 0 !important;
                 }
                 @media print {
-                    /* Suppress default browser header (URL/Title) and footer (Date/Page) */
-                    header, footer, nav, aside, button, .print\\:hidden {
-                        display: none !important;
+                    /* Hide everything except the thermal receipt */
+                    body * {
+                        visibility: hidden !important;
                     }
-                    html, body, main {
-                        height: auto !important;
-                        overflow: visible !important;
-                        background: #ffffff !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        font-family: 'Courier New', Courier, monospace !important;
+                    #thermal-print-receipt, #thermal-print-receipt * {
+                        visibility: visible !important;
+                        color: #000000 !important;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
                     }
                     #thermal-print-receipt {
                         display: block !important;
-                        visibility: visible !important;
+                        position: absolute !important;
+                        left: 0 !important;
+                        top: 0 !important;
                         width: 80mm !important;
                         max-width: 80mm !important;
-                        margin: 0 auto !important;
+                        height: auto !important;
+                        max-height: fit-content !important;
+                        margin: 0 !important;
                         padding: 4mm 3mm !important;
                         background: #ffffff !important;
                         color: #000000 !important;
                         font-family: 'Courier New', Courier, monospace !important;
                     }
+                    html, body {
+                        width: 80mm !important;
+                        height: auto !important;
+                        min-height: 0 !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: #ffffff !important;
+                        overflow: visible !important;
+                    }
                 }
             `}</style>
+
+            <PrinterConnectModal
+                isOpen={showPrinterModal}
+                onClose={() => setShowPrinterModal(false)}
+            />
         </div>
     );
 }

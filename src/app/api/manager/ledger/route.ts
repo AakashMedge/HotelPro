@@ -85,12 +85,14 @@ export async function GET(request: NextRequest) {
             serviceCharge: Number(o.serviceChargeAmount || 0),
             date: o.updatedAt,
             status: o.status,
+            version: Number(o.version || 1),
             paymentMethod: o.paymentMethod || 'CASH',
             itemsList: o.items || [],
             auditTrail: o.auditLogs?.map((l: any) => ({
-                action: l.action,
+                action: l.metadata?.action || l.action,
                 time: l.createdAt,
-                user: l.actor?.name || 'Staff'
+                user: l.actor?.name || 'Staff',
+                metadata: l.metadata || null
             })) || []
         }));
 

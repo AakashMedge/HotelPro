@@ -98,14 +98,14 @@ export default function BillPreview() {
                 localStorage.setItem('hp_hotel_plan', userData.user.plan);
             }
 
-            const table = tablesData.tables?.find((t: any) => t.id === tableId);
+            const table = tablesData.tables?.find((t: { id: string }) => t.id === tableId);
             if (!table) throw new Error('Table not found');
 
-            const order = ordersData.orders?.find((o: any) => o.tableId === tableId);
+            const order = ordersData.orders?.find((o: { tableId: string }) => o.tableId === tableId);
             if (!order) { setBill(null); return; }
 
             const itemTotal = order.items.reduce(
-                (sum: number, item: any) => sum + Number(item.priceSnapshot || item.price) * item.quantity, 0
+                (sum: number, item: { priceSnapshot?: number; price?: number; quantity: number }) => sum + Number(item.priceSnapshot || item.price) * item.quantity, 0
             );
 
             setBill({
@@ -115,7 +115,7 @@ export default function BillPreview() {
                 orderTime: new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 status: order.status,
                 version: order.version,
-                items: order.items.map((item: any) => ({
+                items: order.items.map((item: { id: string; itemName: string; quantity: number; priceSnapshot?: number; price?: number; notes?: string }) => ({
                     id: item.id,
                     name: item.itemName,
                     qty: item.quantity,
@@ -322,7 +322,7 @@ export default function BillPreview() {
                 </div>
 
                 <div className="w-full bg-violet-50 border border-violet-200 rounded-2xl p-4 text-center">
-                    <p className="text-xs font-bold text-violet-700">📱 Show your hotel's UPI QR code to the customer and wait for confirmation</p>
+                    <p className="text-xs font-bold text-violet-700">📱 Show your hotel&apos;s UPI QR code to the customer and wait for confirmation</p>
                 </div>
 
                 {/* Confirm button */}
@@ -542,7 +542,7 @@ export default function BillPreview() {
             </div>
 
             {/* RIGHT: BILL SUMMARY PANEL */}
-            <aside className="w-full md:w-[380px] lg:w-[420px] bg-zinc-900 flex flex-col shadow-2xl z-10 p-6 md:p-8 relative overflow-hidden shrink-0">
+            <aside className="w-full md:w-95 lg:w-105 bg-zinc-900 flex flex-col shadow-2xl z-10 p-6 md:p-8 relative overflow-hidden shrink-0">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl pointer-events-none" />
 
                 <div className="relative flex flex-col h-full gap-6">
@@ -634,8 +634,8 @@ export default function BillPreview() {
             </aside>
 
             {/* ── PRINTABLE RECEIPT (Hidden in UI, Visible in Print) ── */}
-            <div id="printable-receipt" className="hidden fixed inset-0 bg-white z-[100] p-8 text-black font-sans">
-                <div className="max-w-[300px] mx-auto space-y-6">
+            <div id="printable-receipt" className="hidden fixed inset-0 bg-white z-100 p-8 text-black font-sans">
+                <div className="max-w-75 mx-auto space-y-6">
                     {/* Header */}
                     <div className="text-center space-y-1">
                         <h2 className="text-xl font-black uppercase tracking-tighter">HotelPro Royal</h2>
@@ -713,11 +713,12 @@ export default function BillPreview() {
                 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
                 input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
                 input[type=number] { -moz-appearance: textfield; }
+                @page { margin: 0 !important; size: auto; }
                 @media print {
-                    body * { visibility: hidden; }
-                    #printable-receipt, #printable-receipt * { visibility: visible !important; }
-                    #printable-receipt { display: block !important; position: absolute; left: 0; top: 0; width: 100%; height: auto; }
-                    @page { margin: 0; size: auto; }
+                    body * { visibility: hidden !important; }
+                    #printable-receipt, #printable-receipt * { visibility: visible !important; color: #000000 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                    #printable-receipt { display: block !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 80mm !important; max-width: 80mm !important; margin: 0 !important; padding: 4mm 3mm !important; background: #ffffff !important; color: #000000 !important; }
+                    html, body { width: 80mm !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
                 }
             `}</style>
         </div>

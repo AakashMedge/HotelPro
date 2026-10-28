@@ -36,6 +36,8 @@ interface OrderResponse {
     gstAmount: number;
     serviceChargeAmount: number;
     grandTotal: number;
+    paymentMethod?: string | null;
+    orderNumber?: number;
     createdAt: string;
     closedAt?: string;
     customerName: string | null;
@@ -90,6 +92,15 @@ export async function GET(
             return sum + Number(item.priceSnapshot) * item.quantity;
         }, 0);
 
+        // Calculate sequential order number for this hotel
+        const orderCount = await (db.order as any).count({
+            where: {
+                clientId: tenant.id,
+                createdAt: { lte: order.createdAt }
+            }
+        });
+        const orderNumber = orderCount > 0 ? orderCount : 1;
+
         const response: OrderResponse = {
             id: order.id,
             tableId: order.tableId,
@@ -113,6 +124,8 @@ export async function GET(
             closedAt: order.closedAt?.toISOString(),
             customerName: order.customerName,
             customerPhone: (order as any).customerPhone || null,
+            paymentMethod: (order as any).paymentMethod || 'CASH',
+            orderNumber,
             sessionId: order.sessionId,
         };
 

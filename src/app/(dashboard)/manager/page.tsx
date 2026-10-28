@@ -85,7 +85,7 @@ export default function ManagerDashboard() {
         } finally {
             setLoading(false);
         }
-    }, [router]);
+    }, []);
 
 
     useEffect(() => {
@@ -112,7 +112,7 @@ export default function ManagerDashboard() {
                         setComplaintAlerts(prev => prev.filter(a => a.id !== newAlert.id));
                     }, 10000);
                 }
-            } catch (err) { /* ignore */ }
+            } catch { /* ignore */ }
         };
 
         return () => {
@@ -161,7 +161,7 @@ export default function ManagerDashboard() {
 
     return (
         <div className="h-full overflow-y-auto bg-[#FBFBFB] p-6 lg:p-12 scroll-smooth selection:bg-zinc-900 selection:text-white">
-            <div className="max-w-[1400px] mx-auto space-y-16">
+            <div className="max-w-350 mx-auto space-y-16">
 
                 {/* 1. SOPHISTICATED HEADER */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8 border-b border-zinc-100 pb-12">
@@ -177,7 +177,7 @@ export default function ManagerDashboard() {
                     </div>
 
                     <div className="flex flex-col items-start md:items-end">
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Today's Revenue</span>
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Today&apos;s Revenue</span>
                         <div className="flex items-baseline gap-2">
                             <span className="text-xs font-medium text-zinc-400 mb-1">INR</span>
                             <span className="text-5xl font-bold text-zinc-900 tabular-nums">
@@ -186,6 +186,12 @@ export default function ManagerDashboard() {
                         </div>
                     </div>
                 </div>
+
+                {error && (
+                    <div className="p-4 bg-red-50 text-red-700 rounded-2xl text-xs font-medium border border-red-100">
+                        {error}
+                    </div>
+                )}
 
                 {/* 2. ELEGANT KPI TILES */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -261,7 +267,7 @@ export default function ManagerDashboard() {
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: 10 }}
-                                    className="bg-white rounded-[2.5rem] border border-zinc-200 shadow-2xl p-10 flex flex-col min-h-[600px] h-full"
+                                    className="bg-white rounded-[2.5rem] border border-zinc-200 shadow-2xl p-10 flex flex-col min-h-150 h-full"
                                 >
                                     <div className="flex justify-between items-start mb-10">
                                         <div className="space-y-1">
@@ -321,7 +327,7 @@ export default function ManagerDashboard() {
 
                                         <div className="space-y-6">
                                             <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-50 pb-2">Operational Log</h4>
-                                            <div className="space-y-4 max-h-[200px] overflow-y-auto no-scrollbar">
+                                            <div className="space-y-4 max-h-50 overflow-y-auto no-scrollbar">
                                                 {tableJourney.map((log, i) => (
                                                     <div key={i} className="flex gap-4">
                                                         <div className="flex flex-col items-center gap-1 pt-1">
@@ -349,12 +355,12 @@ export default function ManagerDashboard() {
                                     </button>
                                 </motion.div>
                             ) : (
-                                <div className="bg-white rounded-[2.5rem] border border-zinc-100 border-dashed p-12 h-full min-h-[600px] flex flex-col items-center justify-center text-center">
+                                <div className="bg-white rounded-[2.5rem] border border-zinc-100 border-dashed p-12 h-full min-h-150 flex flex-col items-center justify-center text-center">
                                     <div className="w-16 h-16 rounded-full bg-zinc-50 flex items-center justify-center mb-6">
                                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-zinc-200"><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /><circle cx="12" cy="12" r="3" /></svg>
                                     </div>
                                     <p className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Select a table node</p>
-                                    <p className="text-[10px] text-zinc-300 mt-2 max-w-[200px]">Synchronize with a specific table to view its current live operational flow.</p>
+                                    <p className="text-[10px] text-zinc-300 mt-2 max-w-50">Synchronize with a specific table to view its current live operational flow.</p>
                                 </div>
                             )}
                         </AnimatePresence>
@@ -429,7 +435,17 @@ export default function ManagerDashboard() {
     );
 }
 
-function MetricTile({ label, value, sub, color, icon, alert, onClick }: any) {
+interface MetricTileProps {
+    label: string;
+    value: string | number;
+    sub?: string;
+    color?: string;
+    icon: React.ReactNode;
+    alert?: boolean;
+    onClick?: () => void;
+}
+
+function MetricTile({ label, value, sub, color, icon, alert, onClick }: MetricTileProps) {
     return (
         <div
             onClick={onClick}

@@ -107,28 +107,84 @@ export async function POST(req: NextRequest) {
             ? Math.max(0, Number(clientGrandTotal)) 
             : Math.round(subtotal - calculatedDiscount + calculatedGst + serviceAmount);
 
-        // Create order in BILL_REQUESTED state (Preview state, NOT closed yet!)
-        const order = await db.order.create({
-            data: {
-                clientId: user.clientId,
-                tableId,
-                customerName: customerName || 'Walk-in Guest',
-                customerPhone: customerPhone || null,
-                status: 'BILL_REQUESTED',
-                paymentMethod,
-                settledById: user.id,
-                subtotal,
-                discountAmount: calculatedDiscount,
-                gstAmount: calculatedGst,
-                serviceChargeAmount: serviceAmount,
-                appliedGstRate: gstRate,
-                appliedServiceRate: serviceRate,
-                grandTotal: calculatedGrandTotal,
-                items: {
-                    create: orderItems,
+        const existingOrderId = body.existingOrderId || body.orderId;
+        let finalOrderId = '';
+
+        if (existingOrderId) {
+            const existing = await (db.order as any).findFirst({
+                where: { id: existingOrderId, clientId: user.clientId },
+            });
+
+            if (existing) {
+                // Remove previous items and replace with updated ones
+                await (db as any).orderItem.deleteMany({
+                    where: { orderId: existingOrderId }
+                });
+
+                await (db.order as any).update({
+                    where: { id: existingOrderId },
+                    data: {
+                        customerName: customerName || 'Walk-in Guest',
+                        customerPhone: customerPhone || null,
+                        status: 'BILL_REQUESTED',
+                        paymentMethod,
+                        settledById: user.id,
+                        subtotal,
+                        discountAmount: calculatedDiscount,
+                        gstAmount: calculatedGst,
+                        serviceChargeAmount: serviceAmount,
+                        appliedGstRate: gstRate,
+                        appliedServiceRate: serviceRate,
+                        grandTotal: calculatedGrandTotal,
+                        version: (existing.version || 1) + 1,
+                        items: {
+                            create: orderItems,
+                        },
+                        auditLogs: {
+                            create: {
+                                clientId: user.clientId,
+                                action: 'STATUS_CHANGED',
+                                actorId: user.id,
+                                metadata: {
+                                    action: 'BILL_MODIFIED',
+                                    oldTotal: Number(existing.grandTotal || 0),
+                                    newTotal: calculatedGrandTotal,
+                                    version: (existing.version || 1) + 1,
+                                    timestamp: new Date().toISOString()
+                                }
+                            }
+                        }
+                    }
+                });
+                finalOrderId = existingOrderId;
+            }
+        }
+
+        if (!finalOrderId) {
+            // Create order in BILL_REQUESTED state (Preview state, NOT closed yet!)
+            const order = await db.order.create({
+                data: {
+                    clientId: user.clientId,
+                    tableId,
+                    customerName: customerName || 'Walk-in Guest',
+                    customerPhone: customerPhone || null,
+                    status: 'BILL_REQUESTED',
+                    paymentMethod,
+                    settledById: user.id,
+                    subtotal,
+                    discountAmount: calculatedDiscount,
+                    gstAmount: calculatedGst,
+                    serviceChargeAmount: serviceAmount,
+                    appliedGstRate: gstRate,
+                    appliedServiceRate: serviceRate,
+                    grandTotal: calculatedGrandTotal,
+                    items: {
+                        create: orderItems,
+                    },
                 },
-            },
-        });
+            });
+            finalOrderId = order.id;
+        }
 
         // Set table to ACTIVE when bill is generated
         await db.table.update({
@@ -136,7 +192,7 @@ export async function POST(req: NextRequest) {
             data: { status: 'ACTIVE' },
         });
 
-        return NextResponse.json({ success: true, orderId: order.id, grandTotal: calculatedGrandTotal });
+        return NextResponse.json({ success: true, orderId: finalOrderId, grandTotal: calculatedGrandTotal });
 
     } catch (err: unknown) {
         const error = err as Error;
