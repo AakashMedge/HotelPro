@@ -201,6 +201,13 @@ model RestaurantSettings {
   currency            String   @default("INR")
   currencySymbol      String   @default("₹")
   
+  // Receipt Print & Tax Settings
+  address             String?  
+  phone               String?  
+  fssai               String?  
+  gstEnabled          Boolean  @default(true) 
+  defaultPaymentMethod String  @default("CASH") 
+  
   primaryColor        String   @default("#0F172A")
   secondaryColor      String   @default("#3B82F6")
   logoUrl             String?

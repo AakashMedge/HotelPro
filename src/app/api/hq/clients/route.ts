@@ -100,6 +100,7 @@ export async function POST(request: NextRequest) {
             adminName: body.adminName,
             adminEmail: body.adminEmail || '',
             adminPassword: body.adminPassword,
+            adminPin: body.adminPin,
             domain: body.domain,
         };
 

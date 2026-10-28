@@ -10,6 +10,7 @@ import {
     Fingerprint
 } from 'lucide-react';
 import { HQNavigation } from '@/components/hq/navigation';
+import { HQProfileArea } from '@/components/hq/HQProfileArea';
 
 // Server Component - checks authentication for ALL pages under /hq
 export default async function HQLayout({
@@ -48,24 +49,8 @@ export default async function HQLayout({
                 {/* Nav Links (Client Component for active states) */}
                 <HQNavigation />
 
-                {/* Profile Area */}
-                <div className="p-8 border-t border-zinc-100/50 bg-white/50">
-                    <div className="flex items-center gap-4 px-2">
-                        <div className="w-10 h-10 rounded-2xl bg-linear-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-[12px] font-black text-white shadow-lg shadow-indigo-500/20 uppercase">
-                            {superAdmin.email.charAt(0)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-[11px] font-black text-zinc-900 truncate uppercase tracking-widest">{superAdmin.email.split('@')[0]}</p>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                                <div className="w-1 h-1 rounded-full bg-emerald-500" />
-                                <p className="text-[8px] font-bold text-zinc-400 uppercase tracking-widest">Master Identity</p>
-                            </div>
-                        </div>
-                        <a href="/api/hq/logout" className="text-zinc-300 hover:text-red-500 transition-colors bg-zinc-50 p-2 rounded-lg border border-zinc-100">
-                            <LogOut className="w-3.5 h-3.5" />
-                        </a>
-                    </div>
-                </div>
+                {/* Profile Area with Change Password Modal */}
+                <HQProfileArea email={superAdmin.email} />
             </aside>
 
             {/* MAIN CONTENT AREA */}

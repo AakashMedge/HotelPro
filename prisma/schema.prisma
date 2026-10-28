@@ -24,6 +24,7 @@ model User {
   name           String
   passwordHash   String
   passwordEncrypted String?   // Reversible vault for Admin to see
+  pin            String?     // 4 or 6-digit Security PIN
   role           UserRole
   isActive       Boolean    @default(true)
   createdAt      DateTime   @default(now())
@@ -306,6 +307,13 @@ model RestaurantSettings {
   currency            String   @default("INR")
   currencySymbol      String   @default("₹")
   
+  // Receipt Print & Tax Settings
+  address             String?  // Physical address printed on receipts
+  phone               String?  // Contact phone printed on receipts
+  fssai               String?  // Food License / FSSAI number
+  gstEnabled          Boolean  @default(true) // Toggle GST calculation on POS
+  defaultPaymentMethod String  @default("CASH") // CASH, UPI, CARD
+
   // White-Labeling & Branding (Phase 5)
   primaryColor        String   @default("#0F172A") // Default Slate 900
   secondaryColor      String   @default("#3B82F6") // Default Blue 500

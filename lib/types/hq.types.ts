@@ -26,6 +26,7 @@ export interface CreateClientInput {
     adminName: string;
     adminEmail: string;
     adminPassword: string;
+    adminPin?: string;
 
     // Optional
     domain?: string;

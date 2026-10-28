@@ -209,6 +209,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
 
                     <HQClientActions
                         clientId={client.id}
+                        clientName={client.name}
                         currentStatus={client.status as any}
                         currentPlan={client.plan as any}
                     />

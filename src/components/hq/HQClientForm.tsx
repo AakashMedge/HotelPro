@@ -9,7 +9,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Save, X, Building2, Globe, CreditCard, LayoutTemplate } from 'lucide-react';
+import { Loader2, Save, X, Building2, Globe, CreditCard, LayoutTemplate, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { ClientPlan, ClientStatus } from '@prisma/client';
 
 interface HQClientFormProps {
@@ -33,6 +33,9 @@ export default function HQClientForm({ mode, initialData }: HQClientFormProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const [showPassword, setShowPassword] = useState(false);
+    const [showPin, setShowPin] = useState(false);
+
     const [formData, setFormData] = useState({
         name: initialData?.name || '',
         slug: initialData?.slug || '',
@@ -41,10 +44,11 @@ export default function HQClientForm({ mode, initialData }: HQClientFormProps) {
         billingCycle: initialData?.billingCycle || 'MONTHLY',
         status: initialData?.status || 'TRIAL',
 
-        // Admin fields (create mode only)
-        adminUsername: '',
-        adminName: '',
-        adminPassword: ''
+        // Admin fields
+        adminUsername: initialData?.adminUsername || '',
+        adminName: initialData?.adminName || '',
+        adminPassword: '',
+        adminPin: mode === 'create' ? '1234' : ''
     });
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -224,51 +228,100 @@ export default function HQClientForm({ mode, initialData }: HQClientFormProps) {
                     </div>
                 </div>
 
-                {/* Admin Provisioning (Create Mode Only) */}
-                {mode === 'create' && (
-                    <div className="md:col-span-2 space-y-6 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                {/* Admin Provisioning & Credentials */}
+                <div className="md:col-span-2 space-y-6 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                    <div className="flex items-center justify-between">
                         <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                             <LayoutTemplate className="w-4 h-4" />
-                            Initial Administrator Provisioning
+                            {mode === 'create' ? 'Initial Administrator Provisioning' : 'Administrator Credentials & Security'}
                         </h2>
+                        {mode === 'edit' && (
+                            <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2.5 py-1 rounded-md">
+                                Leave blank to keep existing credentials
+                            </span>
+                        )}
+                    </div>
 
-                        <div className="grid md:grid-cols-3 gap-6">
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">Admin Full Name</label>
-                                <input
-                                    type="text"
-                                    required
-                                    value={formData.adminName}
-                                    onChange={(e) => setFormData({ ...formData, adminName: e.target.value })}
-                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-medium text-slate-900 bg-white"
-                                    placeholder="Manager Name"
-                                />
+                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1">Admin Full Name</label>
+                            <input
+                                type="text"
+                                required={mode === 'create'}
+                                value={formData.adminName}
+                                onChange={(e) => setFormData({ ...formData, adminName: e.target.value })}
+                                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-medium text-slate-900 bg-white"
+                                placeholder="Manager Name"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1">Username</label>
+                            <input
+                                type="text"
+                                required={mode === 'create'}
+                                disabled={mode === 'edit'}
+                                value={formData.adminUsername}
+                                onChange={(e) => setFormData({ ...formData, adminUsername: e.target.value })}
+                                className={`w-full px-4 py-2 rounded-xl border border-slate-200 outline-none font-medium text-slate-900 ${mode === 'edit' ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10'}`}
+                                placeholder="admin_username"
+                            />
+                            {mode === 'edit' && (
+                                <p className="text-[10px] text-slate-400 mt-1">Tenant username cannot be changed.</p>
+                            )}
+                        </div>
+                        <div>
+                            <div className="flex justify-between items-center mb-1">
+                                <label className="block text-sm font-bold text-slate-700">
+                                    {mode === 'create' ? 'Initial Password' : 'New Password'}
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-semibold"
+                                >
+                                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                    {showPassword ? 'Hide' : 'Show'}
+                                </button>
                             </div>
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">Username</label>
+                            <div className="relative">
                                 <input
-                                    type="text"
-                                    required
-                                    value={formData.adminUsername}
-                                    onChange={(e) => setFormData({ ...formData, adminUsername: e.target.value })}
-                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-medium text-slate-900 bg-white"
-                                    placeholder="admin_username"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">Initial Password</label>
-                                <input
-                                    type="password"
-                                    required
+                                    type={showPassword ? 'text' : 'password'}
+                                    required={mode === 'create'}
                                     value={formData.adminPassword}
                                     onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })}
-                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-medium text-slate-900 bg-white"
-                                    placeholder="••••••••"
+                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-mono text-slate-900 placeholder:text-slate-400 bg-white"
+                                    placeholder={mode === 'create' ? '••••••••' : 'Leave blank to keep unchanged'}
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <div className="flex justify-between items-center mb-1">
+                                <label className="block text-sm font-bold text-slate-700">
+                                    {mode === 'create' ? 'Security PIN' : 'New Security PIN'}
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPin(!showPin)}
+                                    className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-semibold"
+                                >
+                                    {showPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                    {showPin ? 'Hide' : 'Show'}
+                                </button>
+                            </div>
+                            <div className="relative">
+                                <input
+                                    type={showPin ? 'text' : 'password'}
+                                    required={mode === 'create'}
+                                    maxLength={6}
+                                    value={formData.adminPin}
+                                    onChange={(e) => setFormData({ ...formData, adminPin: e.target.value.replace(/\D/g, '') })}
+                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all text-slate-900 placeholder:text-slate-400 bg-white font-mono tracking-widest"
+                                    placeholder={mode === 'create' ? '1234' : 'Leave blank to keep unchanged'}
                                 />
                             </div>
                         </div>
                     </div>
-                )}
+                </div>
             </div>
 
             {/* Actions */}

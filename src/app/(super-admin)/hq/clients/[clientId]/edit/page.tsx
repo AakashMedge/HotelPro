@@ -22,6 +22,8 @@ export default async function EditClientPage({ params }: PageProps) {
         notFound();
     }
 
+    const adminUser = (client as any).users?.find((u: any) => u.role === 'ADMIN') || (client as any).users?.[0];
+
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             <HQClientForm
@@ -31,7 +33,9 @@ export default async function EditClientPage({ params }: PageProps) {
                     name: client.name,
                     slug: client.slug,
                     domain: client.domain,
-                    plan: client.plan as any
+                    plan: client.plan as any,
+                    adminUsername: adminUser?.username,
+                    adminName: adminUser?.name
                 }}
             />
         </div>

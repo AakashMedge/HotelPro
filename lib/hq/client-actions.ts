@@ -166,6 +166,7 @@ export async function createNewClient(input: CreateClientInput): Promise<{ succe
                     username: input.adminUsername.toLowerCase().trim(),
                     name: input.adminName.trim(),
                     passwordHash: passwordHash,
+                    pin: input.adminPin?.trim() || '1234',
                     role: 'ADMIN',
                     isActive: true
                 }
@@ -452,6 +453,110 @@ export async function restoreClient(clientId: string): Promise<{ success: boolea
     } catch (error) {
         console.error("[HQ] Restore client error:", error);
         return { success: false, error: "Failed to restore client." };
+    }
+}
+
+/**
+ * Permanently delete / hard-purge a client and all associated records.
+ * Danger-zone action reserved exclusively for Super Admin.
+ */
+export async function permanentlyDeleteClient(clientId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const client = await prisma.client.findUnique({
+            where: { id: clientId },
+            select: { id: true, name: true, slug: true }
+        });
+
+        if (!client) {
+            return { success: false, error: "Hotel not found" };
+        }
+
+        await prisma.$transaction(async (tx) => {
+            // 1. Delete Orders & Financial Records
+            await tx.payment.deleteMany({ where: { clientId } });
+            await tx.orderItem.deleteMany({ where: { order: { clientId } } });
+            await tx.order.deleteMany({ where: { clientId } });
+
+            // 2. Delete Tables, Floors & QR Infrastructure
+            await tx.qRSession.deleteMany({ where: { clientId } });
+            await tx.qRCode.deleteMany({ where: { clientId } });
+            await tx.table.deleteMany({ where: { clientId } });
+            await tx.floor.deleteMany({ where: { clientId } });
+
+            // 3. Delete Menu & Modifiers
+            await tx.modifierGroup.deleteMany({ where: { clientId } });
+            await tx.menuItem.deleteMany({ where: { clientId } });
+            await tx.category.deleteMany({ where: { clientId } });
+
+            // 4. Delete Chat & Messaging
+            await tx.chatAck.deleteMany({ where: { user: { clientId } } });
+            await tx.chatMessage.deleteMany({ where: { channel: { clientId } } });
+            await tx.chatChannel.deleteMany({ where: { clientId } });
+
+            // 5. Delete Customer Feedback & Complaints
+            await tx.customerFeedback.deleteMany({ where: { clientId } });
+            await tx.customerComplaint.deleteMany({ where: { clientId } });
+
+            // 6. Delete User Sessions & Users
+            await tx.session.deleteMany({ where: { user: { clientId } } });
+            await tx.user.deleteMany({ where: { clientId } });
+
+            // 7. Delete Settings, SaaS Subscriptions, Audit Logs
+            await tx.inventory.deleteMany({ where: { clientId } });
+            await tx.restaurantSettings.deleteMany({ where: { clientId } });
+            await tx.subscription.deleteMany({ where: { clientId } });
+            await tx.saaSPayment.deleteMany({ where: { clientId } });
+            await tx.auditLog.deleteMany({ where: { clientId } });
+
+            // 8. Finally Delete Client Record
+            await tx.client.delete({ where: { id: clientId } });
+        });
+
+        return { success: true };
+    } catch (error) {
+        console.error("[HQ] Permanent delete client error:", error);
+        return { success: false, error: "Failed to permanently delete hotel." };
+    }
+}
+
+/**
+ * Super Admin Reset Credentials for Hotel Admin
+ */
+export async function resetClientAdminCredentials(
+    clientId: string,
+    newPassword?: string,
+    newPin?: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const adminUser = await prisma.user.findFirst({
+            where: { clientId, role: 'ADMIN' }
+        });
+
+        if (!adminUser) {
+            return { success: false, error: "Admin account for this hotel not found." };
+        }
+
+        const updateData: { passwordHash?: string; pin?: string } = {};
+        if (newPassword) {
+            updateData.passwordHash = await hashPassword(newPassword);
+        }
+        if (newPin) {
+            updateData.pin = newPin.trim();
+        }
+
+        if (Object.keys(updateData).length === 0) {
+            return { success: false, error: "No new credentials provided." };
+        }
+
+        await prisma.user.update({
+            where: { id: adminUser.id },
+            data: updateData
+        });
+
+        return { success: true };
+    } catch (error) {
+        console.error("[HQ] Reset client credentials error:", error);
+        return { success: false, error: "Failed to reset hotel credentials." };
     }
 }
 

@@ -9,7 +9,16 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getClientById, updateClient, suspendClient, activateClient, archiveClient, restoreClient } from "@/lib/hq/client-actions";
+import { 
+    getClientById, 
+    updateClient, 
+    suspendClient, 
+    activateClient, 
+    archiveClient, 
+    restoreClient,
+    permanentlyDeleteClient,
+    resetClientAdminCredentials
+} from "@/lib/hq/client-actions";
 import { HQApiResponse, UpdateClientInput } from "@/lib/types/hq.types";
 import { requireSuperAdmin } from "@/lib/hq/auth";
 
@@ -105,6 +114,15 @@ export async function PATCH(
             });
         }
 
+        if (body.action === 'reset-credentials') {
+            const result = await resetClientAdminCredentials(clientId, body.password, body.pin);
+            return NextResponse.json<HQApiResponse>({
+                success: result.success,
+                error: result.error,
+                message: result.success ? "Hotel credentials updated successfully." : undefined
+            });
+        }
+
         // 4. Regular update
         const input: UpdateClientInput = {
             name: body.name,
@@ -121,6 +139,11 @@ export async function PATCH(
                 { success: false, error: result.error },
                 { status: 400 }
             );
+        }
+
+        // If admin credentials provided in update
+        if (body.adminPassword || body.adminPin) {
+            await resetClientAdminCredentials(clientId, body.adminPassword || undefined, body.adminPin || undefined);
         }
 
         return NextResponse.json<HQApiResponse>({
@@ -160,7 +183,22 @@ export async function DELETE(
             );
         }
 
-        // NOTE: In production, we'll use soft-delete (archive)
+        // Permanent Hard-Purge vs Soft-Archive
+        if (body.permanent === true) {
+            const result = await permanentlyDeleteClient(clientId);
+            if (!result.success) {
+                return NextResponse.json<HQApiResponse>(
+                    { success: false, error: result.error },
+                    { status: 400 }
+                );
+            }
+            return NextResponse.json<HQApiResponse>({
+                success: true,
+                message: "Hotel and all associated database records have been permanently purged."
+            });
+        }
+
+        // Standard: Soft-delete (archive)
         const result = await archiveClient(clientId);
 
         if (!result.success) {

@@ -43,6 +43,11 @@ export async function GET() {
             settings: {
                 ...settings,
                 businessName: effectiveBusinessName,
+                address: settings.address || "",
+                phone: settings.phone || "",
+                fssai: settings.fssai || "",
+                gstEnabled: settings.gstEnabled ?? true,
+                defaultPaymentMethod: settings.defaultPaymentMethod || "CASH",
                 gstRate: Number(settings.gstRate),
                 serviceChargeRate: Number(settings.serviceChargeRate),
                 accessCode: client?.accessCode || ""
@@ -66,15 +71,33 @@ export async function PATCH(request: NextRequest) {
         }
 
         const body = await request.json();
-        const { businessName, gstin, gstRate, serviceChargeRate, currency, currencySymbol, accessCode } = body;
+        const { 
+            businessName, 
+            address,
+            phone,
+            gstin, 
+            fssai,
+            gstEnabled,
+            gstRate, 
+            defaultPaymentMethod,
+            serviceChargeRate, 
+            currency, 
+            currencySymbol, 
+            accessCode 
+        } = body;
 
         // 1. Update Restaurant Settings
         const updated = await prisma.restaurantSettings.update({
             where: { clientId: session.clientId },
             data: {
                 businessName,
+                address,
+                phone,
                 gstin,
+                fssai,
+                gstEnabled: gstEnabled !== undefined ? Boolean(gstEnabled) : undefined,
                 gstRate: gstRate !== undefined ? Number(gstRate) : undefined,
+                defaultPaymentMethod: defaultPaymentMethod || undefined,
                 serviceChargeRate: serviceChargeRate !== undefined ? Number(serviceChargeRate) : undefined,
                 currency,
                 currencySymbol
