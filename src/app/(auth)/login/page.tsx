@@ -3,7 +3,7 @@
 import { useState, FormEvent, useEffect, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Eye, EyeOff, KeyRound, ShieldCheck, CheckCircle2, X, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, ShieldCheck, CheckCircle2, X, Loader2, ArrowLeft } from 'lucide-react';
 
 const ROLE_DASHBOARDS: Record<string, string> = {
     ADMIN: '/admin',
@@ -16,6 +16,10 @@ const ROLE_DASHBOARDS: Record<string, string> = {
 const BILLING_ONLY_DASHBOARD = '/billing';
 
 function LoginContent({ isOpened }: { isOpened: boolean }) {
+    const [view, setView] = useState<'LOGIN' | 'RESET'>('LOGIN');
+    const [isFlipping, setIsFlipping] = useState(false);
+    const [flipDirection, setFlipDirection] = useState<'FORWARD' | 'BACKWARD'>('FORWARD');
+
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -23,8 +27,16 @@ function LoginContent({ isOpened }: { isOpened: boolean }) {
     const [isLoading, setIsLoading] = useState(false);
     const [successMsg, setSuccessMsg] = useState('');
 
+    // Auto-dismiss success toast after 4.5 seconds
+    useEffect(() => {
+        if (!successMsg) return;
+        const timer = setTimeout(() => {
+            setSuccessMsg('');
+        }, 4500);
+        return () => clearTimeout(timer);
+    }, [successMsg]);
+
     // Reset via PIN State
-    const [showResetModal, setShowResetModal] = useState(false);
     const [resetUsername, setResetUsername] = useState('');
     const [resetPin, setResetPin] = useState('');
     const [resetNewPassword, setResetNewPassword] = useState('');
@@ -36,6 +48,30 @@ function LoginContent({ isOpened }: { isOpened: boolean }) {
     const searchParams = useSearchParams();
     const redirectTo = searchParams.get('redirect');
     const accessError = searchParams.get('error');
+
+    const goToReset = () => {
+        setResetError('');
+        setResetUsername(username);
+        setFlipDirection('FORWARD');
+        setIsFlipping(true);
+        setTimeout(() => {
+            setView('RESET');
+        }, 550);
+        setTimeout(() => {
+            setIsFlipping(false);
+        }, 1150);
+    };
+
+    const goToLogin = () => {
+        setFlipDirection('BACKWARD');
+        setIsFlipping(true);
+        setTimeout(() => {
+            setView('LOGIN');
+        }, 550);
+        setTimeout(() => {
+            setIsFlipping(false);
+        }, 1150);
+    };
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
@@ -110,14 +146,14 @@ function LoginContent({ isOpened }: { isOpened: boolean }) {
                 return;
             }
 
-            // Success: fill in login form and close modal
+            // Success: fill in username, leave password blank for manual entry
             setUsername(resetUsername.trim().toLowerCase());
-            setPassword(resetNewPassword);
-            setSuccessMsg('Password updated! Click "Unlock Entry" to login.');
-            setShowResetModal(false);
+            setPassword('');
+            setSuccessMsg('Password updated successfully. Please enter your new password to sign in.');
             setResetUsername('');
             setResetPin('');
             setResetNewPassword('');
+            goToLogin();
         } catch {
             setResetError('Network error while resetting password.');
         } finally {
@@ -126,183 +162,234 @@ function LoginContent({ isOpened }: { isOpened: boolean }) {
     };
 
     return (
-        <div className={`w-full h-full flex flex-col items-center justify-center p-6 sm:p-8 md:p-12 transition-opacity duration-700 ${isOpened ? 'opacity-100 delay-500' : 'opacity-0'}`}>
-            <div className="text-center mb-6 sm:mb-10 space-y-2">
-                <span className="text-[9px] sm:text-[10px] font-black tracking-[0.4em] uppercase opacity-30 text-[#3D2329]">Staff Entrance</span>
-                <h2 className="text-3xl sm:text-4xl font-playfair font-black tracking-tighter italic text-[#3D2329]">Sign In</h2>
-            </div>
-
-            <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 sm:space-y-6">
-                {(error || accessError) && (
-                    <div className="bg-[#D43425]/5 border border-[#D43425]/20 rounded-xl px-4 py-3 text-center mb-4">
-                        <p className="text-[#D43425] text-[10px] font-black uppercase tracking-widest leading-none">
-                            {error || 'Access Denied'}
-                        </p>
-                    </div>
-                )}
-
-                {successMsg && (
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-center mb-4">
-                        <p className="text-emerald-700 text-[11px] font-bold leading-snug">
-                            {successMsg}
-                        </p>
-                    </div>
-                )}
-
-                <div className="space-y-3 sm:space-y-4">
-                    <div className="space-y-1">
-                        <label className="text-[9px] font-black uppercase tracking-widest text-[#3D2329]/40 ml-4">Identifier</label>
-                        <input
-                            type="text"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
-                            className="w-full h-12 sm:h-14 px-6 rounded-full bg-black/5 border border-black/10 text-black font-playfair italic text-lg outline-none focus:border-[#D43425] transition-all"
-                            placeholder="username"
-                            required
+        <div className={`relative w-full h-full flex flex-col items-center justify-center p-6 sm:p-8 md:p-12 transition-opacity duration-700 ${isOpened ? 'opacity-100 delay-500' : 'opacity-0'}`}>
+            
+            {/* Rapid Page Flutter Animation Sheets */}
+            <AnimatePresence>
+                {isFlipping && (
+                    <div className="absolute inset-0 pointer-events-none z-50 overflow-hidden" style={{ perspective: 1800 }}>
+                        {/* Leaf 1 */}
+                        <motion.div
+                            initial={{ rotateY: flipDirection === 'FORWARD' ? 0 : -170, opacity: 0.95 }}
+                            animate={{ rotateY: flipDirection === 'FORWARD' ? -170 : 0, opacity: [0.95, 1, 0] }}
+                            transition={{ duration: 0.85, ease: [0.45, 0.05, 0.55, 0.95], delay: 0 }}
+                            className="absolute inset-0 bg-vellum shadow-2xl origin-left border-l-2 border-[#3D2329]/20"
+                            style={{ transformStyle: 'preserve-3d' }}
+                        />
+                        {/* Leaf 2 */}
+                        <motion.div
+                            initial={{ rotateY: flipDirection === 'FORWARD' ? 0 : -170, opacity: 0.95 }}
+                            animate={{ rotateY: flipDirection === 'FORWARD' ? -170 : 0, opacity: [0.95, 1, 0] }}
+                            transition={{ duration: 0.85, ease: [0.45, 0.05, 0.55, 0.95], delay: 0.15 }}
+                            className="absolute inset-0 bg-vellum shadow-2xl origin-left border-l-2 border-[#3D2329]/20"
+                            style={{ transformStyle: 'preserve-3d' }}
+                        />
+                        {/* Leaf 3 */}
+                        <motion.div
+                            initial={{ rotateY: flipDirection === 'FORWARD' ? 0 : -170, opacity: 0.95 }}
+                            animate={{ rotateY: flipDirection === 'FORWARD' ? -170 : 0, opacity: [0.95, 1, 0] }}
+                            transition={{ duration: 0.85, ease: [0.45, 0.05, 0.55, 0.95], delay: 0.3 }}
+                            className="absolute inset-0 bg-vellum shadow-2xl origin-left border-l-2 border-[#3D2329]/20"
+                            style={{ transformStyle: 'preserve-3d' }}
                         />
                     </div>
-                    <div className="space-y-1">
-                        <div className="flex justify-between items-center ml-4 mr-2">
-                            <label className="text-[9px] font-black uppercase tracking-widest text-[#3D2329]/40">Access Key</label>
-                            <button
-                                type="button"
-                                onClick={() => setShowPassword(!showPassword)}
-                                className="text-[10px] text-[#3D2329]/60 hover:text-black flex items-center gap-1 font-bold tracking-wider"
-                            >
-                                {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                                {showPassword ? 'HIDE' : 'SHOW'}
-                            </button>
-                        </div>
-                        <div className="relative">
-                            <input
-                                type={showPassword ? 'text' : 'password'}
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className="w-full h-12 sm:h-14 px-6 pr-12 rounded-full bg-black/5 border border-black/10 text-black font-playfair italic text-lg outline-none focus:border-[#D43425] transition-all"
-                                placeholder="••••••••"
-                                required
-                            />
-                        </div>
+                )}
+            </AnimatePresence>
+
+            {/* VIEW 1: STAFF ENTRANCE (LOGIN) */}
+            {view === 'LOGIN' && (
+                <div className="w-full max-w-sm animate-ink-spread">
+                    <div className="text-center mb-6 sm:mb-8 space-y-1.5">
+                        <span className="text-[9px] sm:text-[10px] font-black tracking-[0.4em] uppercase opacity-35 text-[#3D2329]">Staff Entrance</span>
+                        <h2 className="text-3xl sm:text-4xl font-playfair font-black tracking-tighter italic text-[#3D2329]">Sign In</h2>
                     </div>
-                </div>
 
-                <div className="flex justify-end pr-2">
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setResetError('');
-                            setResetUsername(username);
-                            setShowResetModal(true);
-                        }}
-                        className="text-[11px] font-bold text-[#3D2329]/70 hover:text-[#D43425] transition-colors"
-                    >
-                        Forgot Password? Reset via PIN
-                    </button>
-                </div>
-
-                <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full h-12 sm:h-14 bg-[#3D2329] text-white rounded-full font-black text-[10px] uppercase tracking-[0.4em] shadow-xl hover:bg-black active:scale-95 transition-all disabled:opacity-50"
-                >
-                    {isLoading ? 'Verifying...' : 'Unlock Entry'}
-                </button>
-            </form>
-
-            {/* Reset Password via Security PIN Modal */}
-            {showResetModal && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-sm shadow-2xl border border-slate-100 space-y-4">
-                        <div className="flex justify-between items-center">
-                            <div className="flex items-center gap-2.5">
-                                <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
-                                    <KeyRound className="w-4 h-4" />
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-bold text-slate-900">Reset Password</h3>
-                                    <p className="text-[10px] text-slate-400">Verify using your Security PIN</p>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setShowResetModal(false)}
-                                className="w-7 h-7 rounded-full bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors"
-                            >
-                                <X className="w-3.5 h-3.5" />
-                            </button>
-                        </div>
-
-                        {resetError && (
-                            <div className="bg-rose-50 border border-rose-200 text-rose-600 rounded-xl px-3 py-2 text-xs font-medium">
-                                {resetError}
+                    <form onSubmit={handleSubmit} className="w-full space-y-4 sm:space-y-5">
+                        {(error || accessError) && (
+                            <div className="bg-[#D43425]/5 border border-[#D43425]/20 rounded-xl px-4 py-2.5 text-center mb-3">
+                                <p className="text-[#D43425] text-[10px] font-black uppercase tracking-widest leading-none">
+                                    {error || 'Access Denied'}
+                                </p>
                             </div>
                         )}
 
-                        <form onSubmit={handleResetPassword} className="space-y-3.5">
-                            <div>
-                                <label className="block text-[11px] font-bold text-slate-700 mb-1">Username / Identifier</label>
+                        <div className="space-y-3 sm:space-y-4">
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black uppercase tracking-widest text-[#3D2329]/50 ml-3">Identifier</label>
                                 <input
                                     type="text"
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
+                                    className="w-full h-11 sm:h-13 px-5 rounded-full bg-black/5 border border-black/10 text-black font-playfair italic text-base sm:text-lg outline-none focus:border-[#D43425] transition-all"
+                                    placeholder="username"
                                     required
-                                    value={resetUsername}
-                                    onChange={(e) => setResetUsername(e.target.value)}
-                                    placeholder="your_admin_username"
-                                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500"
                                 />
                             </div>
-
-                            <div>
-                                <label className="block text-[11px] font-bold text-slate-700 mb-1">Security PIN (4-6 digits)</label>
-                                <input
-                                    type="password"
-                                    required
-                                    maxLength={6}
-                                    value={resetPin}
-                                    onChange={(e) => setResetPin(e.target.value)}
-                                    placeholder="••••"
-                                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-mono tracking-widest text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500"
-                                />
-                                <p className="text-[9px] text-slate-400 mt-1">Initial PIN provided by Super Admin during setup</p>
-                            </div>
-
-                            <div>
-                                <div className="flex justify-between items-center mb-1">
-                                    <label className="text-[11px] font-bold text-slate-700">New Password</label>
+                            <div className="space-y-1">
+                                <div className="flex justify-between items-center ml-3 mr-2">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-[#3D2329]/50">Access Key</label>
                                     <button
                                         type="button"
-                                        onClick={() => setShowResetNewPassword(!showResetNewPassword)}
-                                        className="text-[10px] text-amber-700 font-bold"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="text-[10px] text-[#3D2329]/60 hover:text-black flex items-center gap-1 font-bold tracking-wider cursor-pointer"
                                     >
-                                        {showResetNewPassword ? 'HIDE' : 'SHOW'}
+                                        {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                        {showPassword ? 'HIDE' : 'SHOW'}
                                     </button>
                                 </div>
-                                <input
-                                    type={showResetNewPassword ? 'text' : 'password'}
-                                    required
-                                    minLength={6}
-                                    value={resetNewPassword}
-                                    onChange={(e) => setResetNewPassword(e.target.value)}
-                                    placeholder="At least 6 characters"
-                                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500"
-                                />
+                                <div className="relative">
+                                    <input
+                                        type={showPassword ? 'text' : 'password'}
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className="w-full h-11 sm:h-13 px-5 pr-12 rounded-full bg-black/5 border border-black/10 text-black font-playfair italic text-base sm:text-lg outline-none focus:border-[#D43425] transition-all"
+                                        placeholder="••••••••"
+                                        required
+                                    />
+                                </div>
                             </div>
+                        </div>
 
+                        <div className="flex justify-end pr-1">
                             <button
-                                type="submit"
-                                disabled={resetLoading}
-                                className="w-full py-3 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 mt-2"
+                                type="button"
+                                onClick={goToReset}
+                                className="text-[10px] sm:text-[11px] font-bold text-[#3D2329]/70 hover:text-[#D43425] transition-colors cursor-pointer flex items-center gap-1.5"
                             >
-                                {resetLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                                {resetLoading ? 'Verifying PIN...' : 'Save & Update Password'}
+                                <KeyRound className="w-3 h-3 text-[#D43425]" />
+                                Forgot Password? Reset via PIN →
                             </button>
-                        </form>
-                    </div>
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={isLoading}
+                            className="w-full h-11 sm:h-13 bg-[#3D2329] text-white rounded-full font-black text-[10px] uppercase tracking-[0.4em] shadow-xl hover:bg-black active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+                        >
+                            {isLoading ? 'Verifying...' : 'Unlock Entry'}
+                        </button>
+                    </form>
                 </div>
             )}
 
-            <div className="mt-8 sm:mt-10 text-[8px] font-black uppercase tracking-[0.3em] opacity-20 text-center text-[#3D2329]">
+            {/* VIEW 2: RESET PASSWORD PAGE */}
+            {view === 'RESET' && (
+                <div className="w-full max-w-sm animate-ink-spread">
+                    {/* Return Navigation */}
+                    <div className="flex items-center mb-5 pb-2 border-b border-[#3D2329]/10">
+                        <button
+                            type="button"
+                            onClick={goToLogin}
+                            className="flex items-center gap-1.5 text-[10px] font-bold text-[#3D2329]/70 hover:text-[#D43425] transition-colors cursor-pointer"
+                        >
+                            <ArrowLeft className="w-3.5 h-3.5" />
+                            Back to Sign In
+                        </button>
+                    </div>
+
+                    <div className="text-center mb-6 space-y-1">
+                        <h2 className="text-2xl sm:text-3xl font-playfair font-black tracking-tight italic text-[#3D2329]">Reset Password</h2>
+                        <p className="text-[10px] sm:text-[11px] text-[#3D2329]/60 font-serif italic">Enter your security PIN to set a new password</p>
+                    </div>
+
+                    {resetError && (
+                        <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl px-3 py-2 text-xs font-serif italic text-center mb-3">
+                            {resetError}
+                        </div>
+                    )}
+
+                    <form onSubmit={handleResetPassword} className="space-y-3.5">
+                        <div className="space-y-1">
+                            <label className="block text-[9px] font-black uppercase tracking-widest text-[#3D2329]/60 ml-1">Username / Identifier</label>
+                            <input
+                                type="text"
+                                required
+                                value={resetUsername}
+                                onChange={(e) => setResetUsername(e.target.value)}
+                                placeholder="your_admin_username"
+                                className="w-full px-4 py-2.5 bg-black/5 rounded-xl border border-black/10 text-[#3D2329] font-playfair italic text-sm outline-none focus:border-[#D43425] transition-all placeholder:text-[#3D2329]/30"
+                            />
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="block text-[9px] font-black uppercase tracking-widest text-[#3D2329]/60 ml-1">Security PIN (4-6 digits)</label>
+                            <input
+                                type="password"
+                                required
+                                maxLength={6}
+                                value={resetPin}
+                                onChange={(e) => setResetPin(e.target.value)}
+                                placeholder="••••"
+                                className="w-full px-4 py-2.5 bg-black/5 rounded-xl border border-black/10 text-[#3D2329] font-mono tracking-widest text-base outline-none focus:border-[#D43425] transition-all placeholder:text-[#3D2329]/30"
+                            />
+                        </div>
+
+                        <div className="space-y-1">
+                            <div className="flex justify-between items-center ml-1 mr-1">
+                                <label className="text-[9px] font-black uppercase tracking-widest text-[#3D2329]/60">New Password</label>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowResetNewPassword(!showResetNewPassword)}
+                                    className="text-[9px] text-[#3D2329]/70 hover:text-[#D43425] font-black uppercase tracking-wider cursor-pointer"
+                                >
+                                    {showResetNewPassword ? 'HIDE' : 'SHOW'}
+                                </button>
+                            </div>
+                            <input
+                                type={showResetNewPassword ? 'text' : 'password'}
+                                required
+                                minLength={6}
+                                value={resetNewPassword}
+                                onChange={(e) => setResetNewPassword(e.target.value)}
+                                placeholder="At least 6 characters"
+                                className="w-full px-4 py-2.5 bg-black/5 rounded-xl border border-black/10 text-[#3D2329] font-playfair italic text-sm outline-none focus:border-[#D43425] transition-all placeholder:text-[#3D2329]/30"
+                            />
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={resetLoading}
+                            className="w-full py-3.5 bg-[#3D2329] hover:bg-black disabled:opacity-50 text-white font-black text-[10px] uppercase tracking-[0.3em] rounded-full transition-all shadow-xl hover:shadow-2xl active:scale-95 flex items-center justify-center gap-2 mt-4 cursor-pointer"
+                        >
+                            {resetLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                            {resetLoading ? 'Updating Password...' : 'Update Password'}
+                        </button>
+                    </form>
+                </div>
+            )}
+
+            <div className="mt-6 sm:mt-8 text-[8px] font-black uppercase tracking-[0.3em] opacity-25 text-center text-[#3D2329]">
                 Private Ledger • HotelPro Reserve
             </div>
+
+            {/* Floating Toast Notification Outside The Ledger - Bottom Right */}
+            <AnimatePresence>
+                {successMsg && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 30, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 20, scale: 0.95 }}
+                        transition={{ duration: 0.35, ease: 'easeOut' }}
+                        className="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 z-200 max-w-sm flex items-center gap-3 px-5 py-3.5 bg-[#1F1416]/95 backdrop-blur-md text-[#EFE7D9] rounded-2xl border border-emerald-500/30 shadow-[0_20px_45px_rgba(0,0,0,0.6)]"
+                    >
+                        <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        </div>
+                        <div className="flex-1 pr-1">
+                            <p className="text-xs font-semibold text-emerald-300 leading-snug">
+                                {successMsg}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setSuccessMsg('')}
+                            className="text-[#EFE7D9]/40 hover:text-[#EFE7D9] transition-colors p-1 cursor-pointer"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
@@ -311,6 +398,15 @@ export default function LoginPage() {
     const [isOpened, setIsOpened] = useState(false);
     const [mounted, setMounted] = useState(false);
     const [windowSize, setWindowSize] = useState({ width: 1200, height: 800 });
+    const router = useRouter();
+
+    const handleCloseLedger = () => {
+        setIsOpened(false);
+        // Wait for book closing 3D flip animation to finish before redirecting
+        setTimeout(() => {
+            router.push('/home');
+        }, 850);
+    };
 
     useEffect(() => {
         setMounted(true);
@@ -379,8 +475,8 @@ export default function LoginPage() {
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: 10 }}
-                            onClick={() => setIsOpened(false)}
-                            className="absolute -top-12 sm:-top-16 right-2 sm:right-0 z-100 p-4 flex items-center gap-2 sm:gap-3 text-[#EFE7D9]/40 hover:text-[#D43425] transition-all group uppercase font-black text-[9px] sm:text-[10px] tracking-[0.3em]"
+                            onClick={handleCloseLedger}
+                            className="absolute -top-12 sm:-top-16 right-2 sm:right-0 z-100 p-4 flex items-center gap-2 sm:gap-3 text-[#EFE7D9]/40 hover:text-[#D43425] transition-all group uppercase font-black text-[9px] sm:text-[10px] tracking-[0.3em] cursor-pointer"
                         >
                             <span className={isMobile ? "text-[#D43425]" : "block"}>Close Ledger</span>
                             <div className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center group-hover:border-[#D43425] group-hover:rotate-90 transition-all bg-black/40 backdrop-blur-sm">

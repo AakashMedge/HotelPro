@@ -4,9 +4,19 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import SmoothScroll from '@/components/SmoothScroll';
+import StackingCardsSection from '@/components/StackingCardsSection';
+import PosSplitTestimonialSection from '@/components/PosSplitTestimonialSection';
+
+const HERO_SLIDES = [
+    { src: '/images/hotel8.jpg', alt: 'HotelPro luxury residence' },
+    { src: '/images/hotel7.jpg', alt: 'HotelPro elegant ambiance' },
+    { src: '/images/hotel2.jpg', alt: 'HotelPro luxury suite' },
+];
 
 export default function HomePage() {
     const [mounted, setMounted] = useState(false);
+    const [currentSlide, setCurrentSlide] = useState(0);
     const [menuOpen, setMenuOpen] = useState(false);
     const [yearCount, setYearCount] = useState(2000);
     const [hasAnimatedYear, setHasAnimatedYear] = useState(false);
@@ -14,8 +24,6 @@ export default function HomePage() {
     const [isTransitioning, setIsTransitioning] = useState(false);
     const [targetUrl, setTargetUrl] = useState('');
     const yearSectionRef = useRef<HTMLDivElement>(null);
-    const heroVideoRef = useRef<HTMLVideoElement>(null);
-    const secondaryVideoRef = useRef<HTMLVideoElement>(null);
     const router = useRouter();
 
     const handleBookClick = (e: React.MouseEvent, url: string) => {
@@ -33,19 +41,13 @@ export default function HomePage() {
         setMounted(true);
     }, []);
 
-    // Ensure videos play on mount
+    // Slideshow auto-advance every 5 seconds
     useEffect(() => {
-        if (mounted) {
-            if (heroVideoRef.current) {
-                heroVideoRef.current.muted = true;
-                heroVideoRef.current.play().catch(e => console.log("Hero video autoplay failed:", e));
-            }
-            if (secondaryVideoRef.current) {
-                secondaryVideoRef.current.muted = true;
-                secondaryVideoRef.current.play().catch(e => console.log("Secondary video autoplay failed:", e));
-            }
-        }
-    }, [mounted]);
+        const timer = setInterval(() => {
+            setCurrentSlide((prev) => (prev + 1) % HERO_SLIDES.length);
+        }, 5000);
+        return () => clearInterval(timer);
+    }, []);
 
     // Year counter animation with variable speed
     useEffect(() => {
@@ -117,22 +119,54 @@ export default function HomePage() {
 
 
     return (
-        <main className="min-h-screen bg-white text-white font-sans overflow-x-hidden">
+        <main className="min-h-screen bg-white text-white font-sans overflow-x-clip">
+            <SmoothScroll />
 
             {/* HERO SECTION - ROUNDED WITH PADDING */}
             <section className="p-2 sm:p-4 md:p-6 lg:p-8 min-h-screen">
                 <div className="relative w-full h-[calc(100vh-1rem)] sm:h-[calc(100vh-2rem)] md:h-[calc(100vh-3rem)] lg:h-[calc(100vh-4rem)] rounded-3xl sm:rounded-4xl md:rounded-[3rem] overflow-hidden">
-                    {/* Background Video */}
-                    <video
-                        ref={heroVideoRef}
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        className="absolute inset-0 w-full h-full object-cover"
-                    >
-                        <source src="https://cdn.prod.website-files.com/684fc56fc7e02f3dad4a6138%2F6852764f5adbef713a1a18ef_PbE-Hero-Video-B-transcode.mp4" type="video/mp4" />
-                    </video>
+                    {/* Background Slideshow with Modern Ken Burns Crossfade */}
+                    <div className="absolute inset-0 w-full h-full overflow-hidden bg-neutral-900">
+                        {HERO_SLIDES.map((slide, index) => {
+                            const isActive = index === currentSlide;
+                            return (
+                                <div
+                                    key={slide.src}
+                                    className={`absolute inset-0 w-full h-full transition-all duration-1200 ease-out transform ${
+                                        isActive
+                                            ? 'opacity-100 scale-100 z-1'
+                                            : 'opacity-0 scale-108 z-0 pointer-events-none'
+                                    }`}
+                                >
+                                    <Image
+                                        src={slide.src}
+                                        alt={slide.alt}
+                                        fill
+                                        priority={index === 0}
+                                        className="object-cover w-full h-full select-none"
+                                        sizes="100vw"
+                                    />
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* Slideshow Indicators */}
+                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/30 backdrop-blur-md border border-white/10">
+                        {HERO_SLIDES.map((_, idx) => (
+                            <button
+                                key={idx}
+                                onClick={() => setCurrentSlide(idx)}
+                                aria-label={`Go to slide ${idx + 1}`}
+                                className={`h-1.5 rounded-full transition-all duration-500 cursor-pointer ${
+                                    idx === currentSlide
+                                        ? 'w-6 bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]'
+                                        : 'w-1.5 bg-white/40 hover:bg-white/70'
+                                }`}
+                            />
+                        ))}
+                    </div>
+
                     {/* Dark Gradient Overlay for Navbar Visibility */}
                     <div className="absolute inset-0 bg-linear-to-b from-black/60 via-black/20 to-transparent z-5 pointer-events-none" />
 
@@ -274,6 +308,7 @@ export default function HomePage() {
                 </div>
             </section>
 
+
             {/* FULL SCREEN MENU OVERLAY */}
             {menuOpen && (
                 <div className="fixed inset-0 bg-[#EFE7D9] z-200 animate-in fade-in duration-300 text-black">
@@ -369,23 +404,8 @@ export default function HomePage() {
                 </div>
             </section>
 
-            {/* VIDEO SECTION */}
-            <section className="px-4 sm:px-6 md:px-12 lg:px-24 pb-16 sm:pb-24 bg-[#EFE7D9]">
-                <div className="max-w-5xl mx-auto">
-                    <div className="rounded-3xl sm:rounded-4xl md:rounded-[3rem] overflow-hidden shadow-2xl">
-                        <video
-                            ref={secondaryVideoRef}
-                            autoPlay
-                            loop
-                            muted
-                            playsInline
-                            className="w-full aspect-video object-cover"
-                        >
-                            <source src="https://cdn.prod.website-files.com/684fc56fc7e02f3dad4a6138%2F6852764f5adbef713a1a18ef_PbE-Hero-Video-B-transcode.mp4" type="video/mp4" />
-                        </video>
-                    </div>
-                </div>
-            </section>
+            {/* STACKING CARDS SECTION (Paris By Emily Style) */}
+            <StackingCardsSection />
 
             {/* 2026 SECTION */}
             <section ref={yearSectionRef} className="min-h-[80vh] sm:min-h-screen bg-[#3D2329] flex flex-col items-center justify-center px-4 sm:px-6 py-20 sm:py-32">
@@ -484,8 +504,11 @@ export default function HomePage() {
                                 <span className="text-[#C9A227] font-playfair italic text-2xl mb-4">H&P</span>
                                 <div className="w-12 h-px bg-[#C9A227]/30 mb-6" />
                                 <p className="text-[#3D2329]/60 font-playfair italic text-sm sm:text-base leading-relaxed">
-                                    "Turning the page to a<br />new chapter of luxury..."
+                                    &quot;Turning the page to a<br />new chapter of luxury...&quot;
                                 </p>
+                                {targetUrl && (
+                                    <p className="text-[#3D2329]/30 text-[9px] uppercase tracking-widest mt-4">{targetUrl.replace('/', '')}</p>
+                                )}
                             </div>
 
                             {/* Golden Glow emanating from inside */}
@@ -516,6 +539,9 @@ export default function HomePage() {
                     <div className="absolute inset-0 bg-linear-to-t from-transparent via-[#C9A227]/5 to-[#C9A227]/10 pointer-events-none" />
                 </div>
             )}
+
+            {/* POS SPLIT REVEAL TESTIMONIAL (Emily In Paris Style) */}
+            <PosSplitTestimonialSection />
 
             {/* DISCOVER EXPERIENCES */}
             <section className="py-12 sm:py-16 md:py-24 px-4 sm:px-6 md:px-12 bg-[#EFE7D9] text-black">
